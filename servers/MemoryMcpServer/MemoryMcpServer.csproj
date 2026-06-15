@@ -44,7 +44,6 @@
     <Compile Include="MemoryStore.cs" />
     <Compile Include="MemoryTools.cs" />
     <Compile Include="Slug.cs" />
-    <Compile Include="PathSandbox.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

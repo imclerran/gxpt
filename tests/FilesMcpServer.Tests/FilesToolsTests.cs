@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using Mcp35.Core.Security;
 using Mcp35.Server;
 using Newtonsoft.Json.Linq;
 using Xunit;

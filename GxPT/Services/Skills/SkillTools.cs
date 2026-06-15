@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Mcp35.Core.Security;
 using Newtonsoft.Json.Linq;
 
 namespace GxPT
@@ -115,28 +116,23 @@ namespace GxPT
         }
 
         // Resolves relpath within root, rejecting absolute paths, drive/ADS colons, and '..' escapes.
-        // Mirrors FilesMcpServer.PathSandbox (which the host can't reference) for the skill folder.
+        // Routed through the canonical Mcp35.Core PathSandbox (shared with the servers) so a hardening
+        // fix to the containment primitive lands here too. A relpath that resolves to the folder itself
+        // is allowed by the sandbox but harmless: the caller's File.Exists check rejects a directory.
         private static bool TryResolveAsset(string root, string relpath, out string full)
         {
             full = null;
             if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(relpath)) return false;
-            if (Path.IsPathRooted(relpath)) return false;   // absolute / UNC
-            if (relpath.IndexOf(':') >= 0) return false;     // drive letter or alternate data stream
-
-            string rootFull, combined;
             try
             {
-                rootFull = Path.GetFullPath(root);
-                combined = Path.GetFullPath(Path.Combine(rootFull, relpath));
+                full = new PathSandbox(root, "skill folder").Resolve(relpath);
+                return true;
             }
-            catch { return false; }
-
-            string r = rootFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(combined, r, StringComparison.OrdinalIgnoreCase)) return false; // the dir itself
-            if (!combined.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                return false; // escaped the skill folder
-            full = combined;
-            return true;
+            catch
+            {
+                full = null;
+                return false;
+            }
         }
 
         // The OpenAI-style function definition for open_skill: { names: string[] } (required), mirroring

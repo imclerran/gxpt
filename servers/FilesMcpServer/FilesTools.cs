@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using Mcp35.Core.Protocol;
+using Mcp35.Core.Security;
 using Mcp35.Server;
 using Newtonsoft.Json.Linq;
 
@@ -31,7 +32,7 @@ namespace FilesMcpServer
 
         public static void Register(McpServer server, FilesConfig config)
         {
-            PathSandbox sandbox = new PathSandbox(config.WorkDir);
+            PathSandbox sandbox = new PathSandbox(config.WorkDir, "workspace root");
 
             server.AddTool("read", "Read the UTF-8 text contents of a file under the workspace root. "
                 + "Optionally read a line range (1-based, inclusive) and/or prefix each line with its number.",

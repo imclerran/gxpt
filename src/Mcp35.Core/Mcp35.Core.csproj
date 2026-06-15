@@ -60,6 +60,7 @@
     <Compile Include="Protocol\ContentBlock.cs" />
     <Compile Include="Diagnostics\ILogSink.cs" />
     <Compile Include="Errors\McpException.cs" />
+    <Compile Include="Security\PathSandbox.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

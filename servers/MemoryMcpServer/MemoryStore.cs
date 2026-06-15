@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Mcp35.Core.Diagnostics;
+using Mcp35.Core.Security;
 
 namespace MemoryMcpServer
 {
@@ -47,7 +48,7 @@ namespace MemoryMcpServer
         {
             if (string.IsNullOrEmpty(root)) throw new ArgumentException("root is required", "root");
             _root = root;
-            _sandbox = new PathSandbox(root);
+            _sandbox = new PathSandbox(root, "workspace root");
             _maxLines = maxLines > 0 ? maxLines : MemoryConfig.DefaultMaxLines;
             _log = log != null ? log : NullLogSink.Instance;
         }

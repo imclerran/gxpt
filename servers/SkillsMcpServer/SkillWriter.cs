@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Mcp35.Core.Security;
 
 namespace SkillsMcpServer
 {
@@ -67,7 +68,7 @@ namespace SkillsMcpServer
                 throw new SkillWriteException("skill '" + slug + "' does not exist yet; create_skill first");
 
             string full;
-            try { full = new PathSandbox(dir).Resolve(relpath); }
+            try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
             catch (SandboxException ex) { throw new SkillWriteException(ex.Message); }
 
             if (string.Equals(Path.GetFileName(full), "SKILL.md", StringComparison.OrdinalIgnoreCase))
@@ -124,7 +125,7 @@ namespace SkillsMcpServer
             if (newString == null) throw new SkillWriteException("new_string is required");
 
             string full;
-            try { full = new PathSandbox(dir).Resolve(relpath); }
+            try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
             catch (SandboxException ex) { throw new SkillWriteException(ex.Message); }
 
             if (!File.Exists(full))
@@ -220,7 +221,7 @@ namespace SkillsMcpServer
                 throw new SkillWriteException("skill '" + slug + "' does not exist");
 
             string full;
-            try { full = new PathSandbox(dir).Resolve(relpath); }
+            try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
             catch (SandboxException ex) { throw new SkillWriteException(ex.Message); }
 
             if (string.Equals(Path.GetFileName(full), "SKILL.md", StringComparison.OrdinalIgnoreCase))
