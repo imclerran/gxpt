@@ -46,7 +46,6 @@
     <Compile Include="SkillWriter.cs" />
     <Compile Include="SkillScriptRunner.cs" />
     <Compile Include="SkillsServerTools.cs" />
-    <Compile Include="PathSandbox.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

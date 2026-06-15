@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Mcp35.Core.Security;
 using Mcp35.Server.Process;
 
 namespace SkillsMcpServer
@@ -62,7 +63,7 @@ namespace SkillsMcpServer
                 throw new SkillScriptException("skill '" + slug + "' was not found in any skills root");
 
             string full;
-            try { full = new PathSandbox(skillDir).Resolve(relpath); }
+            try { full = new PathSandbox(skillDir, "skill folder").Resolve(relpath); }
             catch (SandboxException ex) { throw new SkillScriptException(ex.Message); }
 
             string ext = (Path.GetExtension(full) ?? string.Empty).ToLowerInvariant();

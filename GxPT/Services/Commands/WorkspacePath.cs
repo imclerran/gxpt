@@ -2,8 +2,8 @@ using System;
 
 namespace GxPT
 {
-    // Command-layer rule for path arguments. Deliberately STRICTER than the file server's PathSandbox
-    // (servers/FilesMcpServer/PathSandbox.cs): paths must be relative to the working folder, and parent
+    // Command-layer rule for path arguments. Deliberately STRICTER than the shared PathSandbox
+    // (Mcp35.Core.Security.PathSandbox): paths must be relative to the working folder, and parent
     // traversal ("..") is refused outright rather than allowed-while-within-root. A workdir-rooted path
     // never needs to climb out, so this is purely lexical -- no GetFullPath / boundary math required.
     //

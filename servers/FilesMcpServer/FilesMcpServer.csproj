@@ -42,7 +42,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="FilesConfig.cs" />
     <Compile Include="FilesTools.cs" />
-    <Compile Include="PathSandbox.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
