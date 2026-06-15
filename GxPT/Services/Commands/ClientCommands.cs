@@ -48,7 +48,7 @@ namespace GxPT
         {
             string slug = (args ?? string.Empty).Trim();
             if (slug.Length == 0) return SlashCommandResult.Fail("Usage: /model <author/model>");
-            ctx.SetModel(slug);
+            ctx.Models.SetModel(slug);
             ctx.WriteInfo("Model set to " + slug + ".");
             return SlashCommandResult.Handled();
         }
@@ -56,7 +56,7 @@ namespace GxPT
         public IList<ArgCompletion> CompleteArgument(string argText, ISlashCommandContext ctx)
         {
             List<ArgCompletion> result = new List<ArgCompletion>();
-            IList<string> models = ctx != null ? ctx.GetModels() : null;
+            IList<string> models = ctx != null ? ctx.Models.GetModels() : null;
             if (models == null) return result;
 
             string a = argText ?? string.Empty;
@@ -116,7 +116,7 @@ namespace GxPT
             else { name = a.Substring(0, sp); rest = a.Substring(sp + 1).Trim(); }
 
             // Match (and canonicalize) the name against the known servers.
-            IList<string> names = ctx.GetServerNames();
+            IList<string> names = ctx.Servers.GetServerNames();
             bool known = false;
             if (names != null)
             {
@@ -128,12 +128,12 @@ namespace GxPT
             if (!known) return SlashCommandResult.Fail("Unknown server: " + name);
 
             bool target;
-            if (rest.Length == 0) target = !ctx.GetServerEnabled(name); // toggle
+            if (rest.Length == 0) target = !ctx.Servers.GetServerEnabled(name); // toggle
             else if (IsOn(rest)) target = true;
             else if (IsOff(rest)) target = false;
             else return SlashCommandResult.Fail("Use 'on' or 'off' (or omit to toggle).");
 
-            string err = ctx.SetServerEnabled(name, target);
+            string err = ctx.Servers.SetServerEnabled(name, target);
             if (err != null) return SlashCommandResult.Fail(err);
             ctx.WriteInfo(name + " server " + (target ? "enabled" : "disabled") + ".");
             return SlashCommandResult.Handled();
@@ -149,14 +149,14 @@ namespace GxPT
             if (sp < 0)
             {
                 // First token: server names, annotated with their current state.
-                IList<string> names = ctx.GetServerNames();
+                IList<string> names = ctx.Servers.GetServerNames();
                 if (names == null) return result;
                 for (int i = 0; i < names.Count; i++)
                 {
                     string n = names[i];
                     if (string.IsNullOrEmpty(n)) continue;
                     if (a.Length > 0 && !n.StartsWith(a, StringComparison.OrdinalIgnoreCase)) continue;
-                    string state = ctx.GetServerEnabled(n) ? "on" : "off";
+                    string state = ctx.Servers.GetServerEnabled(n) ? "on" : "off";
                     result.Add(new ArgCompletion(n + "  (" + state + ")", n + " ", true));
                 }
             }

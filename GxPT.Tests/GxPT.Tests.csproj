@@ -64,6 +64,7 @@
     <Compile Include="..\GxPT\Services\Mcp\MemoryInjection.cs" Link="Linked\Mcp\MemoryInjection.cs" />
     <Compile Include="..\GxPT\Services\Mcp\AgentsFileInjection.cs" Link="Linked\Mcp\AgentsFileInjection.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillInjection.cs" Link="Linked\Skills\SkillInjection.cs" />
+    <Compile Include="..\GxPT\Services\Skills\SkillRoots.cs" Link="Linked\Skills\SkillRoots.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillTools.cs" Link="Linked\Skills\SkillTools.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillEnablement.cs" Link="Linked\Skills\SkillEnablement.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillResolve.cs" Link="Linked\Skills\SkillResolve.cs" />
@@ -72,6 +73,9 @@
     <Compile Include="..\GxPT\Services\Commands\SlashCommandResult.cs" Link="Linked\Commands\SlashCommandResult.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashArgs.cs" Link="Linked\Commands\SlashArgs.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISlashCommandContext.cs" Link="Linked\Commands\ISlashCommandContext.cs" />
+    <Compile Include="..\GxPT\Services\Commands\IModelControl.cs" Link="Linked\Commands\IModelControl.cs" />
+    <Compile Include="..\GxPT\Services\Commands\IServerControl.cs" Link="Linked\Commands\IServerControl.cs" />
+    <Compile Include="..\GxPT\Services\Commands\ISkillEnablementStore.cs" Link="Linked\Commands\ISkillEnablementStore.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISlashCommand.cs" Link="Linked\Commands\ISlashCommand.cs" />
     <Compile Include="..\GxPT\Services\Commands\WorkspacePath.cs" Link="Linked\Commands\WorkspacePath.cs" />
     <Compile Include="..\GxPT\Services\Commands\IArgumentCompleter.cs" Link="Linked\Commands\IArgumentCompleter.cs" />

@@ -28,7 +28,7 @@ namespace GxPT
         internal static SkillCatalog BuildCatalog(ISlashCommandContext ctx)
         {
             string workdir = ctx != null ? ctx.WorkingDir : null;
-            return SkillInjection.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
+            return SkillRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
         }
 
         // Splits raw args on whitespace into non-empty tokens.
@@ -67,7 +67,7 @@ namespace GxPT
 
         internal static bool? ConvOverrideFor(ISlashCommandContext ctx, string slug)
         {
-            IDictionary<string, bool> ov = ctx.GetConversationSkillOverrides();
+            IDictionary<string, bool> ov = ctx.Skills.GetConversationSkillOverrides();
             bool v;
             if (ov != null && slug != null && ov.TryGetValue(slug, out v)) return v;
             return null;
@@ -112,7 +112,7 @@ namespace GxPT
                 }
                 else
                 {
-                    ctx.ResetConversationSkills();
+                    ctx.Skills.ResetConversationSkills();
                     info = "Skills: cleared this conversation's overrides.";
                 }
             }
@@ -124,19 +124,19 @@ namespace GxPT
 
                 bool on = onoff.Value;
                 if (isGlobal) { global.FeatureOff = !on; global.SaveGlobal(); }
-                else { ctx.SetConversationSkillsFeatureOff(on ? (bool?)false : (bool?)true); }
+                else { ctx.Skills.SetConversationSkillsFeatureOff(on ? (bool?)false : (bool?)true); }
                 info = "Skills turned " + (on ? "on" : "off") + " " + (isGlobal ? "globally" : "for this conversation") + ".";
             }
 
-            ctx.RefreshSkillsServer(); // once, after a successful mutation - the server follows enablement
+            ctx.Skills.RefreshSkillsServer(); // once, after a successful mutation - the server follows enablement
             ctx.WriteInfo(info);
             return SlashCommandResult.Handled();
         }
 
         private static string BuildList(SkillCatalog cat, SkillEnablement global, ISlashCommandContext ctx)
         {
-            bool? convFeatureOff = ctx.GetConversationSkillsFeatureOff();
-            IDictionary<string, bool> convOv = ctx.GetConversationSkillOverrides();
+            bool? convFeatureOff = ctx.Skills.GetConversationSkillsFeatureOff();
+            IDictionary<string, bool> convOv = ctx.Skills.GetConversationSkillOverrides();
 
             StringBuilder sb = new StringBuilder();
             sb.Append("Skills \u2014 most specific setting wins.");
@@ -248,8 +248,8 @@ namespace GxPT
             if (tok.Length == 1)
             {
                 bool current = SkillResolve.IsEnabled(global, slug,
-                    SkillCommandShared.ConvOverrideFor(ctx, slug), ctx.GetConversationSkillsFeatureOff());
-                ctx.SetConversationSkillOverride(slug, !current);
+                    SkillCommandShared.ConvOverrideFor(ctx, slug), ctx.Skills.GetConversationSkillsFeatureOff());
+                ctx.Skills.SetConversationSkillOverride(slug, !current);
                 info = "Skill '" + slug + "' " + (!current ? "enabled" : "disabled") + " for this conversation.";
             }
             else
@@ -262,7 +262,7 @@ namespace GxPT
                 if (verb == "reset")
                 {
                     if (isGlobal) { global.SetSkillOverride(slug, null); global.SaveGlobal(); info = "Skill '" + slug + "': global setting cleared."; }
-                    else { ctx.SetConversationSkillOverride(slug, null); info = "Skill '" + slug + "': conversation override cleared."; }
+                    else { ctx.Skills.SetConversationSkillOverride(slug, null); info = "Skill '" + slug + "': conversation override cleared."; }
                 }
                 else
                 {
@@ -272,12 +272,12 @@ namespace GxPT
 
                     bool on = onoff.Value;
                     if (isGlobal) { global.SetSkillOverride(slug, on); global.SaveGlobal(); }
-                    else { ctx.SetConversationSkillOverride(slug, on); }
+                    else { ctx.Skills.SetConversationSkillOverride(slug, on); }
                     info = "Skill '" + slug + "' " + (on ? "enabled" : "disabled") + " " + (isGlobal ? "globally" : "for this conversation") + ".";
                 }
             }
 
-            ctx.RefreshSkillsServer(); // once, after a successful mutation - the server follows enablement
+            ctx.Skills.RefreshSkillsServer(); // once, after a successful mutation - the server follows enablement
             ctx.WriteInfo(info);
             return SlashCommandResult.Handled();
         }
@@ -292,7 +292,7 @@ namespace GxPT
                 // First token: skill slugs, annotated with their effective state.
                 SkillCatalog cat = SkillCommandShared.BuildCatalog(ctx);
                 SkillEnablement global = SkillEnablement.LoadGlobal();
-                bool? convFeatureOff = ctx.GetConversationSkillsFeatureOff();
+                bool? convFeatureOff = ctx.Skills.GetConversationSkillsFeatureOff();
                 IList<Skill> skills = cat.Skills;
                 for (int i = 0; i < skills.Count; i++)
                 {

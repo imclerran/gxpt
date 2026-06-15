@@ -69,7 +69,7 @@ namespace GxPT.Tests
             SlashCommandResult r = new SkillCommand().Invoke("greeting off", _ctx);
 
             Assert.False(r.SendToModel);
-            Assert.False(_ctx.ConvOverrides["greeting"]);   // forced off for this conversation
+            Assert.False(_ctx.SkillStore.ConvOverrides["greeting"]);   // forced off for this conversation
         }
 
         [Fact]
@@ -78,10 +78,10 @@ namespace GxPT.Tests
             WriteSkill("greeting", "Be a pirate.", "b");
 
             new SkillCommand().Invoke("greeting", _ctx);     // on by default -> toggles off
-            Assert.False(_ctx.ConvOverrides["greeting"]);
+            Assert.False(_ctx.SkillStore.ConvOverrides["greeting"]);
 
             new SkillCommand().Invoke("greeting", _ctx);     // now off -> toggles on
-            Assert.True(_ctx.ConvOverrides["greeting"]);
+            Assert.True(_ctx.SkillStore.ConvOverrides["greeting"]);
         }
 
         [Fact]
@@ -92,7 +92,7 @@ namespace GxPT.Tests
             new SkillCommand().Invoke("greeting off global", _ctx);
 
             Assert.Equal((bool?)false, SkillEnablement.LoadGlobal().GetSkillOverride("greeting"));
-            Assert.Empty(_ctx.ConvOverrides);   // global scope must not touch the conversation
+            Assert.Empty(_ctx.SkillStore.ConvOverrides);   // global scope must not touch the conversation
         }
 
         // The transcript scenario: /skills off then /skill greeting on -> greeting still listed ON.
@@ -164,7 +164,7 @@ namespace GxPT.Tests
             new SkillsCommand().Invoke("reset global", _ctx);
             new SkillsCommand().Invoke("off here", _ctx);
             new SkillsCommand().Invoke("reset", _ctx);
-            Assert.Equal(5, _ctx.RefreshSkillsServerCount);
+            Assert.Equal(5, _ctx.SkillStore.RefreshSkillsServerCount);
         }
 
         [Fact]
@@ -174,17 +174,17 @@ namespace GxPT.Tests
             new SkillCommand().Invoke("greeting on here", _ctx);
             new SkillCommand().Invoke("greeting off global", _ctx);
             new SkillCommand().Invoke("greeting reset", _ctx);
-            Assert.Equal(3, _ctx.RefreshSkillsServerCount);
+            Assert.Equal(3, _ctx.SkillStore.RefreshSkillsServerCount);
         }
 
         [Fact]
         public void Skills_OffHere_AndReset()
         {
             new SkillsCommand().Invoke("off", _ctx);
-            Assert.Equal(true, _ctx.ConvFeatureOff);
+            Assert.Equal(true, _ctx.SkillStore.ConvFeatureOff);
 
             new SkillsCommand().Invoke("reset", _ctx);
-            Assert.Null(_ctx.ConvFeatureOff);
+            Assert.Null(_ctx.SkillStore.ConvFeatureOff);
         }
 
         [Fact]
@@ -252,7 +252,7 @@ namespace GxPT.Tests
             SkillEnablement g = SkillEnablement.LoadGlobal();
             g.SetSkillOverride("release-notes", false);   // off globally
             g.SaveGlobal();
-            _ctx.ConvOverrides["greeting"] = true;        // on here
+            _ctx.SkillStore.ConvOverrides["greeting"] = true;        // on here
         }
 
         // Feature OFF here: unset skills fall through to rung 3 -> "all skills off here" (NOT "default").
@@ -260,7 +260,7 @@ namespace GxPT.Tests
         public void List_FeatureOffHere_UnsetSkillsAreAllSkillsOffHere_NotDefault()
         {
             SeedFourSkills();
-            _ctx.ConvFeatureOff = true;
+            _ctx.SkillStore.ConvFeatureOff = true;
 
             new SkillsCommand().Invoke("", _ctx);
             string info = LastInfo();
@@ -291,7 +291,7 @@ namespace GxPT.Tests
         [Fact]
         public void List_FeatureUnsetHere_UnsetSkillsAreDefault()
         {
-            SeedFourSkills();   // _ctx.ConvFeatureOff stays null
+            SeedFourSkills();   // _ctx.SkillStore.ConvFeatureOff stays null
 
             new SkillsCommand().Invoke("", _ctx);
             string info = LastInfo();

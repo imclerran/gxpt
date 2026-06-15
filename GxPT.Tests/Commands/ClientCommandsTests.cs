@@ -12,7 +12,7 @@ namespace GxPT.Tests.Commands
         private static FakeSlashCommandContext CtxWithModels()
         {
             var ctx = new FakeSlashCommandContext("/work");
-            ctx.Models.AddRange(new[]
+            ctx.ModelStore.Models.AddRange(new[]
             {
                 "openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"
             });
@@ -69,7 +69,7 @@ namespace GxPT.Tests.Commands
             var result = new ModelCommand().Invoke("openai/gpt-4o", ctx);
             Assert.False(result.SendToModel);
             Assert.Null(result.Error);
-            Assert.Equal("openai/gpt-4o", ctx.LastModelSet);
+            Assert.Equal("openai/gpt-4o", ctx.ModelStore.LastModelSet);
         }
 
         [Fact]
@@ -84,9 +84,9 @@ namespace GxPT.Tests.Commands
         private static FakeSlashCommandContext CtxWithServers()
         {
             var ctx = new FakeSlashCommandContext("/work");
-            ctx.ServerStates["git"] = true;
-            ctx.ServerStates["files"] = false;
-            ctx.ServerStates["command"] = false;
+            ctx.ServerStore.ServerStates["git"] = true;
+            ctx.ServerStore.ServerStates["files"] = false;
+            ctx.ServerStore.ServerStates["command"] = false;
             return ctx;
         }
 
@@ -108,10 +108,10 @@ namespace GxPT.Tests.Commands
         {
             var ctx = CtxWithServers();
             new ToolCommand().Invoke("files on", ctx);
-            Assert.True(ctx.ServerStates["files"]);
+            Assert.True(ctx.ServerStore.ServerStates["files"]);
 
             new ToolCommand().Invoke("git off", ctx);
-            Assert.False(ctx.ServerStates["git"]);
+            Assert.False(ctx.ServerStore.ServerStates["git"]);
         }
 
         [Fact]
@@ -119,9 +119,9 @@ namespace GxPT.Tests.Commands
         {
             var ctx = CtxWithServers(); // git starts on
             new ToolCommand().Invoke("git", ctx);
-            Assert.False(ctx.ServerStates["git"]);
+            Assert.False(ctx.ServerStore.ServerStates["git"]);
             new ToolCommand().Invoke("git", ctx);
-            Assert.True(ctx.ServerStates["git"]);
+            Assert.True(ctx.ServerStore.ServerStates["git"]);
         }
 
         [Fact]
@@ -244,7 +244,7 @@ namespace GxPT.Tests.Commands
             var result = processor.Process("/model openai/gpt-4o", ctx);
             Assert.NotNull(result);
             Assert.False(result.SendToModel);     // client command: not sent to the model
-            Assert.Equal("openai/gpt-4o", ctx.LastModelSet);
+            Assert.Equal("openai/gpt-4o", ctx.ModelStore.LastModelSet);
         }
     }
 }
