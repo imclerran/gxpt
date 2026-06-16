@@ -1,10 +1,12 @@
-using System.Collections.Generic;
-
 namespace GxPT
 {
     // The host surface a slash command may consult or drive. Kept free of WinForms types so the command
     // core compiles into the unit-test assembly; the app provides a MainForm-backed implementation and
     // tests provide a fake. Prompt commands use only WorkingDir/HasServer; client commands use the rest.
+    //
+    // The cohesive clusters that had grown this into a god-interface are split into dedicated facets
+    // (issue #119): model selection (Models), MCP-server toggles (Servers), and skills enablement
+    // (Skills). What remains here is genuinely cross-cutting host state plus one-off app actions.
     internal interface ISlashCommandContext
     {
         // The conversation's working folder (may be null/empty when none is set). Path arguments are
@@ -18,30 +20,14 @@ namespace GxPT
         // Show a short status line in the active transcript (UI only; not saved to history).
         void WriteInfo(string text);
 
-        // ---- model control ----
-        IList<string> GetModels();      // known "author/model" slugs (for completion)
-        string GetActiveModel();        // the active tab's current model
-        void SetModel(string slug);     // switch the active tab's model
+        // Model selection for the active tab (used by /model).
+        IModelControl Models { get; }
 
-        // ---- MCP server control (built-in toggleable servers) ----
-        IList<string> GetServerNames();          // names that can be toggled
-        bool GetServerEnabled(string serverName); // effective current state
-        // Apply a new enabled state. Returns null on success, or a message explaining why it didn't
-        // change (e.g. the tool isn't installed).
-        string SetServerEnabled(string serverName, bool enabled);
+        // Built-in toggleable MCP servers (used by /tool).
+        IServerControl Servers { get; }
 
-        // ---- skills: per-conversation enablement overrides (tri-state; null = inherit the global
-        // default in skills.json). Global-scope changes go straight to SkillEnablement, not through here.
-        bool? GetConversationSkillsFeatureOff();            // null = inherit, true = off, false = on
-        void SetConversationSkillsFeatureOff(bool? value);  // persists the active conversation
-        IDictionary<string, bool> GetConversationSkillOverrides(); // copy; slug -> force on/off
-        void SetConversationSkillOverride(string slug, bool? value); // null clears the slug; persists
-        void ResetConversationSkills();                     // clear feature override + all per-skill overrides
-
-        // Bring the Skills MCP server into line with skill enablement (it runs iff any skill is enabled).
-        // Call after any skills enablement change - global or per-conversation. A no-op unless the change
-        // crosses the on/off boundary.
-        void RefreshSkillsServer();
+        // Per-conversation skills enablement (used by /skills and /skill).
+        ISkillEnablementStore Skills { get; }
 
         // ---- conversation / app actions ----
         void NewConversation();

@@ -23,21 +23,6 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void BundledRoot_AppendsSkillsDir()
-        {
-            Assert.Equal(Path.Combine("base", "skills"), SkillInjection.BundledRoot("base"));
-            Assert.Null(SkillInjection.BundledRoot(null));
-        }
-
-        [Fact]
-        public void ProjectRoot_IsUnderDotGxpt_OrNull()
-        {
-            string expected = Path.Combine(Path.Combine("work", ".gxpt"), "skills");
-            Assert.Equal(expected, SkillInjection.ProjectRoot("work"));
-            Assert.Null(SkillInjection.ProjectRoot(null));
-        }
-
-        [Fact]
         public void BuildManifestMessage_EmptyCatalog_ReturnsNull()
         {
             SkillCatalog empty = SkillCatalog.Build(_root, null);   // _root has no skill folders
@@ -61,21 +46,6 @@ namespace GxPT.Tests
             Assert.Contains("open_skill", msg);
             Assert.Contains("release-notes", msg);
             Assert.Contains("Draft notes.", msg);
-        }
-
-        [Fact]
-        public void BuildCatalog_DiscoversProjectSkillsUnderDotGxpt()
-        {
-            string skillDir = Path.Combine(Path.Combine(Path.Combine(_root, ".gxpt"), "skills"), "proj-skill");
-            Directory.CreateDirectory(skillDir);
-            File.WriteAllText(Path.Combine(skillDir, "SKILL.md"),
-                "---\ndescription: A project skill.\n---\nbody\n", new UTF8Encoding(false));
-
-            SkillCatalog cat = SkillInjection.BuildCatalog("no-such-exe-dir", _root);
-
-            Skill s;
-            Assert.True(cat.TryGet("proj-skill", out s));
-            Assert.Equal(SkillSource.Project, s.Source);
         }
     }
 }

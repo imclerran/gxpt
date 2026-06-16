@@ -48,7 +48,7 @@ namespace GxPT
 
         public static bool ImportSkillFromFile(IWin32Window owner, string archivePath)
         {
-            string targetRoot = SkillInjection.UserRoot();
+            string targetRoot = SkillRoots.UserRoot();
             if (string.IsNullOrEmpty(targetRoot))
             {
                 try { MessageBox.Show(owner, "Could not resolve the user skills folder.", "Import Skill", MessageBoxButtons.OK, MessageBoxIcon.Error); }

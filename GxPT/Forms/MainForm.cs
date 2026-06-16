@@ -845,7 +845,7 @@ namespace GxPT
                 string workdir = (ctx != null) ? ctx.WorkingDir : null;
 
                 SkillCatalog catalog =
-                    SkillInjection.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
+                    SkillRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
                 List<Skill> enabledSkills = SkillResolve.EnabledSkills(
                     catalog.Skills, SkillEnablement.LoadGlobal(),
                     (convo != null) ? convo.SkillsFeatureOff : null,
@@ -1305,8 +1305,8 @@ namespace GxPT
                 // Skill roots the server resolves scripts against: bundled (<exe>/skills, shipped with the
                 // app) and user-global (%AppData%/GxPT/skills). The project root is derived from
                 // GXPT_WORKDIR inside the server. These mirror the read-side roots (SkillInjection).
-                opts.SkillsBundledRoot = SkillInjection.BundledRoot(baseDir);
-                opts.SkillsUserRoot = SkillInjection.UserRoot();
+                opts.SkillsBundledRoot = SkillRoots.BundledRoot(baseDir);
+                opts.SkillsUserRoot = SkillRoots.UserRoot();
                 opts.WebSearchKey = AppSettings.GetString("mcp_websearch_key");
                 opts.CurlPath = curlPath;
                 // Server exes: dev builds deploy them to a 'mcp-servers' subfolder (AfterBuild copy);
@@ -2848,7 +2848,7 @@ namespace GxPT
                     // override layer), then inject the manifest and expose open_skill over
                     // the enabled set. Rebuilt per send, so on-disk edits take effect on the next turn.
                     SkillCatalog skillCatalog =
-                        SkillInjection.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);
+                        SkillRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);
                     Conversation skillConvo = convo;
                     List<Skill> enabledSkills = SkillResolve.EnabledSkills(
                         skillCatalog.Skills, SkillEnablement.LoadGlobal(),

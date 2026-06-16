@@ -108,6 +108,7 @@
     <Compile Include="Services\Skills\Skill.cs" />
     <Compile Include="Services\Skills\SkillCatalog.cs" />
     <Compile Include="Services\Skills\SkillInjection.cs" />
+    <Compile Include="Services\Skills\SkillRoots.cs" />
     <Compile Include="Services\Skills\SkillTools.cs" />
     <Compile Include="Services\Skills\SkillEnablement.cs" />
     <Compile Include="Services\Skills\SkillResolve.cs" />
@@ -116,6 +117,9 @@
     <Compile Include="Services\Commands\SlashCommandResult.cs" />
     <Compile Include="Services\Commands\SlashArgs.cs" />
     <Compile Include="Services\Commands\ISlashCommandContext.cs" />
+    <Compile Include="Services\Commands\IModelControl.cs" />
+    <Compile Include="Services\Commands\IServerControl.cs" />
+    <Compile Include="Services\Commands\ISkillEnablementStore.cs" />
     <Compile Include="Services\Commands\ISlashCommand.cs" />
     <Compile Include="Services\Commands\WorkspacePath.cs" />
     <Compile Include="Services\Commands\IArgumentCompleter.cs" />
@@ -387,7 +391,7 @@
     </ItemGroup>
     <Copy SourceFiles="@(McpServerFiles)" DestinationFiles="@(McpServerFiles->'$(OutDir)mcp-servers\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" ContinueOnError="true" />
     <!-- Ship the bundled (first-party) skills next to GxPT.exe in a 'skills' folder. The host's
-         SkillInjection.BundledRoot resolves <exe>/skills, and SkillsMcpServer gets the same path as
+         SkillRoots.BundledRoot resolves <exe>/skills, and SkillsMcpServer gets the same path as
          GXPT_SKILLS_BUNDLED_ROOT, so a shipped skill (e.g. skill-writer) is discoverable and its
          scripts runnable. Mirrors the mcp-servers copy above. -->
     <ItemGroup>
