@@ -568,8 +568,8 @@ namespace GxPT
                 // "this file" (exact) and a workspace-wide blanket for all write-tier files tools. The
                 // per-folder prefix option is intentionally omitted to keep the strip to four buttons;
                 // the workspace blanket covers the "trust this working area" case more broadly.
-                AddButton("Always allow this file", ApprovalChoice.RememberExactArg, false);
                 AddButton("Allow all edits in this workspace", ApprovalChoice.RememberWorkdirWrites, false);
+                AddButton("Always allow this file", ApprovalChoice.RememberExactArg, false);
             }
             // Scope == None: no remember buttons (Allow once / Deny only).
         }
