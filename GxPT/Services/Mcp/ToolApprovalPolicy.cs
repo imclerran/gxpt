@@ -27,6 +27,16 @@ namespace GxPT
         private readonly IToolApprovalPrompt _prompt;
         private readonly IApprovalStore _store;
         private readonly IToolAnnotationSource _annotations;
+        private string _workdirKey; // canonical working dir for this turn (null = no workspace)
+
+        // The working directory of the turn this policy serves, set per-turn by the host (mirrors
+        // McpChatOrchestrator.WorkingDir). Stored canonicalized so a "all edits in this workspace"
+        // approval matches the same folder regardless of separator/case/trailing-slash differences,
+        // and never matches a different workspace. Null/empty clears it (no workdir-scoped approvals).
+        public string WorkingDir
+        {
+            set { _workdirKey = CanonicalWorkdir(value); }
+        }
 
         public ToolApprovalPolicy(IToolClassifier classifier, IToolApprovalPrompt prompt, IApprovalStore store)
             : this(classifier, prompt, store, null)
@@ -69,6 +79,12 @@ namespace GxPT
 
             // Already-remembered fast paths.
             if (pol.Scope == RememberScope.Tool && _store.IsToolApproved(functionName))
+                return ApprovalDecision.Allow;
+            // Blanket "all edits in this workspace" approval: covers every Write-tier path-scoped files
+            // tool (write/edit) for the active workspace. Gated on Tier==Write so Destructive path tools
+            // (files__delete) are never swept in, and on a non-null workdir so it can't match globally.
+            if (IsWorkdirWriteEligible(pol) && _workdirKey != null
+                && _store.IsWorkdirApproved(server, _workdirKey))
                 return ApprovalDecision.Allow;
             if (pol.Scope == RememberScope.Argument && MatchesAnyRule(functionName, pol, args))
                 return ApprovalDecision.Allow;
@@ -173,6 +189,11 @@ namespace GxPT
                     _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.Prefix,
                         req.Policy.ScopeArgPath, PrefixPattern(req)));
                     break;
+                case ApprovalChoice.RememberWorkdirWrites:
+                    // Approve every Write-tier files tool in the active workspace. No-op without a
+                    // workdir (nothing to scope the blanket approval to).
+                    if (_workdirKey != null) _store.AddApprovedWorkdir(req.ServerName, _workdirKey);
+                    break;
                 // AllowOnce / Deny: nothing persisted.
             }
         }
@@ -201,6 +222,29 @@ namespace GxPT
         }
 
         // ---- helpers ----
+
+        // The shape a "all edits in this workspace" approval covers: a remember-eligible Write-tier
+        // path-scoped tool (files__write / files__edit). Tier==Write deliberately excludes the
+        // Destructive files__delete, which shares the same Argument/path scope.
+        private static bool IsWorkdirWriteEligible(ToolPolicy pol)
+        {
+            return pol != null && pol.Tier == ToolTier.Write
+                && pol.Scope == RememberScope.Argument && pol.ScopeArgPath == "path";
+        }
+
+        // Canonical key for a working directory: '/'-separated, no trailing slash, lowercased (Windows
+        // paths compare case-insensitively, matching the OrdinalIgnoreCase path rules above). Used as
+        // the stable lookup key for workdir-scoped approvals so the same folder always matches and
+        // different folders never collide. The host supplies an already-absolute path (ctx.WorkingDir),
+        // so this only reconciles separator/case/trailing-slash spelling — no filesystem resolution
+        // (which would be platform-dependent for drive rooting).
+        private static string CanonicalWorkdir(string workdir)
+        {
+            if (string.IsNullOrEmpty(workdir)) return null;
+            string p = workdir.Replace('\\', '/');
+            while (p.Length > 1 && p[p.Length - 1] == '/') p = p.Substring(0, p.Length - 1);
+            return p.ToLowerInvariant();
+        }
 
         private static string BuildPreview(string functionName, ToolPolicy pol, JObject args)
         {

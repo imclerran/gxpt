@@ -12,6 +12,11 @@ namespace GxPT
         void AddApprovedTool(string functionName);
         IList<ApprovalRule> RulesFor(string functionName);
         void AddRule(ApprovalRule rule);
+        // Workdir-scoped blanket approval for a server's Write-tier tools (e.g. "all files__ edits in
+        // this workspace"). Keyed by (server, canonical working directory) so it never leaks across
+        // tabs whose file paths — being workspace-relative — would otherwise collide.
+        bool IsWorkdirApproved(string server, string workdir);
+        void AddApprovedWorkdir(string server, string workdir);
     }
 
     // In-memory store: remembered approvals live for the app session only.
@@ -19,6 +24,9 @@ namespace GxPT
     {
         protected readonly Dictionary<string, bool> _approvedTools = new Dictionary<string, bool>(StringComparer.Ordinal);
         protected readonly List<ApprovalRule> _rules = new List<ApprovalRule>();
+        // Approved (server, workdir) pairs; the key is server + '\0' + canonical workdir (the policy
+        // supplies the canonical form, so this stays an opaque-string lookup).
+        protected readonly Dictionary<string, bool> _approvedWorkdirs = new Dictionary<string, bool>(StringComparer.Ordinal);
 
         public bool IsToolApproved(string functionName)
         {
@@ -49,6 +57,18 @@ namespace GxPT
                     r.ArgPath == rule.ArgPath && r.Pattern == rule.Pattern) return;
             }
             _rules.Add(rule);
+        }
+
+        public bool IsWorkdirApproved(string server, string workdir)
+        {
+            if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(workdir)) return false;
+            return _approvedWorkdirs.ContainsKey(server + "\0" + workdir);
+        }
+
+        public virtual void AddApprovedWorkdir(string server, string workdir)
+        {
+            if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(workdir)) return;
+            _approvedWorkdirs[server + "\0" + workdir] = true;
         }
     }
 }

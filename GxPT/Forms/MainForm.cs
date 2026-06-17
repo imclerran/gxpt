@@ -2778,6 +2778,10 @@ namespace GxPT
                             _approvalStore,
                             _mcpRegistry) // classify third-party tools by their declared readOnly/destructive hints
                         : (IToolApprovalPolicy)new AllowAllApprovalPolicy();
+                    // Scope this turn's "all edits in this workspace" approvals to the active folder
+                    // (same workdir the orchestrator routes tool calls to, below).
+                    ToolApprovalPolicy realPolicy = approval as ToolApprovalPolicy;
+                    if (realPolicy != null) realPolicy.WorkingDir = ctx.WorkingDir;
                     var orch = new McpChatOrchestrator(_client, _mcpRegistry, approval,
                                                        model, LoggerSink.Instance);
                     orch.WorkingDir = ctx.WorkingDir;

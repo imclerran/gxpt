@@ -347,6 +347,97 @@ namespace GxPT.Tests.Mcp
             Assert.False(ToolApprovalPolicy.PrefixMatches("a/bc/y.txt", "a\\b", true));
         }
 
+        // ---- "all edits in this workspace" blanket approval ----
+
+        [Fact]
+        public void Workspace_approval_covers_all_write_tier_files_tools_in_the_same_workdir()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberWorkdirWrites };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            pol.WorkingDir = "/work/project";
+
+            // Approving the blanket on a write call...
+            pol.Check("files__write", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // ...a later write in a different folder is covered (whole workspace, not just one dir)...
+            Assert.Equal(ApprovalDecision.Allow, pol.Check("files__write", Args("{\"path\":\"deep/nested/b.txt\"}")));
+            Assert.Equal(1, prompt.Calls);
+
+            // ...and so is files__edit, even though it's a different function name (spans write tools).
+            Assert.Equal(ApprovalDecision.Allow, pol.Check("files__edit", Args("{\"path\":\"c.txt\"}")));
+            Assert.Equal(1, prompt.Calls);
+        }
+
+        [Fact]
+        public void Workspace_approval_does_not_leak_to_a_different_workdir()
+        {
+            // The store is shared app-wide; workspace-relative paths would collide across tabs, so the
+            // approval must be scoped to the canonical working directory.
+            var store = new InMemoryApprovalStore();
+
+            var p1 = new ScriptedPrompt { Next = ApprovalChoice.RememberWorkdirWrites };
+            var pol1 = Policy(p1, store);
+            pol1.WorkingDir = "/work/project-a";
+            pol1.Check("files__edit", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(1, p1.Calls);
+
+            // A turn in a different workspace (same shared store) is NOT covered -> prompts.
+            var p2 = new ScriptedPrompt { Next = ApprovalChoice.Deny };
+            var pol2 = Policy(p2, store);
+            pol2.WorkingDir = "/work/project-b";
+            pol2.Check("files__edit", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(1, p2.Calls);
+        }
+
+        [Fact]
+        public void Workspace_approval_is_separator_and_case_insensitive_for_the_workdir()
+        {
+            var store = new InMemoryApprovalStore();
+
+            var p1 = new ScriptedPrompt { Next = ApprovalChoice.RememberWorkdirWrites };
+            var pol1 = Policy(p1, store);
+            pol1.WorkingDir = "/Work/Project/";
+            pol1.Check("files__write", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(1, p1.Calls);
+
+            // Same folder, different separators/casing/trailing-slash -> still matches the canonical key.
+            var p2 = new ScriptedPrompt { Next = ApprovalChoice.Deny };
+            var pol2 = Policy(p2, store);
+            pol2.WorkingDir = "\\work\\project";
+            Assert.Equal(ApprovalDecision.Allow, pol2.Check("files__write", Args("{\"path\":\"a.txt\"}")));
+            Assert.Equal(0, p2.Calls);
+        }
+
+        [Fact]
+        public void Workspace_approval_does_not_sweep_in_destructive_files_delete()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberWorkdirWrites };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            pol.WorkingDir = "/work/project";
+
+            pol.Check("files__write", Args("{\"path\":\"a.txt\"}")); // grants the blanket
+            Assert.Equal(1, prompt.Calls);
+
+            // files__delete is Destructive (Scope=None) -> never covered by the write blanket.
+            pol.Check("files__delete", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
+        [Fact]
+        public void Workspace_approval_persists_nothing_without_a_workdir()
+        {
+            // No active workspace -> the blanket has nothing to scope to; the next call still prompts.
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberWorkdirWrites };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            // WorkingDir intentionally left unset (null).
+
+            pol.Check("files__write", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(1, prompt.Calls);
+            pol.Check("files__write", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
         [Fact]
         public void Prefix_command_boundary_helper()
         {

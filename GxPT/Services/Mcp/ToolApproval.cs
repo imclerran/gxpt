@@ -56,7 +56,8 @@ namespace GxPT
         AllowOnce,
         RememberTool,        // Tool scope: remember the whole function name
         RememberExactArg,    // Argument scope: ExactArgs rule on ScopeArgPath
-        RememberPrefixArg    // Argument scope: Prefix rule (base+sub / directory-and-below)
+        RememberPrefixArg,   // Argument scope: Prefix rule (base+sub / directory-and-below)
+        RememberWorkdirWrites // Workdir scope: every Write-tier files__ tool in the active workspace
     }
 
     // The confirmation surface the policy invokes when a call isn't already allowed. Implemented by
