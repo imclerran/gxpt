@@ -560,8 +560,8 @@ namespace GxPT
             }
             else if (scope == RememberScope.Argument && argPath == "command")
             {
-                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false);
                 AddButton("Always allow this base command", ApprovalChoice.RememberPrefixArg, false);
+                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false);
             }
             else if (scope == RememberScope.Argument && argPath == "path")
             {
