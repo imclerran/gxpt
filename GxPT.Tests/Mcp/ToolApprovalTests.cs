@@ -266,6 +266,63 @@ namespace GxPT.Tests.Mcp
             Assert.Equal(2, prompt.Calls);
         }
 
+        // ---- command "pattern" signature (flag-insensitive, target-sensitive) ----
+
+        [Fact]
+        public void Command_signature_keeps_subcommand_when_second_token_is_not_a_flag()
+        {
+            Assert.Equal("git status", ToolApprovalPolicy.CommandSignature("git status -s"));
+            Assert.Equal("npm install", ToolApprovalPolicy.CommandSignature("npm install react --save"));
+            Assert.Equal("del foo.txt", ToolApprovalPolicy.CommandSignature("del foo.txt"));
+            Assert.Equal("git", ToolApprovalPolicy.CommandSignature("git"));
+        }
+
+        [Fact]
+        public void Command_signature_drops_flags_and_keys_on_the_file()
+        {
+            // 2nd token is a flag -> signature is command + first file/path operand, flags dropped.
+            Assert.Equal("powershell hello.ps1",
+                ToolApprovalPolicy.CommandSignature("powershell -File hello.ps1 -Name \"Blackbeard\""));
+            // Space-valued leading flags (-ExecutionPolicy Bypass) don't fool it: "Bypass" isn't
+            // path-shaped, so it's skipped in favor of the .ps1 file.
+            Assert.Equal("powershell hello.ps1",
+                ToolApprovalPolicy.CommandSignature("powershell -ExecutionPolicy Bypass -File hello.ps1"));
+            // No flags before the script at all -> same signature.
+            Assert.Equal("powershell hello.ps1",
+                ToolApprovalPolicy.CommandSignature("powershell hello.ps1"));
+            // Path separators also mark the operand.
+            Assert.Equal("python scripts/run.py",
+                ToolApprovalPolicy.CommandSignature("python -u scripts/run.py --verbose"));
+        }
+
+        [Fact]
+        public void Command_signature_falls_back_to_command_plus_first_flag()
+        {
+            // Flag present but no file/path operand -> command + first flag (today's behavior).
+            Assert.Equal("dir /s", ToolApprovalPolicy.CommandSignature("dir /s /b"));
+            Assert.Equal("powershell -Command",
+                ToolApprovalPolicy.CommandSignature("powershell -Command \"Get-Process\""));
+        }
+
+        [Fact]
+        public void Command_pattern_rule_is_flag_insensitive_but_file_sensitive()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberPrefixArg };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+
+            pol.Check("command__run", Args("{\"command\":\"powershell -File hello.ps1 -Name Anne\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // Same script, different flags/args -> covered, no re-prompt (flag-insensitive).
+            Assert.Equal(ApprovalDecision.Allow,
+                pol.Check("command__run", Args("{\"command\":\"powershell -ExecutionPolicy Bypass -File hello.ps1\"}")));
+            Assert.Equal(1, prompt.Calls);
+
+            // A different script -> prompts again (file-sensitive).
+            pol.Check("command__run", Args("{\"command\":\"powershell -File goodbye.ps1\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
         [Fact]
         public void Prefix_path_rule_is_directory_boundary_aware()
         {

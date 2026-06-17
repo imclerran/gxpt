@@ -21,6 +21,7 @@ namespace GxPT
         private readonly DiffPreviewPanel _diffPanel;   // shown instead of _preview for files__edit
         private readonly Font _monoFont;
         private readonly FlowLayoutPanel _buttons;
+        private readonly ToolTip _toolTip;
 
         private Action<ApprovalChoice> _onChoose;
         private Action<bool> _onContinue;   // set instead of _onChoose for the iteration-cap prompt
@@ -94,6 +95,9 @@ namespace GxPT
             _buttons.AutoSize = true;
             _buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             _buttons.MinimumSize = new Size(0, 34);
+
+            _toolTip = new ToolTip();
+            _toolTip.AutoPopDelay = 15000; // keep the multi-line rule explanation visible long enough to read
 
             // Order added (Fill must be added before docked siblings to lay out correctly):
             this.Controls.Add(_diffPanel);
@@ -545,6 +549,12 @@ namespace GxPT
                     try { cc(false); }
                     catch { }
                 }
+
+                if (_toolTip != null)
+                {
+                    try { _toolTip.Dispose(); }
+                    catch { }
+                }
             }
             base.Dispose(disposing);
         }
@@ -560,8 +570,11 @@ namespace GxPT
             }
             else if (scope == RememberScope.Argument && argPath == "command")
             {
-                AddButton("Always allow this base command", ApprovalChoice.RememberPrefixArg, false);
-                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false);
+                AddButton("Always allow this command pattern", ApprovalChoice.RememberPrefixArg, false,
+                    CommandPatternTooltip(req));
+                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false,
+                    "Allows only this exact command line. Any change to the command — including its "
+                    + "flags or arguments — prompts again.");
             }
             else if (scope == RememberScope.Argument && argPath == "path")
             {
@@ -574,7 +587,28 @@ namespace GxPT
             // Scope == None: no remember buttons (Allow once / Deny only).
         }
 
+        // Summarizes what "Always allow this command pattern" will permit, showing the concrete
+        // signature this command reduces to (e.g. "powershell hello.ps1") so the user sees exactly
+        // what future commands will match.
+        private static string CommandPatternTooltip(ApprovalRequest req)
+        {
+            string cmd = (req != null && req.Arguments != null) ? req.Arguments.Value<string>("command") : null;
+            string sig = ToolApprovalPolicy.CommandSignature(cmd);
+            string body =
+                "Allows future commands matching the program and its main target (a subcommand or "
+                + "file), while ignoring other flags and arguments. A different program, file, or "
+                + "subcommand prompts again.";
+            if (!string.IsNullOrEmpty(sig))
+                body = "Allows:  " + sig + "  (any flags or arguments)\r\n\r\n" + body;
+            return body;
+        }
+
         private void AddButton(string text, ApprovalChoice choice, bool defaultFocus)
+        {
+            AddButton(text, choice, defaultFocus, null);
+        }
+
+        private void AddButton(string text, ApprovalChoice choice, bool defaultFocus, string tooltip)
         {
             Button b = new Button();
             b.Text = text;
@@ -588,6 +622,11 @@ namespace GxPT
                 if (cb != null) cb(choice);
             };
             _buttons.Controls.Add(b);
+            if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
+            {
+                try { _toolTip.SetToolTip(b, tooltip); }
+                catch { }
+            }
             if (defaultFocus) { try { b.Select(); } catch { } }
         }
 

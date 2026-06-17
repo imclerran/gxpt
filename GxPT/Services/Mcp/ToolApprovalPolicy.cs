@@ -123,8 +123,17 @@ namespace GxPT
                 }
                 else // Prefix
                 {
-                    bool isPath = pol.ScopeArgPath == "path";
-                    if (PrefixMatches(val, r.Pattern, isPath)) return true;
+                    if (pol.ScopeArgPath == "path")
+                    {
+                        if (PrefixMatches(val, r.Pattern, true)) return true;
+                    }
+                    else
+                    {
+                        // Command "pattern" rule: match by normalized signature (command + its
+                        // subcommand/file/first-flag, flags otherwise ignored), computed identically
+                        // for the stored rule and the candidate. NOT a prefix — see CommandSignature.
+                        if (string.Equals(CommandSignature(val), r.Pattern, StringComparison.Ordinal)) return true;
+                    }
                 }
             }
             return false;
@@ -198,8 +207,9 @@ namespace GxPT
             }
         }
 
-        // The structured prefix for a "base+subcommand" command rule or a "directory and below" path
-        // rule, derived from the actual argument (no free-form entry — spec §3/§4).
+        // The structured pattern remembered for a RememberPrefixArg choice, derived from the actual
+        // argument (no free-form entry — spec §3/§4): a "directory and below" prefix for a path rule,
+        // or the normalized command signature (see CommandSignature) for a command rule.
         private static string PrefixPattern(ApprovalRequest req)
         {
             string val = ArgValue(req.Arguments, req.Policy.ScopeArgPath);
@@ -214,11 +224,64 @@ namespace GxPT
                 int slash = norm.LastIndexOf('/');
                 return slash < 0 ? string.Empty : norm.Substring(0, slash);
             }
-            // command: base + first subcommand (first two whitespace tokens)
-            string trimmed = val.Trim();
-            string[] parts = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length <= 1) return parts.Length == 1 ? parts[0] : trimmed;
-            return parts[0] + " " + parts[1];
+            // command: the normalized signature (see CommandSignature).
+            return CommandSignature(val);
+        }
+
+        // The "command pattern" signature: the invariant identity of a command, ignoring incidental
+        // flags/arguments so re-runs that differ only in options still match. Computed identically when
+        // a rule is stored and when a candidate is checked, then compared for equality (NOT a prefix).
+        //
+        //   command + 2nd token            when the 2nd token is NOT a flag   (git status, del foo.txt)
+        //   command + first file/path tok  when the 2nd token IS a flag       (powershell hello.ps1)
+        //   command + first flag           fallback: flag, no file/path found (dir /s, powershell -Command)
+        //
+        // Rationale and limits (flag arity is unknowable without per-tool grammar) are discussed in the
+        // approval design notes; the file/path heuristic only shifts where the signature ends, so a
+        // misdetection is benign (re-prompt), never a silent widening.
+        internal static string CommandSignature(string command)
+        {
+            if (command == null) return string.Empty;
+            string trimmed = command.Trim();
+            if (trimmed.Length == 0) return string.Empty;
+            string[] t = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (t.Length == 1) return t[0];
+
+            if (!IsFlagToken(t[1])) return t[0] + " " + t[1];
+
+            // 2nd token is a flag: prefer the first file/path-shaped operand (skipping flags and their
+            // space-separated values, which aren't path-shaped).
+            for (int i = 1; i < t.Length; i++)
+            {
+                if (!IsFlagToken(t[i]) && LooksLikePath(t[i])) return t[0] + " " + t[i];
+            }
+            // No concrete operand -> keep today's behavior (command + first flag).
+            return t[0] + " " + t[1];
+        }
+
+        private static bool IsFlagToken(string tok)
+        {
+            if (string.IsNullOrEmpty(tok)) return false;
+            char c = tok[0];
+            return c == '-' || c == '/';
+        }
+
+        // Recognized script/executable extensions (case-insensitive). Kept deliberately small; extend
+        // as needed. A token is also treated as a path if it contains a separator.
+        private static readonly string[] _scriptExtensions =
+            { ".ps1", ".bat", ".cmd", ".sh", ".py", ".js", ".ts", ".rb", ".pl", ".php", ".lua",
+              ".exe", ".com", ".sln", ".csproj", ".vbs", ".psm1" };
+
+        private static bool LooksLikePath(string tok)
+        {
+            if (string.IsNullOrEmpty(tok)) return false;
+            // Strip a wrapping/ trailing quote so e.g. hello.ps1" still reads as a script.
+            string s = tok.Trim('"', '\'');
+            if (s.Length == 0) return false;
+            if (s.IndexOf('/') >= 0 || s.IndexOf('\\') >= 0) return true;
+            for (int i = 0; i < _scriptExtensions.Length; i++)
+                if (s.EndsWith(_scriptExtensions[i], StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         // ---- helpers ----
