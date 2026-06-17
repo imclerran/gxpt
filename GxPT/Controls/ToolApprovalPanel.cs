@@ -224,7 +224,14 @@ namespace GxPT
                     if (cmd.Trim().Length > 0)
                     {
                         _diffPanel.SetContent(string.Empty, cmd, "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
-                        _previewLabel.Text = "Command:";
+                        // Surface the "command pattern" signature next to the command when it differs
+                        // from the full line (i.e. flags/args were dropped), so the broader allow-scope
+                        // is visible without hovering the button's tooltip.
+                        string sig = ToolApprovalPolicy.CommandSignature(cmd);
+                        _previewLabel.Text =
+                            (!string.IsNullOrEmpty(sig) && !string.Equals(sig, cmd.Trim(), StringComparison.Ordinal))
+                            ? "Command   (pattern: " + sig + ")"
+                            : "Command:";
                         handled = true;
                     }
                 }
