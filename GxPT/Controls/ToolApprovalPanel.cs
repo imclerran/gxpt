@@ -21,6 +21,7 @@ namespace GxPT
         private readonly DiffPreviewPanel _diffPanel;   // shown instead of _preview for files__edit
         private readonly Font _monoFont;
         private readonly FlowLayoutPanel _buttons;
+        private readonly ToolTip _toolTip;
 
         private Action<ApprovalChoice> _onChoose;
         private Action<bool> _onContinue;   // set instead of _onChoose for the iteration-cap prompt
@@ -94,6 +95,9 @@ namespace GxPT
             _buttons.AutoSize = true;
             _buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             _buttons.MinimumSize = new Size(0, 34);
+
+            _toolTip = new ToolTip();
+            _toolTip.AutoPopDelay = 15000; // keep the multi-line rule explanation visible long enough to read
 
             // Order added (Fill must be added before docked siblings to lay out correctly):
             this.Controls.Add(_diffPanel);
@@ -220,7 +224,14 @@ namespace GxPT
                     if (cmd.Trim().Length > 0)
                     {
                         _diffPanel.SetContent(string.Empty, cmd, "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
-                        _previewLabel.Text = "Command:";
+                        // Surface the "command pattern" signature next to the command when it differs
+                        // from the full line (i.e. flags/args were dropped), so the broader allow-scope
+                        // is visible without hovering the button's tooltip.
+                        string sig = ToolApprovalPolicy.CommandSignature(cmd);
+                        _previewLabel.Text =
+                            (!string.IsNullOrEmpty(sig) && !string.Equals(sig, cmd.Trim(), StringComparison.Ordinal))
+                            ? "Command   (pattern: " + sig + ")"
+                            : "Command:";
                         handled = true;
                     }
                 }
@@ -545,6 +556,12 @@ namespace GxPT
                     try { cc(false); }
                     catch { }
                 }
+
+                if (_toolTip != null)
+                {
+                    try { _toolTip.Dispose(); }
+                    catch { }
+                }
             }
             base.Dispose(disposing);
         }
@@ -560,18 +577,45 @@ namespace GxPT
             }
             else if (scope == RememberScope.Argument && argPath == "command")
             {
-                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false);
-                AddButton("Always allow this base command", ApprovalChoice.RememberPrefixArg, false);
+                AddButton("Always allow this command pattern", ApprovalChoice.RememberPrefixArg, false,
+                    CommandPatternTooltip(req));
+                AddButton("Always allow this exact command", ApprovalChoice.RememberExactArg, false,
+                    "Allows only this exact command line. Any change to the command — including its "
+                    + "flags or arguments — prompts again.");
             }
             else if (scope == RememberScope.Argument && argPath == "path")
             {
-                AddButton("Always allow this directory", ApprovalChoice.RememberPrefixArg, false);
+                // "this file" (exact) and a workspace-wide blanket for all write-tier files tools. The
+                // per-folder prefix option is intentionally omitted to keep the strip to four buttons;
+                // the workspace blanket covers the "trust this working area" case more broadly.
+                AddButton("Allow all edits in this workspace", ApprovalChoice.RememberWorkdirWrites, false);
                 AddButton("Always allow this file", ApprovalChoice.RememberExactArg, false);
             }
             // Scope == None: no remember buttons (Allow once / Deny only).
         }
 
+        // Summarizes what "Always allow this command pattern" will permit, showing the concrete
+        // signature this command reduces to (e.g. "powershell hello.ps1") so the user sees exactly
+        // what future commands will match.
+        private static string CommandPatternTooltip(ApprovalRequest req)
+        {
+            string cmd = (req != null && req.Arguments != null) ? req.Arguments.Value<string>("command") : null;
+            string sig = ToolApprovalPolicy.CommandSignature(cmd);
+            string body =
+                "Allows future commands matching the program and its main target (a subcommand or "
+                + "file), while ignoring other flags and arguments. A different program, file, or "
+                + "subcommand prompts again.";
+            if (!string.IsNullOrEmpty(sig))
+                body = "Allows:  " + sig + "  (any flags or arguments)\r\n\r\n" + body;
+            return body;
+        }
+
         private void AddButton(string text, ApprovalChoice choice, bool defaultFocus)
+        {
+            AddButton(text, choice, defaultFocus, null);
+        }
+
+        private void AddButton(string text, ApprovalChoice choice, bool defaultFocus, string tooltip)
         {
             Button b = new Button();
             b.Text = text;
@@ -585,6 +629,11 @@ namespace GxPT
                 if (cb != null) cb(choice);
             };
             _buttons.Controls.Add(b);
+            if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
+            {
+                try { _toolTip.SetToolTip(b, tooltip); }
+                catch { }
+            }
             if (defaultFocus) { try { b.Select(); } catch { } }
         }
 

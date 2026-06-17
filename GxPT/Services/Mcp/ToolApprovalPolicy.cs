@@ -27,6 +27,16 @@ namespace GxPT
         private readonly IToolApprovalPrompt _prompt;
         private readonly IApprovalStore _store;
         private readonly IToolAnnotationSource _annotations;
+        private string _workdirKey; // canonical working dir for this turn (null = no workspace)
+
+        // The working directory of the turn this policy serves, set per-turn by the host (mirrors
+        // McpChatOrchestrator.WorkingDir). Stored canonicalized so a "all edits in this workspace"
+        // approval matches the same folder regardless of separator/case/trailing-slash differences,
+        // and never matches a different workspace. Null/empty clears it (no workdir-scoped approvals).
+        public string WorkingDir
+        {
+            set { _workdirKey = CanonicalWorkdir(value); }
+        }
 
         public ToolApprovalPolicy(IToolClassifier classifier, IToolApprovalPrompt prompt, IApprovalStore store)
             : this(classifier, prompt, store, null)
@@ -70,6 +80,12 @@ namespace GxPT
             // Already-remembered fast paths.
             if (pol.Scope == RememberScope.Tool && _store.IsToolApproved(functionName))
                 return ApprovalDecision.Allow;
+            // Blanket "all edits in this workspace" approval: covers every Write-tier path-scoped files
+            // tool (write/edit) for the active workspace. Gated on Tier==Write so Destructive path tools
+            // (files__delete) are never swept in, and on a non-null workdir so it can't match globally.
+            if (IsWorkdirWriteEligible(pol) && _workdirKey != null
+                && _store.IsWorkdirApproved(server, _workdirKey))
+                return ApprovalDecision.Allow;
             if (pol.Scope == RememberScope.Argument && MatchesAnyRule(functionName, pol, args))
                 return ApprovalDecision.Allow;
 
@@ -107,8 +123,17 @@ namespace GxPT
                 }
                 else // Prefix
                 {
-                    bool isPath = pol.ScopeArgPath == "path";
-                    if (PrefixMatches(val, r.Pattern, isPath)) return true;
+                    if (pol.ScopeArgPath == "path")
+                    {
+                        if (PrefixMatches(val, r.Pattern, true)) return true;
+                    }
+                    else
+                    {
+                        // Command "pattern" rule: match by normalized signature (command + its
+                        // subcommand/file/first-flag, flags otherwise ignored), computed identically
+                        // for the stored rule and the candidate. NOT a prefix — see CommandSignature.
+                        if (string.Equals(CommandSignature(val), r.Pattern, StringComparison.Ordinal)) return true;
+                    }
                 }
             }
             return false;
@@ -173,12 +198,18 @@ namespace GxPT
                     _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.Prefix,
                         req.Policy.ScopeArgPath, PrefixPattern(req)));
                     break;
+                case ApprovalChoice.RememberWorkdirWrites:
+                    // Approve every Write-tier files tool in the active workspace. No-op without a
+                    // workdir (nothing to scope the blanket approval to).
+                    if (_workdirKey != null) _store.AddApprovedWorkdir(req.ServerName, _workdirKey);
+                    break;
                 // AllowOnce / Deny: nothing persisted.
             }
         }
 
-        // The structured prefix for a "base+subcommand" command rule or a "directory and below" path
-        // rule, derived from the actual argument (no free-form entry — spec §3/§4).
+        // The structured pattern remembered for a RememberPrefixArg choice, derived from the actual
+        // argument (no free-form entry — spec §3/§4): a "directory and below" prefix for a path rule,
+        // or the normalized command signature (see CommandSignature) for a command rule.
         private static string PrefixPattern(ApprovalRequest req)
         {
             string val = ArgValue(req.Arguments, req.Policy.ScopeArgPath);
@@ -193,14 +224,90 @@ namespace GxPT
                 int slash = norm.LastIndexOf('/');
                 return slash < 0 ? string.Empty : norm.Substring(0, slash);
             }
-            // command: base + first subcommand (first two whitespace tokens)
-            string trimmed = val.Trim();
-            string[] parts = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length <= 1) return parts.Length == 1 ? parts[0] : trimmed;
-            return parts[0] + " " + parts[1];
+            // command: the normalized signature (see CommandSignature).
+            return CommandSignature(val);
+        }
+
+        // The "command pattern" signature: the invariant identity of a command, ignoring incidental
+        // flags/arguments so re-runs that differ only in options still match. Computed identically when
+        // a rule is stored and when a candidate is checked, then compared for equality (NOT a prefix).
+        //
+        //   command + 2nd token            when the 2nd token is NOT a flag   (git status, del foo.txt)
+        //   command + first file/path tok  when the 2nd token IS a flag       (powershell hello.ps1)
+        //   command + first flag           fallback: flag, no file/path found (dir /s, powershell -Command)
+        //
+        // Rationale and limits (flag arity is unknowable without per-tool grammar) are discussed in the
+        // approval design notes; the file/path heuristic only shifts where the signature ends, so a
+        // misdetection is benign (re-prompt), never a silent widening.
+        internal static string CommandSignature(string command)
+        {
+            if (command == null) return string.Empty;
+            string trimmed = command.Trim();
+            if (trimmed.Length == 0) return string.Empty;
+            string[] t = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (t.Length == 1) return t[0];
+
+            if (!IsFlagToken(t[1])) return t[0] + " " + t[1];
+
+            // 2nd token is a flag: prefer the first file/path-shaped operand (skipping flags and their
+            // space-separated values, which aren't path-shaped).
+            for (int i = 1; i < t.Length; i++)
+            {
+                if (!IsFlagToken(t[i]) && LooksLikePath(t[i])) return t[0] + " " + t[i];
+            }
+            // No concrete operand -> keep today's behavior (command + first flag).
+            return t[0] + " " + t[1];
+        }
+
+        private static bool IsFlagToken(string tok)
+        {
+            if (string.IsNullOrEmpty(tok)) return false;
+            char c = tok[0];
+            return c == '-' || c == '/';
+        }
+
+        // Recognized script/executable extensions (case-insensitive). Kept deliberately small; extend
+        // as needed. A token is also treated as a path if it contains a separator.
+        private static readonly string[] _scriptExtensions =
+            { ".ps1", ".bat", ".cmd", ".sh", ".py", ".js", ".ts", ".rb", ".pl", ".php", ".lua",
+              ".exe", ".com", ".sln", ".csproj", ".vbs", ".psm1" };
+
+        private static bool LooksLikePath(string tok)
+        {
+            if (string.IsNullOrEmpty(tok)) return false;
+            // Strip a wrapping/ trailing quote so e.g. hello.ps1" still reads as a script.
+            string s = tok.Trim('"', '\'');
+            if (s.Length == 0) return false;
+            if (s.IndexOf('/') >= 0 || s.IndexOf('\\') >= 0) return true;
+            for (int i = 0; i < _scriptExtensions.Length; i++)
+                if (s.EndsWith(_scriptExtensions[i], StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         // ---- helpers ----
+
+        // The shape a "all edits in this workspace" approval covers: a remember-eligible Write-tier
+        // path-scoped tool (files__write / files__edit). Tier==Write deliberately excludes the
+        // Destructive files__delete, which shares the same Argument/path scope.
+        private static bool IsWorkdirWriteEligible(ToolPolicy pol)
+        {
+            return pol != null && pol.Tier == ToolTier.Write
+                && pol.Scope == RememberScope.Argument && pol.ScopeArgPath == "path";
+        }
+
+        // Canonical key for a working directory: '/'-separated, no trailing slash, lowercased (Windows
+        // paths compare case-insensitively, matching the OrdinalIgnoreCase path rules above). Used as
+        // the stable lookup key for workdir-scoped approvals so the same folder always matches and
+        // different folders never collide. The host supplies an already-absolute path (ctx.WorkingDir),
+        // so this only reconciles separator/case/trailing-slash spelling — no filesystem resolution
+        // (which would be platform-dependent for drive rooting).
+        private static string CanonicalWorkdir(string workdir)
+        {
+            if (string.IsNullOrEmpty(workdir)) return null;
+            string p = workdir.Replace('\\', '/');
+            while (p.Length > 1 && p[p.Length - 1] == '/') p = p.Substring(0, p.Length - 1);
+            return p.ToLowerInvariant();
+        }
 
         private static string BuildPreview(string functionName, ToolPolicy pol, JObject args)
         {
