@@ -113,6 +113,10 @@ namespace GxPT
             // command — runs approved commands via the shell, in GXPT_WORKDIR.
             McpServerSpec cmd = NewBuiltIn(CommandName, "CommandMcpServer.exe", o.ServerDir, true, o.CommandEnabled);
             if (!string.IsNullOrEmpty(o.CmdShell)) cmd.Env[EnvCmdShell] = o.CmdShell;
+            // The command server is the only workdir-scoped built-in allowed to run in a per-conversation
+            // scratch dir when no workspace is set (files/git/msbuild require a real workspace). The host
+            // gates whether scratch dirs are used at all on an opt-in setting.
+            cmd.RunsInScratch = true;
             list.Add(cmd);
 
             // msbuild — discovers installed MSBuild versions and builds the project at GXPT_WORKDIR.

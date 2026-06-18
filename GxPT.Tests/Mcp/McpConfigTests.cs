@@ -154,6 +154,14 @@ namespace GxPT.Tests.Mcp
 
             Assert.Equal("cmd.exe", byName["command"].Env[McpConfig.EnvCmdShell]);
             Assert.True(byName["command"].WorkdirScoped);
+            // The command server is the only scratch-eligible scoped built-in (runs in a per-
+            // conversation scratch dir when no workspace is set); the others stay workspace-only.
+            Assert.True(byName["command"].RunsInScratch);
+            Assert.False(byName["files"].RunsInScratch);
+            Assert.False(byName["git"].RunsInScratch);
+            Assert.False(byName["msbuild"].RunsInScratch);
+            Assert.False(byName["memory"].RunsInScratch);
+            Assert.False(byName["skills"].RunsInScratch);
 
             // msbuild — workdir-scoped, engines discovered (no extra env baked in).
             var msbuild = byName["msbuild"];

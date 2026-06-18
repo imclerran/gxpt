@@ -75,6 +75,7 @@
             this.tblMcpKeyless = new System.Windows.Forms.TableLayoutPanel();
             this.chkMcpFiles = new System.Windows.Forms.CheckBox();
             this.chkMcpCommand = new System.Windows.Forms.CheckBox();
+            this.chkMcpCommandScratch = new System.Windows.Forms.CheckBox();
             this.chkMcpGit = new System.Windows.Forms.CheckBox();
             this.chkMcpMsBuild = new System.Windows.Forms.CheckBox();
             this.lblMcpCustom = new System.Windows.Forms.Label();
@@ -653,8 +654,9 @@
             // tblMcpKeyless
             // 
             this.tblMcpKeyless.AutoSize = true;
-            this.tblMcpKeyless.ColumnCount = 4;
+            this.tblMcpKeyless.ColumnCount = 5;
             this.tblMcp.SetColumnSpan(this.tblMcpKeyless, 2);
+            this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
@@ -663,12 +665,13 @@
             this.tblMcpKeyless.Controls.Add(this.chkMcpCommand, 1, 0);
             this.tblMcpKeyless.Controls.Add(this.chkMcpGit, 2, 0);
             this.tblMcpKeyless.Controls.Add(this.chkMcpMsBuild, 3, 0);
+            this.tblMcpKeyless.Controls.Add(this.chkMcpCommandScratch, 4, 0);
             this.tblMcpKeyless.Location = new System.Drawing.Point(0, 52);
             this.tblMcpKeyless.Margin = new System.Windows.Forms.Padding(0);
             this.tblMcpKeyless.Name = "tblMcpKeyless";
             this.tblMcpKeyless.RowCount = 1;
             this.tblMcpKeyless.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblMcpKeyless.Size = new System.Drawing.Size(248, 25);
+            this.tblMcpKeyless.Size = new System.Drawing.Size(380, 25);
             this.tblMcpKeyless.TabIndex = 4;
             // 
             // chkMcpFiles
@@ -718,7 +721,19 @@
             this.chkMcpMsBuild.TabIndex = 7;
             this.chkMcpMsBuild.Text = "MSBuild";
             this.chkMcpMsBuild.UseVisualStyleBackColor = true;
-            // 
+            //
+            // chkMcpCommandScratch
+            //
+            this.chkMcpCommandScratch.Anchor = System.Windows.Forms.AnchorStyles.Left;
+            this.chkMcpCommandScratch.AutoSize = true;
+            this.chkMcpCommandScratch.Location = new System.Drawing.Point(251, 4);
+            this.chkMcpCommandScratch.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
+            this.chkMcpCommandScratch.Name = "chkMcpCommandScratch";
+            this.chkMcpCommandScratch.Size = new System.Drawing.Size(122, 17);
+            this.chkMcpCommandScratch.TabIndex = 8;
+            this.chkMcpCommandScratch.Text = "Command scratch dir";
+            this.chkMcpCommandScratch.UseVisualStyleBackColor = true;
+            //
             // lblMcpCustom
             // 
             this.lblMcpCustom.AutoSize = true;
@@ -832,6 +847,7 @@
         private System.Windows.Forms.CheckBox chkMcpFiles;
         private System.Windows.Forms.CheckBox chkMcpGit;
         private System.Windows.Forms.CheckBox chkMcpCommand;
+        private System.Windows.Forms.CheckBox chkMcpCommandScratch;
         private System.Windows.Forms.CheckBox chkMcpMsBuild;
         private System.Windows.Forms.Label lblMcpCustom;
         private System.Windows.Forms.RichTextBox rtbMcpJson;

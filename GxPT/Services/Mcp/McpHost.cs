@@ -45,6 +45,13 @@ namespace GxPT
         // event instead of launching a duplicate set.
         private readonly Dictionary<string, ManualResetEvent> _connecting =
             new Dictionary<string, ManualResetEvent>(StringComparer.OrdinalIgnoreCase);
+        // Working dirs that are SCRATCH sandboxes (no user workspace): only RunsInScratch scoped specs
+        // (the command server) launch for these; files/git/msbuild are skipped. Recorded before the
+        // (unlocked) connect so ConnectScoped filters the spec set, and pruned alongside the scoped set
+        // on teardown. A scratch path and a real-workspace path never collide (scratch lives under a
+        // dedicated %AppData% subfolder), so a given key is only ever one kind.
+        private readonly Dictionary<string, bool> _scratchWorkdirs =
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private List<McpServerSpec> _scopedSpecs = new List<McpServerSpec>();
         private bool _started;
         // Volatile: the connect loops (which run OUTSIDE _lock) poll this to bail out promptly once
@@ -162,6 +169,22 @@ namespace GxPT
             ConnectScoped(workdir);
         }
 
+        // Ensure the SCRATCH server set for `workdir` is running: like EnsureWorkingDir, but only the
+        // scratch-eligible scoped specs (the command server) launch here — files/git/msbuild require a
+        // real workspace and are skipped. Used for folderless conversations whose command server runs in
+        // a per-conversation scratch dir. The directory must already exist (it becomes the child's CWD).
+        // Idempotent; a null/empty workdir is a no-op.
+        public void EnsureScratchDir(string workdir)
+        {
+            if (string.IsNullOrEmpty(workdir)) return;
+            lock (_lock)
+            {
+                if (_disposed) return;
+                _scratchWorkdirs[workdir] = true; // mark BEFORE connecting so ConnectScoped filters
+            }
+            ConnectScoped(workdir);
+        }
+
         // Ensure the scoped set for `workdir` is running, connecting it if needed. The blocking Open()
         // handshakes run WITHOUT _lock held (so Dispose never waits on them); the lock is taken only
         // briefly to reserve the workdir and again to publish the result. A second caller for a
@@ -171,12 +194,14 @@ namespace GxPT
             if (string.IsNullOrEmpty(workdir)) return;
 
             List<McpServerSpec> specs;
+            bool scratch = false;
             ManualResetEvent reservation;
             ManualResetEvent waitFor;
             lock (_lock)
             {
                 if (_disposed) return;
                 if (_scopedByWorkdir.ContainsKey(workdir)) return;      // already connected
+                scratch = _scratchWorkdirs.ContainsKey(workdir);
                 if (!_started)
                 {
                     if (!_pendingWorkdirs.Contains(workdir)) _pendingWorkdirs.Add(workdir);
@@ -213,6 +238,9 @@ namespace GxPT
                     if (_disposed) break;
                     McpServerSpec spec = specs[i];
                     if (spec == null || !spec.Enabled) continue;
+                    // A scratch sandbox runs only the scratch-eligible scoped specs (command); the
+                    // workspace-only servers (files/git/msbuild/memory/skills) are skipped there.
+                    if (scratch && !spec.RunsInScratch) continue;
                     McpServerConnection conn = CreateAndOpen(spec, workdir);
                     if (conn != null) conns.Add(conn);
                 }
@@ -247,6 +275,7 @@ namespace GxPT
             lock (_lock)
             {
                 _pendingWorkdirs.Remove(workdir);
+                _scratchWorkdirs.Remove(workdir);
                 List<McpServerConnection> conns;
                 if (_scopedByWorkdir.TryGetValue(workdir, out conns))
                 {
@@ -271,6 +300,14 @@ namespace GxPT
                 if (_disposed) return;
                 for (int i = _pendingWorkdirs.Count - 1; i >= 0; i--)
                     if (!keepSet.ContainsKey(_pendingWorkdirs[i])) _pendingWorkdirs.RemoveAt(i);
+
+                // Forget scratch markers for folders no longer referenced by an open tab (their scoped
+                // set is torn down below); a re-ensure later re-marks them.
+                List<string> dropScratch = null;
+                foreach (string wd in _scratchWorkdirs.Keys)
+                    if (!keepSet.ContainsKey(wd)) (dropScratch ?? (dropScratch = new List<string>())).Add(wd);
+                if (dropScratch != null)
+                    for (int i = 0; i < dropScratch.Count; i++) _scratchWorkdirs.Remove(dropScratch[i]);
 
                 List<string> drop = null;
                 foreach (string wd in _scopedByWorkdir.Keys)
@@ -380,6 +417,7 @@ namespace GxPT
                     all.AddRange(conns);
                 _scopedByWorkdir.Clear();
                 _pendingWorkdirs.Clear();
+                _scratchWorkdirs.Clear();
                 all.AddRange(_eager);
                 _eager.Clear();
             }

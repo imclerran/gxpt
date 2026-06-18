@@ -101,6 +101,49 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void EnsureScratchDir_opens_only_scratch_eligible_scoped_specs()
+        {
+            FakeServerConnector c; McpToolRegistry reg;
+            var host = NewHost(out c, out reg);
+            var command = Specs.Scoped("command", true);
+            command.RunsInScratch = true;
+            host.Start(new[] { Specs.Scoped("files", true), command, Specs.Scoped("git", true) });
+
+            host.EnsureScratchDir("C:\\scratch\\abc");
+
+            // Only the command server (RunsInScratch) launched in the scratch dir; files/git stayed off.
+            Assert.Equal(new[] { "command" }, c.CreatedNames.ToArray());
+            Assert.True(c.Workdirs.All(w => w == "C:\\scratch\\abc"));
+            var m = Manifest(reg);
+            Assert.Contains("command__command_tool", m);
+            Assert.DoesNotContain("files__files_tool", m);
+            Assert.DoesNotContain("git__git_tool", m);
+            Assert.Contains("C:\\scratch\\abc", host.ActiveWorkingDirs);
+
+            // The command tool routes to the scratch-bound connection.
+            McpServerConnection r; string tool;
+            Assert.True(reg.TryResolve("command__command_tool", "C:\\scratch\\abc", out r, out tool));
+            Assert.Same(c.Created.Last(), r);
+        }
+
+        [Fact]
+        public void EnsureScratchDir_set_is_torn_down_by_RetainOnly_when_unreferenced()
+        {
+            FakeServerConnector c; McpToolRegistry reg;
+            var host = NewHost(out c, out reg);
+            var command = Specs.Scoped("command", true);
+            command.RunsInScratch = true;
+            host.Start(new[] { command });
+            host.EnsureScratchDir("C:\\scratch\\abc");
+            var conn = c.Created.Last();
+
+            host.RetainOnly(new string[0]); // no open tab references it anymore
+
+            Assert.Equal(ConnectionState.Closed, conn.State);
+            Assert.DoesNotContain("C:\\scratch\\abc", host.ActiveWorkingDirs);
+        }
+
+        [Fact]
         public void EnsureWorkingDir_is_idempotent_for_the_same_folder()
         {
             FakeServerConnector c; McpToolRegistry reg;

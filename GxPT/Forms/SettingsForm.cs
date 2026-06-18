@@ -164,6 +164,8 @@ namespace GxPT
             {
                 this.txtWebSearchKey.TextChanged += McpCredential_TextChanged;
                 this.txtGithubPat.TextChanged += McpCredential_TextChanged;
+                // Toggling the command server enables/disables its dependent scratch-dir option.
+                this.chkMcpCommand.CheckedChanged += McpCredential_TextChanged;
             }
             catch { }
         }
@@ -1402,6 +1404,7 @@ namespace GxPT
             // disabled below) when git isn't on PATH.
             this.chkMcpGit.Checked = GitProbe.IsInstalled() && AppSettings.GetBool("mcp_git_enabled", true);
             this.chkMcpCommand.Checked = s.mcp_command_enabled;
+            this.chkMcpCommandScratch.Checked = s.mcp_command_scratch_enabled;
             // MSBuild, like Git, defaults ON when a build engine is found and the user hasn't chosen
             // otherwise; OFF (and disabled below) when no MSBuild is present.
             this.chkMcpMsBuild.Checked = MsBuildProbe.IsInstalled() && AppSettings.GetBool("mcp_msbuild_enabled", true);
@@ -1418,6 +1421,9 @@ namespace GxPT
             target.mcp_files_enabled = this.chkMcpFiles.Checked;
             target.mcp_git_enabled = this.chkMcpGit.Checked;
             target.mcp_command_enabled = this.chkMcpCommand.Checked;
+            // Only meaningful when the command server itself is on; force-off otherwise so a stale
+            // setting can't enable scratch behavior for a disabled command server.
+            target.mcp_command_scratch_enabled = this.chkMcpCommand.Checked && this.chkMcpCommandScratch.Checked;
             target.mcp_msbuild_enabled = this.chkMcpMsBuild.Checked;
             target.mcp_github_enabled = this.chkMcpGithub.Checked;
             target.mcp_websearch_key = this.txtWebSearchKey.Text != null ? this.txtWebSearchKey.Text.Trim() : string.Empty;
@@ -1457,6 +1463,21 @@ namespace GxPT
                 this._mcpTip.SetToolTip(this.chkMcpMsBuild, msbuildInstalled
                     ? string.Empty
                     : "No MSBuild was found on this system. Install the .NET Framework or Visual Studio/Build Tools to enable these tools.");
+            }
+            catch { }
+
+            // The scratch-dir option only applies to the command server, so it's enableable only while
+            // the command server itself is on; unchecked-and-disabled otherwise.
+            bool commandOn = this.chkMcpCommand.Checked;
+            this.chkMcpCommandScratch.Enabled = commandOn;
+            if (!commandOn) this.chkMcpCommandScratch.Checked = false;
+            try
+            {
+                this._mcpTip.SetToolTip(this.chkMcpCommandScratch,
+                    "When no workspace folder is set, let the command server run in a temporary "
+                    + "per-conversation scratch directory (%AppData%\\GxPT\\scratch\\<id>). Files, Git "
+                    + "and MSBuild stay disabled without a workspace. Scratch dirs are deleted when the "
+                    + "conversation is deleted or the app closes.");
             }
             catch { }
         }
@@ -1539,6 +1560,8 @@ namespace GxPT
             public bool mcp_files_enabled { get; set; }
             public bool mcp_git_enabled { get; set; }
             public bool mcp_command_enabled { get; set; }
+            // Opt-in: run the command server in a per-conversation scratch dir when no workspace is set.
+            public bool mcp_command_scratch_enabled { get; set; }
             public bool mcp_msbuild_enabled { get; set; }
             public bool mcp_github_enabled { get; set; }
             public bool mcp_memory_enabled { get; set; }

@@ -65,6 +65,23 @@ namespace GxPT
                 + "mean this workspace - look here first.";
         }
 
+        // Per-turn scratch-sandbox block, injected only when there is no workspace but the command
+        // server is running in a per-conversation scratch directory (the opt-in scratch-command
+        // feature). Tells the model it has a throwaway working directory for running commands (the
+        // command server's CWD) and that it is NOT a project: there are no workspace files to read, and
+        // it is deleted when the conversation is deleted or the app closes. Kept separate from the
+        // workspace block so a scratch turn is never presented as a real workspace. Null/empty scratch
+        // dir => no block, leaving a folderless turn with no trace of one.
+        internal static string ScratchSystemMessage(string scratchDir)
+        {
+            if (string.IsNullOrEmpty(scratchDir)) return null;
+            return "No workspace folder is set for this conversation. A temporary scratch directory has "
+                + "been created at `" + scratchDir + "` and is the working directory for any commands "
+                + "you run. It starts empty and is not a project - there are no workspace files to read - "
+                + "and it is deleted when this conversation is deleted or the app closes. Use it only for "
+                + "transient work.";
+        }
+
         private readonly IChatStreamer _streamer;
         private readonly McpToolRegistry _registry;
         private readonly IToolApprovalPolicy _approval;
@@ -183,6 +200,22 @@ namespace GxPT
         // resolve); workdir-independent tools (web/github/custom) resolve regardless.
         public string WorkingDir { get; set; }
 
+        // When there is no user WorkingDir, the per-conversation SCRATCH directory the command server
+        // runs in (folderless conversations with the opt-in scratch-command feature). Used ONLY to
+        // resolve and expose workdir-scoped tools (the command server) — never for the workspace prompt
+        // block, which stays absent so a scratch turn is not presented as a real workspace. Instead a
+        // distinct scratch-sandbox note (ScratchSystemMessage) tells the model about the temp dir. Null
+        // when not applicable (a real workspace is set, or the feature is off).
+        public string ScratchWorkingDir { get; set; }
+
+        // The working directory used to resolve/expose workdir-scoped MCP tools for this turn: the user
+        // workspace when set, else the scratch dir (command server only). Distinct from WorkingDir, which
+        // drives the prompt's workspace block and is left null for a scratch turn.
+        private string ResolutionWorkdir
+        {
+            get { return !string.IsNullOrEmpty(WorkingDir) ? WorkingDir : ScratchWorkingDir; }
+        }
+
         public McpChatOrchestrator(IChatStreamer streamer, McpToolRegistry registry,
                                    IToolApprovalPolicy approval, string model, ILogSink log)
             : this(streamer, registry, approval, model, log, DefaultMaxIterations, DefaultCallTimeoutMs)
@@ -276,10 +309,11 @@ namespace GxPT
                 // actually contributes tools; a skills-only turn skips both and offers just open_skill.
                 // Filter by THIS turn's workdir so a folderless turn never advertises another folder's
                 // scoped tools (files/git/run_skill_script, ...) that it couldn't actually call.
-                bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(WorkingDir);
+                string resolveDir = ResolutionWorkdir;
+                bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
                 IList<JObject> tools = hasMcpTools
-                    ? _registry.ExposedFunctionDefs(WorkingDir, RevealedToolNames) : null;
-                string manifest = hasMcpTools ? _registry.NamesManifestSystemMessage(WorkingDir) : null;
+                    ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
+                string manifest = hasMcpTools ? _registry.NamesManifestSystemMessage(resolveDir) : null;
                 if (SkillTools != null && SkillTools.HasSkills)
                 {
                     if (tools == null) tools = new List<JObject>();
@@ -580,6 +614,14 @@ namespace GxPT
             string workspaceBlock = WorkspaceSystemMessage(WorkingDir);
             if (!string.IsNullOrEmpty(workspaceBlock))
                 head.Add(new ChatMessage("system", workspaceBlock));
+            else
+            {
+                // No workspace, but the command server may be running in a per-conversation scratch
+                // sandbox: tell the model about that temp dir (kept distinct from the workspace block).
+                string scratchBlock = ScratchSystemMessage(ScratchWorkingDir);
+                if (!string.IsNullOrEmpty(scratchBlock))
+                    head.Add(new ChatMessage("system", scratchBlock));
+            }
             if (!string.IsNullOrEmpty(ProjectInstructions))
                 head.Add(new ChatMessage("system", ProjectInstructions));
             return head;
@@ -647,7 +689,7 @@ namespace GxPT
             {
                 string[] names = ParseRevealNames(call.ArgumentsJson);
                 _log.Log("mcp", "[turn " + turnId + "] reveal_tools: " + names.Length + " name(s)");
-                return _registry.Reveal(names, WorkingDir, RevealedToolNames);
+                return _registry.Reveal(names, ResolutionWorkdir, RevealedToolNames);
             }
 
             // open_skill is a host meta-tool (no MCP round-trip): load skill bodies by slug. Same
@@ -679,11 +721,12 @@ namespace GxPT
 
             McpServerConnection conn;
             string toolName;
-            if (_registry == null || !_registry.TryResolve(call.Name, WorkingDir, out conn, out toolName))
+            string resolveDir = ResolutionWorkdir;
+            if (_registry == null || !_registry.TryResolve(call.Name, resolveDir, out conn, out toolName))
             {
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] unresolved tool '" + call.Name + "' (workdir="
-                    + (string.IsNullOrEmpty(WorkingDir) ? "(none)" : WorkingDir) + ")");
+                    + (string.IsNullOrEmpty(resolveDir) ? "(none)" : resolveDir) + ")");
                 return "[Unknown tool: " + call.Name + "]";
             }
 
