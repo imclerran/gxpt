@@ -743,6 +743,9 @@ namespace GxPT
                 ctx.ApprovalPanel = panel;
                 var ctxRef = ctx;
                 panel.WorkingDirProvider = delegate { return ctxRef.WorkingDir; };
+                // While this tab's prompt awaits the user, pause the status-bar marquee and swap the
+                // Stop button for an "awaiting user..." label (only when this is the active tab).
+                panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
@@ -777,7 +780,7 @@ namespace GxPT
             {
                 var act = _tabManager != null ? _tabManager.GetActiveContext() : null;
                 if (act != null && ReferenceEquals(act, ctx))
-                    SetGenerationIndicatorVisible(true);
+                    SyncGenerationIndicatorFromActiveTab();
             }
             catch { }
         }
@@ -788,7 +791,7 @@ namespace GxPT
             {
                 var act = _tabManager != null ? _tabManager.GetActiveContext() : null;
                 if (act != null && ReferenceEquals(act, ctx))
-                    SetGenerationIndicatorVisible(false);
+                    SyncGenerationIndicatorFromActiveTab();
             }
             catch { }
         }
@@ -798,27 +801,35 @@ namespace GxPT
             try
             {
                 var act = _tabManager != null ? _tabManager.GetActiveContext() : null;
-                SetGenerationIndicatorVisible(act != null && act.IsSending && !act.SendDetached);
+                bool busy = act != null && act.IsSending && !act.SendDetached;
+                // The turn is paused at an approval/continuation gate when the active tab's prompt is
+                // up: pause the marquee and show "awaiting user..." in place of the Stop button.
+                bool awaiting = busy && act.ApprovalPanel != null && act.ApprovalPanel.IsPromptVisible;
+                SetGenerationIndicatorVisible(busy, awaiting);
             }
             catch { }
         }
 
-        private void SetGenerationIndicatorVisible(bool busy)
+        private void SetGenerationIndicatorVisible(bool busy, bool awaiting)
         {
             try
             {
                 if (this.tspGenProgress != null)
                 {
-                    // Run the marquee only while shown (no point animating an invisible bar).
-                    // MarqueeAnimationSpeed is the native PBM_SETMARQUEE interval (ms between
-                    // updates), which XP/Luna honors literally while Vista+/Aero drives the
-                    // animation from the theme engine and effectively ignores it. A short interval
-                    // therefore scrolls far too fast on XP; 120ms reads like the Win7 pace there and
-                    // leaves the (ignored) Aero animation unchanged.
-                    this.tspGenProgress.MarqueeAnimationSpeed = busy ? 120 : 0;
+                    // Run the marquee only while shown and not paused at a prompt (no point animating
+                    // an invisible or stalled bar). MarqueeAnimationSpeed is the native PBM_SETMARQUEE
+                    // interval (ms between updates), which XP/Luna honors literally while Vista+/Aero
+                    // drives the animation from the theme engine and effectively ignores it. A short
+                    // interval therefore scrolls far too fast on XP; 120ms reads like the Win7 pace
+                    // there and leaves the (ignored) Aero animation unchanged. 0 freezes the marquee.
+                    this.tspGenProgress.MarqueeAnimationSpeed = (busy && !awaiting) ? 120 : 0;
                     this.tspGenProgress.Visible = busy;
                 }
-                if (this.tsiStopGen != null) this.tsiStopGen.Visible = busy;
+                if (this.tsiStopGen != null)
+                {
+                    this.tsiStopGen.Awaiting = awaiting;
+                    this.tsiStopGen.Visible = busy;
+                }
                 // The slot's idle face: the active conversation's tool/skill counts. Refresh before
                 // showing so a turn's side effects (a server faulting, a skill the model authored)
                 // are reflected the moment the indicator yields the slot back.
@@ -891,6 +902,9 @@ namespace GxPT
         // cancel the active tab's request.
         private void tsiStopGen_Click(object sender, EventArgs e)
         {
+            // While the item shows "awaiting user...", there's nothing to stop (the turn is paused at
+            // an approval gate); ignore clicks so it behaves as a passive label.
+            if (this.tsiStopGen != null && this.tsiStopGen.Awaiting) return;
             try { CancelActiveRequest(_tabManager != null ? _tabManager.GetActiveContext() : null); }
             catch { }
         }

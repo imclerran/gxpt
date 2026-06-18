@@ -26,6 +26,13 @@ namespace GxPT
         private Action<ApprovalChoice> _onChoose;
         private Action<bool> _onContinue;   // set instead of _onChoose for the iteration-cap prompt
 
+        // Raised (on the UI thread) when a prompt starts or stops awaiting the user's decision, so the
+        // host can reflect it in the status bar: pause the generation marquee and swap the Stop button
+        // for an "awaiting user..." label while a prompt is up. IsPromptVisible is the current state.
+        public event EventHandler PromptVisibleChanged;
+        private bool _promptVisible;
+        public bool IsPromptVisible { get { return _promptVisible; } }
+
         // Supplies the active workspace root so an edit approval can show a few lines of real file
         // context around the change. Set by the host (MainForm); null disables context (bare diff).
         public Func<string> WorkingDirProvider;
@@ -397,6 +404,7 @@ namespace GxPT
             // transcript to shrink *above* it (rather than the panel overlaying the transcript's
             // bottom edge and its right-docked scrollbar). BringToFront would cause exactly that.
             this.SendToBack();
+            SetPromptVisible(true);
         }
 
         // Iteration-cap confirmation, reusing this docked panel so it reads like the tool-approval
@@ -428,6 +436,7 @@ namespace GxPT
 
             this.Visible = true;
             this.SendToBack();
+            SetPromptVisible(true);
         }
 
         public void HidePanel()
@@ -435,6 +444,20 @@ namespace GxPT
             this.Visible = false;
             _onChoose = null;
             _onContinue = null;
+            SetPromptVisible(false);
+        }
+
+        // Track and broadcast whether a prompt is currently awaiting the user.
+        private void SetPromptVisible(bool v)
+        {
+            if (_promptVisible == v) return;
+            _promptVisible = v;
+            EventHandler h = PromptVisibleChanged;
+            if (h != null)
+            {
+                try { h(this, EventArgs.Empty); }
+                catch { }
+            }
         }
 
         // Resolve any pending prompt as if the user had declined (Deny / Stop), then hide. Used when
