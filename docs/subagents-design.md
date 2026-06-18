@@ -6,8 +6,8 @@
 approval + flag-insensitive command-signature rules, see §7–§8; refined against
 OpenMonoAgent.ai prior art read **from source** — `max_turns`, periodic doom-loop
 detection, wildcard allowlists, and read-concurrent/write-serial fan-out, see §13 and
-A9/A17–A19; added running-agents observability — status-bar count + in-transcript
-Stop panel + per-agent cancellation — see §14 and A20)
+A9/A17–A19; added running-agents observability — in-transcript dispatch panel + a
+`Stop N agents` button (stop-all, v1) — see §14 and A20)
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
@@ -94,7 +94,7 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A17 | **Per-agent `max_turns` budget** feeds the child orchestrator's existing `maxIterations` ctor arg | The orchestrator *already* takes `maxIterations` as a constructor parameter — a per-agent budget is free plumbing. OpenMonoAgent.ai assigns distinct budgets per specialist (from source: Explore/Plan 100, Verify 150, general 200, Coder 300 — far higher than its docs imply). Two implications: bounding an explore agent below a coder is the right grain, **and** our `DefaultMaxIterations = 25` is tuned for *interactive* turns (the continuation prompt is its release valve) — an **unattended** child has no continuation prompt, so write-capable bundled agents should set a generous `max_turns`, with doom-loop (A18) + cap-wrap-up as the backstops. |
 | A18 | **Periodic doom-loop detection in the orchestrator**: over a short rolling window of recent `name:normalized-args` signatures, abort with a wrap-up when a cycle of period *p* (1–4) repeats (≥3× for *p*=1, ≥2× for *p*=2–4) | The `MaxIterations` cap bounds *total* work but a stuck agent still burns the whole budget on a cycle — worse for an unattended sub-agent (A14). The OpenMono `DoomLoopDetector` (from source: `MaxPeriod=4`, `MaxHistory=12`, `reps = period==1 ? 3 : 2`, args JSON-normalized with sorted keys) is smarter than "N identical in a row": it catches **oscillations** (edit→test-fail→revert→edit…, an A→B→A→B period-2 cycle) a consecutive-only check misses. Cheap (a ~12-entry signature ring in `RunTurn`), benefits the **main** agent too, ends as content not a throw. |
 | A19 | **Allowlist `tools` supports glob wildcards** (`files__*`, `mcp__*`, `*__read`, `*`) matched against the qualified catalog | Server-qualified names (`files__read`, `git__status`) make prefix/suffix globs natural and far less brittle than enumerating every tool — "all file tools" is `files__*`, "everything a server exposes" is `mcp__myserver__*`. The OpenMono precedent ("allow-lists support `*`, `mcp__*`"). Still intersected with parent-available and `max_tier` (A11), so a wildcard never widens past the parent or the ceiling. |
-| A20 | **Running agents are surfaced two ways — a status-bar count and an in-transcript dispatch panel — and each child has its own `RequestCancellation`** so the user can stop one agent or all of them | A fan-out the user can't see or stop is unacceptable for an unattended feature. Two surfaces mirror existing patterns: a conditional `tslAgents` status-bar pair ("Agents: 2 running", beside `tslSkills`) for an at-a-glance/jump affordance, and an `AgentActivityPanel` in the transcript (modeled on `ToolApprovalPanel`/`TranscriptContinuationPrompt`) anchored at the `dispatch_agent` call, one row per child. Per-agent stop needs per-child cancellation: each child gets its **own** `RequestCancellation` (registered with the dispatcher), so a row's **Stop** cancels just that child while the parent's master Stop cancels the whole turn (all children). A stopped child finalizes cleanly (keeps partial text, the loop's `FinishCancelled`), the others continue, and the dispatch result notes who was stopped. Full design + disclosure tiers in §14. |
+| A20 | **Running agents are surfaced in-transcript (the dispatch panel) and stopped all-at-once by repurposing the turn's Stop button to `Stop N agents`** (v1: stop-all; N includes queued) | A fan-out the user can't see or stop is unacceptable for an unattended feature. The status bar can't host an `Agents: N` count — mid-turn that region is the marquee + Stop button — and the dispatch is the *latest* thing in the transcript, so it's already on screen (no nav affordance needed). Visibility is the `AgentActivityPanel` (one row per child: glyph + slug + live status), modeled on `ToolApprovalPanel`/`TranscriptContinuationPrompt`. Control is the existing Stop button, relabeled to **`Stop N agents`** while the fan-out runs (N = all not-yet-finished children, running *and* queued, ticking down) and reverted to plain **`Stop`** when the model resumes. The children share a **group `RequestCancellation`** (distinct from the parent turn's), so `Stop N agents` cancels the fan-out — *not* the turn: each child finalizes via `FinishCancelled` (keeps partial), its result is marked `[stopped by user]`, and the parent model resumes with a **tailored wrap-up directive** (sibling of the cap wrap-up, phrased for an interrupted fan-out: summarize partials + ask how to proceed, don't silently restart). A full turn abort is then one more click on the reverted `Stop`. Per-agent stop is deferred (§12). Full design + tiers in §14. |
 
 ---
 
@@ -250,9 +250,9 @@ conversation."*
      out-of-allowlist tool is refused, the existing gate mechanism (§ `HiddenToolNames`);
    - approval policy = the parent's, **wrapped** with the agent's autonomy
      pre-authorization (§8 layer 3) and tagged with the agent name for the prompt;
-   - `Cancellation` = the child's **own** `RequestCancellation`, registered with the
-     dispatcher so a per-agent Stop (§14) cancels just this child; the parent's master
-     Stop trips every child's handle (and the parent turn) at once;
+   - `Cancellation` = the fan-out's shared **group** `RequestCancellation` (distinct
+     from the parent turn's), so the `Stop N agents` button (§14) cancels every
+     running/queued child without ending the turn; the parent then resumes to wrap up;
    - `UsageReported` → aggregated onto the parent conversation.
 3. Run the children **in parallel** on `ThreadPool` work items, bounded to
    `MaxParallelAgents` (default 3), joining on a `ManualResetEvent`/countdown.
@@ -485,13 +485,16 @@ extend that, not rework it.
 - **Approval prompts serialize naturally:** modal `Control.Invoke` to the one UI
   thread queues concurrent asks; each is agent-attributed (§8). A child that needs
   an unremembered Write blocks just that child until answered.
-- **Cancellation propagates:** the parent's `RequestCancellation` is handed to every
-  child, so the Stop button cancels the whole fan-out; each child finalizes cleanly
-  (keeps partial text, the loop's existing `FinishCancelled`).
-- **UI:** running children are surfaced by a status-bar count and an in-transcript
-  panel with per-agent Stop; their tool activity is shown to the *user* but never fed
-  to the parent *model* (A7). Full design — surfaces, stop semantics, and the
-  prompt/transcript disclosure tiers — in **§14**.
+- **Cancellation propagates:** children share a **group** `RequestCancellation`
+  (distinct from the parent turn's) that the `Stop N agents` button trips (§14, A20),
+  so the fan-out cancels without ending the turn; each child finalizes cleanly (keeps
+  partial text, the loop's existing `FinishCancelled`) and the parent resumes to wrap
+  up. The plain `Stop` (parent turn handle) still aborts the whole turn when the model
+  is the thing running.
+- **UI:** running children are shown in the in-transcript dispatch panel and stopped
+  all-at-once via the turn's Stop button, relabeled `Stop N agents` (A20); their tool
+  activity is shown to the *user* but never fed to the parent *model* (A7). Full design
+  — surface, stop semantics, and the prompt/transcript disclosure tiers — in **§14**.
 - **Cost guardrails (three bounds, the unattended-run safety net):**
   `MaxParallelAgents` bounds concurrency; each child carries its **`max_turns`**
   budget (A17) and wraps up at its cap with **no continuation prompt** (the dispatch
@@ -562,10 +565,14 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
 6. **Agent slash commands** on the `ISlashCommand` framework (`/agents`,
    `/agent <slug> …`, `/agent <slug> <task>`) + per-conversation override fields on
    `Conversation`/`ConversationStore` + global `agents.json` (5-rung ladder).
-7. **Parallel fan-out** — batch `dispatch_agent`, bounded `ThreadPool` execution,
-   per-connection mutex, cancellation propagation, usage aggregation.
-8. **Transcript UI** — collapsible per-child agent blocks (live tool activity shown,
-   not fed to the parent), collapsing to the returned summary.
+7. **Concurrent fan-out + must-have observability** — batch `dispatch_agent`,
+   read-concurrent/write-serial execution on bounded `ThreadPool` work items,
+   per-connection mutex, usage aggregation; the **group cancellation** + the
+   `Stop N agents` button; and the tier-1 **`AgentActivityPanel`** (glyph + slug +
+   status). Observability ships *with* the fan-out — it is not a follow-on (§14 tier 1).
+8. **Transcript UI tiers 2–3** — per-row task/prompt + richer live activity (tier 2),
+   then read-only full child transcript and (optional) per-agent Stop (tier 3). Child
+   tool activity is shown to the user, never fed to the parent (A7).
 9. **Bundled agents + deploy** — ship a starter suite via an `agents/` source folder
    copied next to the exe (`AfterBuild` + setup `.vdproj`), like bundled skills. The
    OpenMono specialist set is a proven shape to seed with: **explore** (read-only
@@ -610,6 +617,10 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   Serializing write-agents avoids all of it. Revisit if a real workflow needs several
   writers at once and the disjoint-subtree contract (incl. the parent doing repo-level
   git after the join) proves clean enough to adopt.
+- **Per-agent Stop** (stop one child, leave the rest running) — v1 is **stop-all**
+  via the `Stop N agents` button (A20/§14), which covers the real need ("halt this
+  fan-out"); per-row Stop buttons + per-child cancellation handles are a later nicety
+  if it's ever wanted.
 - **Nested delegation** (an agent dispatching agents) — structurally blocked (A12);
   revisit only with a hard depth cap and cost budget if a real workflow needs it.
 - **Resumable / multi-turn agents** — today a dispatch is one-shot within the
@@ -710,72 +721,85 @@ really a 2-stage read-parallel/write-serial dispatcher).
 ## 14. Surfacing running agents (UI)
 
 A fan-out the user can neither see nor stop is unacceptable — especially for a
-feature designed to run unattended. Observability is therefore part of the design,
-built on two existing GxPT surfaces and rolled out in disclosure tiers (so the
-must-haves ship with the fan-out and the nice-to-haves follow).
+feature designed to run unattended. Observability is part of the design: a place to
+**see** the running agents and a single control to **stop** them, built on surfaces
+GxPT already has, rolled out in disclosure tiers.
 
-### Two surfaces (both reuse existing patterns)
+### Where it lives (and why *not* the status bar)
 
-**1. Status-bar count — the at-a-glance state.** The bottom `StatusStrip` already
-shows `Tools enabled: N · Skills: N · Context · Cost · Saved` as
-label/value `ToolStripStatusLabel` pairs. Add a conditional **`tslAgents` /
-`tslAgentsValue`** pair — `Agents: 2 running` — beside `Skills`, shown only while a
-dispatch is in flight (hidden at zero, like other conditional indicators). It is the
-global cue ("something is running") and a **jump affordance**: clicking it scrolls
-the transcript to the active dispatch panel. Cheap, always visible, no scrolling.
+During an in-progress turn, the status-bar region that shows `Tools enabled: N ·
+Skills: N` is **already taken over** by the marquee progress bar + Stop button, so a
+standing `Agents: N` label there is a non-starter — that space isn't available
+mid-turn. The design uses two surfaces instead:
 
-**2. In-transcript dispatch panel — the detail + controls.** Because
-`dispatch_agent` is a tool call, it already anchors a spot in the transcript. Render
-an **`AgentActivityPanel`** there (a `Panel`, modeled on `ToolApprovalPanel` /
+**1. See them — the in-transcript dispatch display.** `dispatch_agent` is a tool
+call, and a fan-out is the *most recent* thing in the transcript, so it's already on
+screen — no navigation affordance is needed. Render the dispatch as an
+**`AgentActivityPanel`** (a `Panel`, modeled on `ToolApprovalPanel` /
 `TranscriptContinuationPrompt` — same in-transcript, marshaled-from-worker-thread
-pattern, including its existing **Stop** button), titled `Agents (2 running)`, with
-**one row per child**:
+pattern), one row per child:
 
 ```
-┌ Agents (1 running · 1 done) ───────────────────────────────┐
-│ ● code-explorer    running · 4 tools · files__read …   [Stop]│
-│ ✓ test-runner      done · 31s                       [▸ View] │
+┌ Agents (1 running · 1 queued · 1 done) ─────────────────────┐
+│ ● code-explorer   running · 4 tools · files__read …          │
+│ ⏳ pr-reviewer     queued                                     │
+│ ✓ test-runner     done · 31s                                 │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Each row carries: a **status glyph** (● running · ⏳ queued — recall write-agents
-serialize, A9 · ✓ done · ✗ failed/capped · ■ stopped), the **agent slug**, a live
-one-line **activity** (last tool / running tool count), and a per-row **Stop**
-button. On completion the row collapses to a result line; the panel persists in
-history (like any tool marker), so reopening the conversation shows
-`dispatched 2 agents` with their outcomes.
+Each row: a **status glyph** (● running · ⏳ queued — write-agents serialize, A9 · ✓
+done · ✗ failed/capped · ■ stopped), the **agent slug**, and a live one-line
+**activity** (last tool / tool count). On completion a row collapses to a result line;
+the panel persists in history (like any tool marker). **No per-row Stop button in v1**
+— stopping is all-or-nothing through surface 2 (per-agent stop is deferred, §12).
 
-### Stop semantics (the must-have control)
-- **Per-agent Stop** (a row's button) trips *that child's* `RequestCancellation`
-  (A20). The child finalizes cleanly via the loop's existing `FinishCancelled` (keeps
-  partial text), siblings keep running, and its `dispatch_agent` result section is
+**2. Stop them — the repurposed turn button.** While a dispatch is in flight the
+marquee keeps running and the **Stop button relabels to `Stop N agents`** (N = every
+not-yet-finished child, **running *and* queued**, so it reads `Stop 3 agents` and
+ticks down — `Stop 1 agent`, singular — as they complete). When the fan-out joins and
+the model resumes streaming, the button reverts to plain **`Stop`** (cancels the
+turn). The label always names exactly what a click stops *right now*; the button never
+moves, it just retargets — so no new status-bar real estate is needed.
+
+### Stop semantics (v1: stop-all)
+- **`Stop N agents` cancels the whole fan-out**, not the turn. The children share a
+  **group cancellation** (distinct from the parent turn's `RequestCancellation`); the
+  button trips it, every running/queued child finalizes via the loop's existing
+  `FinishCancelled` (keeping partial text), and each `dispatch_agent` result section is
   marked `[stopped by user]`.
-- **Master Stop** (the main Send→Stop button during a turn) trips every child's
-  handle and the parent turn at once — the whole fan-out unwinds, the existing
-  turn-level behavior.
-- Stop marshals from the UI thread to the worker via the cancellation handle the loop
-  already polls between steps; a child mid-tool-call finishes that one call then stops
-  (the graceful semantics RunTurn already documents).
+- **Control then returns to the parent model**, which wakes with the (partial,
+  stopped) results and a **tailored wrap-up directive** — a sibling of the existing
+  tool-call-cap wrap-up, but phrased for an interrupted fan-out: *"The user stopped the
+  sub-agents before they finished. Summarize what was gathered so far and ask how they
+  would like to proceed; do not silently restart them."* (Distinct wording so the model
+  never implies the agents completed.) This reuses the cap-wrap-up *mechanism* (inject
+  instruction, let the model answer), tailored in *text*.
+- **A full turn abort is then one more click:** after the model resumes, the reverted
+  `Stop` trips the parent turn's cancellation (existing behavior). Two deliberate,
+  graceful clicks beat one hard kill — and matches the user's point that while agents
+  run the main loop is in standby, so "stop the agents" is the meaningful action.
+- Stop marshals UI→worker via the group handle the children poll between steps; a child
+  mid-tool-call finishes that one call then stops (RunTurn's documented graceful stop).
 
 ### Disclosure tiers (what ships when)
 
 | Tier | Surface | Phase |
 |------|---------|-------|
-| **1 — must-have** | `tslAgents` count + `AgentActivityPanel` rows (glyph + slug) + per-agent **Stop** + master Stop | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
-| **2 — better** | each row shows the child's **task/prompt** (the `dispatch_agent` `task` string, truncated with click/hover to expand) and a live **activity line** (last tool, tool count) | §11 phase 8 |
-| **3 — best, later** | a **View transcript** link per row opening the child's full message list **read-only** (its own dispatched history) | §11 phase 8/later |
+| **1 — must-have** | `AgentActivityPanel` rows (glyph + slug + status) to **see** them + the **`Stop N agents`** button to stop all | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
+| **2 — better** | each row shows the child's **task/prompt** (the `dispatch_agent` `task` string, truncated, click/hover to expand) and a richer live **activity line** | §11 phase 8 |
+| **3 — best, later** | a **View transcript** link per row opening the child's full message list **read-only**; (and, if wanted) **per-agent Stop** | §11 phase 8/later |
 
-The task string (tier 2) is free — it's already in the dispatch args. The full
-transcript (tier 3) is a pure **UI** read of the child's message list and does **not**
-touch the parent's context (A3/A7 hold: the child's transcript is shown to the *user*,
-never fed to the parent *model*), so it costs nothing in tokens and breaks no firewall;
-it only needs the child history retained for the session (or persisted) and a
-read-only viewer (a popup, or a transient read-only tab).
+The task string (tier 2) is free — already in the dispatch args. The full transcript
+(tier 3) is a pure **UI** read of the child's message list and does **not** touch the
+parent's context (A3/A7 hold: shown to the *user*, never fed to the parent *model*), so
+it costs no tokens and breaks no firewall; it needs only the child history retained for
+the session (or persisted) and a read-only viewer (a popup, or a transient read-only
+tab).
 
 ### Threading / marshaling
 Children run on worker threads; the dispatcher reports lifecycle —
 `onAgentStart(id, slug, task)`, `onAgentActivity(id, lastTool, count)`,
 `onAgentComplete(id, outcome)` — through an `IAgentActivityUi` (the `IToolLoopUi`
 sibling), each callback marshaled to the UI thread via the existing `Control.Invoke`
-path. The panel and the `tslAgents` count subscribe; no new threading model, just more
-of the callback plumbing the tool loop already uses.
+path. The panel and the button's `Stop N agents` count subscribe; no new threading
+model, just more of the callback plumbing the tool loop already uses.
