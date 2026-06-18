@@ -66,7 +66,7 @@ namespace GxPT.Tests
         {
             WriteSkill("greeting", "Be a pirate.", "b");
 
-            SlashCommandResult r = new ToggleSkillCommand().Invoke("greeting off", _ctx);
+            SlashCommandResult r = new ToggleSkillCommand().Invoke("greeting here off", _ctx);
 
             Assert.False(r.SendToModel);
             Assert.False(_ctx.SkillStore.ConvOverrides["greeting"]);   // forced off for this conversation
@@ -89,20 +89,21 @@ namespace GxPT.Tests
         {
             WriteSkill("greeting", "Be a pirate.", "b");
 
-            new ToggleSkillCommand().Invoke("greeting off global", _ctx);
+            new ToggleSkillCommand().Invoke("greeting global off", _ctx);
 
             Assert.Equal((bool?)false, SkillEnablement.LoadGlobal().GetSkillOverride("greeting"));
             Assert.Empty(_ctx.SkillStore.ConvOverrides);   // global scope must not touch the conversation
         }
 
-        // The transcript scenario: /skills off then /skill greeting on -> greeting still listed ON.
+        // The transcript scenario: /toggle-skills here off then /toggle-skill greeting here on
+        // -> greeting still listed ON.
         [Fact]
         public void SkillOnHere_OverridesSkillsOffHere_InList()
         {
             WriteSkill("greeting", "Be a pirate.", "b");
 
-            new ToggleSkillsCommand().Invoke("off", _ctx);          // all skills off here
-            new ToggleSkillCommand().Invoke("greeting on", _ctx);   // but this one on here
+            new ToggleSkillsCommand().Invoke("here off", _ctx);          // all skills off here
+            new ToggleSkillCommand().Invoke("greeting here on", _ctx);   // but this one on here
             new ListSkillsCommand().Invoke("", _ctx);             // list
 
             Assert.Contains("greeting", LastInfo());
@@ -114,8 +115,8 @@ namespace GxPT.Tests
         {
             WriteSkill("pirate", "Always pirate.", "b");
 
-            new ToggleSkillsCommand().Invoke("off global", _ctx);   // feature off globally
-            new ToggleSkillCommand().Invoke("pirate on global", _ctx);
+            new ToggleSkillsCommand().Invoke("global off", _ctx);   // feature off globally
+            new ToggleSkillCommand().Invoke("pirate global on", _ctx);
 
             Assert.Equal((bool?)true, SkillEnablement.LoadGlobal().GetSkillOverride("pirate"));
         }
@@ -123,24 +124,33 @@ namespace GxPT.Tests
         [Fact]
         public void Skill_UnknownSlug_Fails()
         {
-            SlashCommandResult r = new ToggleSkillCommand().Invoke("nope off", _ctx);
+            SlashCommandResult r = new ToggleSkillCommand().Invoke("nope global off", _ctx);
             Assert.NotNull(r.Error);
         }
 
         [Fact]
         public void Skills_OffGlobal_ThenReset()
         {
-            new ToggleSkillsCommand().Invoke("off global", _ctx);
+            new ToggleSkillsCommand().Invoke("global off", _ctx);
             Assert.True(SkillEnablement.LoadGlobal().FeatureOff);
 
-            new ToggleSkillsCommand().Invoke("reset global", _ctx);
+            new ResetSkillsCommand().Invoke("global", _ctx);
             Assert.False(SkillEnablement.LoadGlobal().FeatureOff);
+        }
+
+        [Fact]
+        public void Skills_GlobalInherit_Fails_AndPointsToReset()
+        {
+            // The global feature toggle has no upstream to inherit from, so "inherit" is rejected.
+            SlashCommandResult r = new ToggleSkillsCommand().Invoke("global inherit", _ctx);
+            Assert.NotNull(r.Error);
+            Assert.Contains("reset-skills", r.Error);
         }
 
         [Fact]
         public void Skills_TrailingTokens_Fail()
         {
-            SlashCommandResult r = new ToggleSkillsCommand().Invoke("on here garbage", _ctx);
+            SlashCommandResult r = new ToggleSkillsCommand().Invoke("here on garbage", _ctx);
             Assert.NotNull(r.Error);
             Assert.False(SkillEnablement.LoadGlobal().FeatureOff); // nothing applied
         }
@@ -149,7 +159,7 @@ namespace GxPT.Tests
         public void Skill_TrailingTokens_Fail()
         {
             WriteSkill("greeting", "Be a pirate.", "b");
-            SlashCommandResult r = new ToggleSkillCommand().Invoke("greeting on global junk", _ctx);
+            SlashCommandResult r = new ToggleSkillCommand().Invoke("greeting global on junk", _ctx);
             Assert.NotNull(r.Error);
             Assert.Null(SkillEnablement.LoadGlobal().GetSkillOverride("greeting")); // nothing applied
         }
@@ -159,11 +169,11 @@ namespace GxPT.Tests
         {
             // The Skills MCP server follows skill enablement, so every enablement change - global OR
             // per-conversation - asks the host to bring it into line (a no-op unless it crosses on/off).
-            new ToggleSkillsCommand().Invoke("off global", _ctx);
-            new ToggleSkillsCommand().Invoke("on global", _ctx);
-            new ToggleSkillsCommand().Invoke("reset global", _ctx);
-            new ToggleSkillsCommand().Invoke("off here", _ctx);
-            new ToggleSkillsCommand().Invoke("reset", _ctx);
+            new ToggleSkillsCommand().Invoke("global off", _ctx);
+            new ToggleSkillsCommand().Invoke("global on", _ctx);
+            new ResetSkillsCommand().Invoke("global", _ctx);
+            new ToggleSkillsCommand().Invoke("here off", _ctx);
+            new ResetSkillsCommand().Invoke("here", _ctx);
             Assert.Equal(5, _ctx.SkillStore.RefreshSkillsServerCount);
         }
 
@@ -171,26 +181,26 @@ namespace GxPT.Tests
         public void Skill_EnablementChange_RefreshesSkillsServer()
         {
             WriteSkill("greeting", "Be a pirate.", "b");
-            new ToggleSkillCommand().Invoke("greeting on here", _ctx);
-            new ToggleSkillCommand().Invoke("greeting off global", _ctx);
-            new ToggleSkillCommand().Invoke("greeting reset", _ctx);
+            new ToggleSkillCommand().Invoke("greeting here on", _ctx);
+            new ToggleSkillCommand().Invoke("greeting global off", _ctx);
+            new ToggleSkillCommand().Invoke("greeting here inherit", _ctx);
             Assert.Equal(3, _ctx.SkillStore.RefreshSkillsServerCount);
         }
 
         [Fact]
         public void Skills_OffHere_AndReset()
         {
-            new ToggleSkillsCommand().Invoke("off", _ctx);
+            new ToggleSkillsCommand().Invoke("here off", _ctx);
             Assert.Equal(true, _ctx.SkillStore.ConvFeatureOff);
 
-            new ToggleSkillsCommand().Invoke("reset", _ctx);
+            new ResetSkillsCommand().Invoke("here", _ctx);
             Assert.Null(_ctx.SkillStore.ConvFeatureOff);
         }
 
         [Fact]
         public void Skills_UnknownScope_Fails()
         {
-            SlashCommandResult r = new ToggleSkillsCommand().Invoke("off nowhere", _ctx);
+            SlashCommandResult r = new ToggleSkillsCommand().Invoke("nowhere off", _ctx);
             Assert.NotNull(r.Error);
         }
 
@@ -225,11 +235,11 @@ namespace GxPT.Tests
         public void Use_DisabledSkill_StillWorks()
         {
             WriteSkill("greeting", "Be a pirate.", "ARRR");
-            new ToggleSkillCommand().Invoke("greeting off global", _ctx);   // disable globally
+            new ToggleSkillCommand().Invoke("greeting global off", _ctx);   // disable globally
 
             SlashCommandResult r = new UseSkillCommand().Invoke("greeting", _ctx);
 
-            Assert.True(r.SendToModel);   // explicit /use ignores enablement
+            Assert.True(r.SendToModel);   // explicit /use-skill ignores enablement
             Assert.Contains("ARRR", r.SystemContext); // body still attached
         }
 
@@ -312,36 +322,86 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void Complete_Skills_Empty_OffersVerbsThatAdvance()
+        public void Complete_Skills_Empty_OffersScopesThatAdvance()
         {
             IList<ArgCompletion> c = new ToggleSkillsCommand().CompleteArgument("", _ctx);
 
-            // No bare-command entry: a verb is required (listing is /list-skills).
-            Assert.Null(Find(c, "(toggle skills for this conversation)"));
-
-            ArgCompletion on = Find(c, "on");
-            Assert.NotNull(on);
-            Assert.Equal("on ", on.InsertArg);   // trailing space so the scope level populates next
-            Assert.True(on.ContinueCompleting);
-        }
-
-        [Fact]
-        public void Complete_Skills_AfterVerb_OffersScope()
-        {
-            IList<ArgCompletion> c = new ToggleSkillsCommand().CompleteArgument("on ", _ctx);
-
-            Assert.NotNull(Find(c, "here"));
-            Assert.Equal("on here", Find(c, "here").InsertArg);
+            ArgCompletion here = Find(c, "here");
+            Assert.NotNull(here);
+            Assert.Equal("here ", here.InsertArg);   // trailing space so the verb level populates next
+            Assert.True(here.ContinueCompleting);
             Assert.NotNull(Find(c, "global"));
         }
 
         [Fact]
-        public void Complete_Skill_AfterVerb_OffersScope()
+        public void Complete_Skills_AfterHere_OffersOnOffInherit()
         {
-            IList<ArgCompletion> c = new ToggleSkillCommand().CompleteArgument("greeting on ", _ctx);
+            IList<ArgCompletion> c = new ToggleSkillsCommand().CompleteArgument("here ", _ctx);
+
+            Assert.NotNull(Find(c, "on"));
+            Assert.Equal("here on", Find(c, "on").InsertArg);
+            Assert.NotNull(Find(c, "off"));
+            Assert.NotNull(Find(c, "inherit"));
+        }
+
+        [Fact]
+        public void Complete_Skills_AfterGlobal_OffersOnlyOnOff()
+        {
+            IList<ArgCompletion> c = new ToggleSkillsCommand().CompleteArgument("global ", _ctx);
+
+            Assert.NotNull(Find(c, "on"));
+            Assert.NotNull(Find(c, "off"));
+            Assert.Null(Find(c, "inherit"));   // global feature toggle has no inherit
+        }
+
+        [Fact]
+        public void Complete_Skill_AfterScope_OffersOnOffInherit()
+        {
+            // global scope still offers inherit for a single skill (per-skill global is tri-state).
+            IList<ArgCompletion> c = new ToggleSkillCommand().CompleteArgument("greeting global ", _ctx);
+
+            Assert.NotNull(Find(c, "on"));
+            Assert.Equal("greeting global on", Find(c, "on").InsertArg);
+            Assert.NotNull(Find(c, "inherit"));
+        }
+
+        [Fact]
+        public void Complete_ResetSkills_OffersScopes()
+        {
+            IList<ArgCompletion> c = new ResetSkillsCommand().CompleteArgument("", _ctx);
 
             Assert.NotNull(Find(c, "here"));
-            Assert.Equal("greeting on here", Find(c, "here").InsertArg);
+            Assert.Equal("here", Find(c, "here").InsertArg);   // terminal: no trailing space
+            Assert.NotNull(Find(c, "global"));
+        }
+
+        [Fact]
+        public void ResetSkills_Here_ClearsConversation()
+        {
+            new ToggleSkillsCommand().Invoke("here off", _ctx);
+            new ResetSkillsCommand().Invoke("here", _ctx);
+            Assert.Null(_ctx.SkillStore.ConvFeatureOff);
+        }
+
+        [Fact]
+        public void ResetSkills_Global_ClearsAllGlobalSettings()
+        {
+            WriteSkill("greeting", "Be a pirate.", "b");
+            new ToggleSkillsCommand().Invoke("global off", _ctx);
+            new ToggleSkillCommand().Invoke("greeting global off", _ctx);
+
+            new ResetSkillsCommand().Invoke("global", _ctx);
+
+            SkillEnablement g = SkillEnablement.LoadGlobal();
+            Assert.False(g.FeatureOff);
+            Assert.Null(g.GetSkillOverride("greeting"));
+        }
+
+        [Fact]
+        public void ResetSkills_UnknownScope_Fails()
+        {
+            SlashCommandResult r = new ResetSkillsCommand().Invoke("nowhere", _ctx);
+            Assert.NotNull(r.Error);
         }
     }
 }

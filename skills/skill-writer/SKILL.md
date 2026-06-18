@@ -109,5 +109,5 @@ is what makes the skill discoverable).
 ## 6. Hand off
 
 Tell the user what you created and where. Note that the skill is available on their next
-message, that they can turn it on or off with `/toggle-skill <slug> on|off`, and run it directly with
+message, that they can turn it on or off with `/toggle-skill <slug> here on|off`, and run it directly with
 `/use-skill <slug>`. Offer to refine it after they've tried it - skills get better with use.
