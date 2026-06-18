@@ -65,7 +65,7 @@ namespace GxPT.Tests.Commands
         public void SetModel(string slug) { LastModelSet = slug; }
     }
 
-    // Backs the /tool command: configurable server states, mutated in place by SetServerEnabled.
+    // Backs the /toggle-tool command: configurable server states, mutated in place by SetServerEnabled.
     internal sealed class FakeServerControl : IServerControl
     {
         public Dictionary<string, bool> ServerStates =
@@ -84,7 +84,7 @@ namespace GxPT.Tests.Commands
         }
     }
 
-    // Backs /skills and /skill: per-conversation override state plus the RefreshSkillsServer call count.
+    // Backs /toggle-skills and /toggle-skill: per-conversation override state plus the RefreshSkillsServer call count.
     internal sealed class FakeSkillEnablementStore : ISkillEnablementStore
     {
         public bool? ConvFeatureOff;

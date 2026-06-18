@@ -16,7 +16,7 @@ namespace GxPT
     // feature_off  -> the global feature default (rung 4): all skills off everywhere unless a more
     //                 specific rule (a per-skill setting, or a per-conversation setting) says otherwise.
     // skills        -> per-skill global setting (rung 2), tri-state: present => force on/off; absent =>
-    //                 inherit. Symmetric with the conversation layer so `/skill X on|off global` works.
+    //                 inherit. Symmetric with the conversation layer so `/toggle-skill X on|off global` works.
     internal sealed class SkillEnablement
     {
         public const string FileName = "skills.json";
@@ -56,7 +56,7 @@ namespace GxPT
             else _skills.Remove(slug);
         }
 
-        // Clears every per-skill global setting (used by `/skills reset global`); leaves FeatureOff.
+        // Clears every per-skill global setting (used by `/toggle-skills reset global`); leaves FeatureOff.
         public void ClearSkillOverrides()
         {
             _skills.Clear();

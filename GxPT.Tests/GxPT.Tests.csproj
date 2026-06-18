@@ -83,6 +83,7 @@
     <Compile Include="..\GxPT\Services\Commands\SkillCommands.cs" Link="Linked\Commands\SkillCommands.cs" />
     <Compile Include="..\GxPT\Services\Commands\PromptCommand.cs" Link="Linked\Commands\PromptCommand.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandGate.cs" Link="Linked\Commands\SlashCommandGate.cs" />
+    <Compile Include="..\GxPT\Services\Commands\SlashMatch.cs" Link="Linked\Commands\SlashMatch.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandRegistry.cs" Link="Linked\Commands\SlashCommandRegistry.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandProcessor.cs" Link="Linked\Commands\SlashCommandProcessor.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandConfig.cs" Link="Linked\Commands\SlashCommandConfig.cs" />

@@ -1065,7 +1065,7 @@ namespace GxPT
         // Single point that registers a tab's conversation in the sidebar's open-by-id dedup map, so
         // re-opening that conversation focuses THIS tab instead of loading a duplicate copy. Driven by
         // ChatTabContext.ConversationAssigned (wired in TabManager.WireConversationTracking), so it runs
-        // for EVERY way a conversation is put on a tab - new tab, /new, recycle, opening from the
+        // for EVERY way a conversation is put on a tab - new tab, /new-conversation, recycle, opening from the
         // sidebar/history, help, or opening a recent workspace - and any future path gets it for free.
         // Tracking an id before its file exists is harmless: the dedup only ever looks up ids that have a
         // saved sidebar entry, and a brand-new conversation keeps the same id through to its first save.
@@ -1313,7 +1313,7 @@ namespace GxPT
                 // The Skills MCP server (authoring + execution tools) follows skill enablement: it runs
                 // whenever the active conversation has at least one enabled skill, and is off when none are
                 // (so a skill-less chat pays nothing). SlashRefreshSkillsServer re-applies this when
-                // enablement changes. There is no separate server toggle - /skills is the control.
+                // enablement changes. There is no separate server toggle - /toggle-skills is the control.
                 opts.SkillsEnabled = ActiveConversationHasEnabledSkills();
                 _skillsServerEnabled = opts.SkillsEnabled;
                 // Skill roots the server resolves scripts against: bundled (<exe>/skills, shipped with the
@@ -1628,9 +1628,9 @@ namespace GxPT
             catch { }
         }
 
-        // Built-in MCP tool servers that can be toggled by name with /tool (custom mcp.json servers are
+        // Built-in MCP tool servers that can be toggled by name with /toggle-tool (custom mcp.json servers are
         // presence-based). Memory and skills are intentionally excluded -- they are feature toggles, not
-        // tool servers: memory via Settings, skills via /skills (which also drives the skills MCP server).
+        // tool servers: memory via Settings, skills via /toggle-skills (which also drives the skills MCP server).
         internal IList<string> SlashGetServerNames()
         {
             return new List<string>(new string[]
@@ -1650,7 +1650,7 @@ namespace GxPT
             if (string.Equals(name, McpConfig.CommandName, StringComparison.OrdinalIgnoreCase)) return "mcp_command_enabled";
             if (string.Equals(name, McpConfig.MsBuildName, StringComparison.OrdinalIgnoreCase)) { defaultOn = true; return "mcp_msbuild_enabled"; }
             if (string.Equals(name, McpConfig.MemoryName, StringComparison.OrdinalIgnoreCase)) return "mcp_memory_enabled";
-            // skills has no independent server key - it follows the skills feature (/skills global).
+            // skills has no independent server key - it follows the skills feature (/toggle-skills global).
             if (string.Equals(name, McpConfig.GitHubName, StringComparison.OrdinalIgnoreCase)) return "mcp_github_enabled";
             return null;
         }
@@ -1712,7 +1712,7 @@ namespace GxPT
             // When there's no active conversation yet (early startup: RebuildMcpHost runs in the ctor
             // before the first tab is set up), fall back to the global defaults a fresh conversation
             // would inherit - null feature-off / no per-skill overrides. Otherwise the server stays OFF
-            // at launch even with default-on skills, until something later (a /skill toggle, a tab
+            // at launch even with default-on skills, until something later (a /toggle-skill toggle, a tab
             // switch) happens to trigger a rebuild. A default conversation resolves identically to this
             // fallback, so it's the right "we don't know the conversation yet" answer.
             bool? convFeatureOff = (convo != null) ? convo.SkillsFeatureOff : null;
@@ -2214,7 +2214,7 @@ namespace GxPT
                         ctx.Transcript.AddMessage(MessageRole.User, textForTranscript, attachmentsSnapshot);
                     else
                         ctx.Transcript.AddMessage(MessageRole.User, textForTranscript);
-                    // A slash command's hidden system context (e.g. /use's skill body) is committed to
+                    // A slash command's hidden system context (e.g. /use-skill's skill body) is committed to
                     // history right before the user message - so it's never orphaned if an earlier path
                     // returned. It is sent to the model but not rendered (RebuildTranscript skips system).
                     if (!string.IsNullOrEmpty(pendingSystemContext))

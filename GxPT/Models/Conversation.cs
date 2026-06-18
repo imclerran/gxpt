@@ -53,7 +53,7 @@ namespace GxPT
         // Per-conversation skill enablement overrides (design S10/sec.7), combined with the global default
         // (skills.json) by SkillResolve. SkillsFeatureOff: null = inherit global, true/false = force the
         // whole feature off/on for this conversation. SkillOverrides: slug -> bool (true = force on, false
-        // = force off); a slug absent inherits the global default. Set by the /skills and /skill commands.
+        // = force off); a slug absent inherits the global default. Set by the /toggle-skills and /toggle-skill commands.
         public bool? SkillsFeatureOff { get; set; }
         public Dictionary<string, bool> SkillOverrides { get; set; }
         // Server-qualified MCP tool names this conversation has revealed, in recency order (reveal

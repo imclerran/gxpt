@@ -11,8 +11,8 @@ namespace GxPT
         {
             List<ISlashCommand> list = new List<ISlashCommand>();
             list.Add(new ModelCommand());
-            list.Add(new ToolCommand());
-            list.Add(new NewCommand());
+            list.Add(new ToggleToolCommand());
+            list.Add(new NewConversationCommand());
             list.Add(new ExportCommand());
             list.Add(new ImportCommand());
             list.Add(new CompactCommand());
@@ -98,17 +98,17 @@ namespace GxPT
         }
     }
 
-    // /tool <name> [on|off] -- enable/disable a built-in MCP tool server (omit on|off to toggle).
-    internal sealed class ToolCommand : ClientCommandBase, IArgumentCompleter
+    // /toggle-tool <name> [on|off] -- enable/disable a built-in MCP tool server (omit on|off to toggle).
+    internal sealed class ToggleToolCommand : ClientCommandBase, IArgumentCompleter
     {
-        public override string Name { get { return "tool"; } }
+        public override string Name { get { return "toggle-tool"; } }
         public override string Description { get { return "Enable or disable a tool server"; } }
         public override string ArgumentHint { get { return "<name> [on|off]"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
         {
             string a = (args ?? string.Empty).Trim();
-            if (a.Length == 0) return SlashCommandResult.Fail("Usage: /tool <name> [on|off]");
+            if (a.Length == 0) return SlashCommandResult.Fail("Usage: /toggle-tool <name> [on|off]");
 
             string name, rest;
             int sp = a.IndexOf(' ');
@@ -155,7 +155,7 @@ namespace GxPT
                 {
                     string n = names[i];
                     if (string.IsNullOrEmpty(n)) continue;
-                    if (a.Length > 0 && !n.StartsWith(a, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (a.Length > 0 && !SlashMatch.HyphenPrefix(n, a)) continue;
                     string state = ctx.Servers.GetServerEnabled(n) ? "on" : "off";
                     result.Add(new ArgCompletion(n + "  (" + state + ")", n + " ", true));
                 }
@@ -180,10 +180,10 @@ namespace GxPT
         private static bool IsOff(string s) { return SlashArgs.ParseOnOff(s) == false; }
     }
 
-    // /new -- open a fresh conversation tab.
-    internal sealed class NewCommand : ClientCommandBase
+    // /new-conversation -- open a fresh conversation tab.
+    internal sealed class NewConversationCommand : ClientCommandBase
     {
-        public override string Name { get { return "new"; } }
+        public override string Name { get { return "new-conversation"; } }
         public override string Description { get { return "Start a new conversation"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
@@ -230,7 +230,7 @@ namespace GxPT
             string a = argText ?? string.Empty;
             if (a.IndexOf(' ') >= 0) return result; // single argument
 
-            // Bare /export (conversations) stays selectable from the popup, like the /skills list entry.
+            // Bare /export (conversations) stays selectable from the popup, like the /toggle-skills entry.
             if (a.Length == 0)
                 result.Add(new ArgCompletion("(all conversations)", "", false));
 
@@ -240,7 +240,7 @@ namespace GxPT
             {
                 if (skills[i].Source == SkillSource.Bundled) continue; // shipped with the app, not exportable
                 string slug = skills[i].Slug;
-                if (a.Length > 0 && !slug.StartsWith(a, StringComparison.OrdinalIgnoreCase)) continue;
+                if (a.Length > 0 && !SlashMatch.HyphenPrefix(slug, a)) continue;
                 result.Add(new ArgCompletion(slug + " - " + skills[i].Description, slug, false));
             }
             return result;

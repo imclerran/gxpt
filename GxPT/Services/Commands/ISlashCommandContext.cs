@@ -23,10 +23,10 @@ namespace GxPT
         // Model selection for the active tab (used by /model).
         IModelControl Models { get; }
 
-        // Built-in toggleable MCP servers (used by /tool).
+        // Built-in toggleable MCP servers (used by /toggle-tool).
         IServerControl Servers { get; }
 
-        // Per-conversation skills enablement (used by /skills and /skill).
+        // Per-conversation skills enablement (used by /toggle-skills and /toggle-skill).
         ISkillEnablementStore Skills { get; }
 
         // ---- conversation / app actions ----

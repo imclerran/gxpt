@@ -93,7 +93,7 @@ namespace GxPT.Tests.Commands
         [Fact]
         public void Server_completes_names_then_onoff()
         {
-            var cmd = new ToolCommand();
+            var cmd = new ToggleToolCommand();
             var names = cmd.CompleteArgument("", CtxWithServers()).Select(i => i.InsertArg).ToList();
             Assert.Contains("git ", names);
             Assert.Contains("files ", names);
@@ -107,10 +107,10 @@ namespace GxPT.Tests.Commands
         public void Server_invoke_explicit_on_off()
         {
             var ctx = CtxWithServers();
-            new ToolCommand().Invoke("files on", ctx);
+            new ToggleToolCommand().Invoke("files on", ctx);
             Assert.True(ctx.ServerStore.ServerStates["files"]);
 
-            new ToolCommand().Invoke("git off", ctx);
+            new ToggleToolCommand().Invoke("git off", ctx);
             Assert.False(ctx.ServerStore.ServerStates["git"]);
         }
 
@@ -118,16 +118,16 @@ namespace GxPT.Tests.Commands
         public void Server_invoke_toggles_when_state_omitted()
         {
             var ctx = CtxWithServers(); // git starts on
-            new ToolCommand().Invoke("git", ctx);
+            new ToggleToolCommand().Invoke("git", ctx);
             Assert.False(ctx.ServerStore.ServerStates["git"]);
-            new ToolCommand().Invoke("git", ctx);
+            new ToggleToolCommand().Invoke("git", ctx);
             Assert.True(ctx.ServerStore.ServerStates["git"]);
         }
 
         [Fact]
         public void Server_invoke_unknown_name_fails()
         {
-            var result = new ToolCommand().Invoke("bogus on", CtxWithServers());
+            var result = new ToggleToolCommand().Invoke("bogus on", CtxWithServers());
             Assert.NotNull(result.Error);
         }
 
@@ -137,7 +137,7 @@ namespace GxPT.Tests.Commands
         public void New_opens_a_conversation()
         {
             var ctx = new FakeSlashCommandContext("/work");
-            var result = new NewCommand().Invoke("", ctx);
+            var result = new NewConversationCommand().Invoke("", ctx);
             Assert.False(result.SendToModel);
             Assert.Equal(1, ctx.NewConversationCount);
         }

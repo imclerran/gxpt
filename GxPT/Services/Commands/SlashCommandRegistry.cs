@@ -53,8 +53,10 @@ namespace GxPT
             return _byName.TryGetValue(token, out cmd);
         }
 
-        // Commands whose primary name starts with the given prefix (case-insensitive), in registration
-        // order. An empty prefix returns everything -- bare "/" shows the full list for discoverability.
+        // Commands whose primary name matches the given prefix (case-insensitive), in registration order.
+        // Matching is hyphen-aware (see SlashMatch.HyphenPrefix): the prefix anchors at the start of the
+        // name or just after any '-', so "/some" also surfaces "do-something" and "toggle-some-setting".
+        // An empty prefix returns everything -- bare "/" shows the full list for discoverability.
         public IList<ISlashCommand> Match(string prefix)
         {
             string p = prefix ?? string.Empty;
@@ -62,11 +64,8 @@ namespace GxPT
             for (int i = 0; i < _ordered.Count; i++)
             {
                 ISlashCommand cmd = _ordered[i];
-                if (p.Length == 0 ||
-                    cmd.Name.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-                {
+                if (SlashMatch.HyphenPrefix(cmd.Name, p))
                     hits.Add(cmd);
-                }
             }
             return hits;
         }

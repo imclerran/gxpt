@@ -25,7 +25,7 @@ namespace GxPT
         private const int MaxAssetsShown = 25;    // listed inline on open; the rest are summarized
 
         // Indexed by slug over the skills ENABLED for this turn (SkillResolve), so open_skill can only
-        // load a skill the conversation actually has on. Explicit /use goes through the
+        // load a skill the conversation actually has on. Explicit /use-skill goes through the
         // catalog directly and is not bound by this set.
         private readonly Dictionary<string, Skill> _bySlug;
 
@@ -186,7 +186,7 @@ namespace GxPT
         }
 
         // Renders one skill's block (heading + directory + asset listing + body). Shared by open_skill
-        // and the explicit /use slash command, which invokes a skill regardless of enablement.
+        // and the explicit /use-skill slash command, which invokes a skill regardless of enablement.
         internal static string RenderSkill(Skill skill)
         {
             StringBuilder sb = new StringBuilder();
