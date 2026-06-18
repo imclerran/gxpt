@@ -312,11 +312,12 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void Complete_Skills_Empty_OffersToggleAndVerbsThatAdvance()
+        public void Complete_Skills_Empty_OffersVerbsThatAdvance()
         {
             IList<ArgCompletion> c = new ToggleSkillsCommand().CompleteArgument("", _ctx);
 
-            Assert.NotNull(Find(c, "(toggle skills for this conversation)"));   // bare-command entry
+            // No bare-command entry: a verb is required (listing is /list-skills).
+            Assert.Null(Find(c, "(toggle skills for this conversation)"));
 
             ArgCompletion on = Find(c, "on");
             Assert.NotNull(on);

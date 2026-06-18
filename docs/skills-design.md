@@ -276,7 +276,7 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
 | Command | Kind | Effect |
 |---------|------|--------|
 | `/list-skills` | Client | List skills with effective on/off state and source (global default vs. this conversation) |
-| `/toggle-skills [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`); bare `/toggle-skills` flips the feature for this conversation |
+| `/toggle-skills [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`); a verb is required |
 | `/toggle-skill <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one skill**; bare `/toggle-skill <slug>` toggles for this conversation |
 | `/use-skill <slug> [text]` | Client | **Invoke**: resolve `<slug>`, carry its rendered `SKILL.md` block on the result as `SystemContext` (committed to history as a **hidden system message** at the send, so an early return can't orphan it), and send the short user ask `Use the <slug> skill. [text]` |
 
@@ -299,8 +299,7 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
 - **Autocomplete:** `/toggle-skill` and `/use-skill` complete slugs (annotated with state)
   via `IArgumentCompleter`; `/toggle-skill`/`/toggle-skills` then complete `on|off|reset`
   and `here|global`. Each level's accepted value carries a trailing space so the popup
-  advances to the next level immediately (no manual space needed); `/toggle-skills` also
-  offers a `(toggle skills for this conversation)` entry so the bare command is selectable.
+  advances to the next level immediately (no manual space needed).
   Command-name completion is hyphen-aware: a typed prefix anchors at the start of a name
   or just after any `-`, so `/skill` surfaces `/toggle-skill`, `/toggle-skills`, etc.
 

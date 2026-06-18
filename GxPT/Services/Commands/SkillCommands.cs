@@ -6,7 +6,7 @@ namespace GxPT
 {
     // Slash commands for the skills feature (design sec.6), built on the existing ISlashCommand framework:
     //   /list-skills                                    -- list skills and their effective on/off state
-    //   /toggle-skills [on|off|reset] [here|global]     -- toggle/reset the whole feature (bare = flip here)
+    //   /toggle-skills [on|off|reset] [here|global]     -- toggle/reset the whole feature at that scope
     //   /toggle-skill <slug> [on|off|reset] [here|global] -- toggle/reset one skill (bare slug toggles)
     //   /use-skill <slug> [text]                        -- use a skill (body attached as hidden context)
     // Management commands are Client (local, no LLM send); /use-skill sends a short "Use the X skill" ask
@@ -158,8 +158,7 @@ namespace GxPT
         }
     }
 
-    // /toggle-skills [on|off|reset] [here|global]   (bare "/toggle-skills" flips the feature for this
-    // conversation)
+    // /toggle-skills [on|off|reset] [here|global]   (a verb is required; listing is /list-skills)
     internal sealed class ToggleSkillsCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "toggle-skills"; } }
@@ -171,18 +170,9 @@ namespace GxPT
             string[] tok = SkillCommandShared.Tokens(args);
             SkillEnablement global = SkillEnablement.LoadGlobal();
 
-            // Bare "/toggle-skills": flip the effective feature state for this conversation.
-            if (tok.Length == 0)
-            {
-                bool? convOff = ctx.Skills.GetConversationSkillsFeatureOff();
-                bool currentlyOff = convOff.HasValue ? convOff.Value : global.FeatureOff;
-                bool newOn = currentlyOff; // off -> on, on -> off
-                ctx.Skills.SetConversationSkillsFeatureOff(newOn ? (bool?)false : (bool?)true);
-                ctx.Skills.RefreshSkillsServer();
-                ctx.WriteInfo("Skills turned " + (newOn ? "on" : "off") + " for this conversation.");
-                return SlashCommandResult.Handled();
-            }
-            if (tok.Length > 2) // verb + optional scope; reject trailing junk rather than silently ignore
+            // A verb is required; trailing junk past verb + optional scope is rejected too. (Listing is
+            // /list-skills, not a bare invocation here.)
+            if (tok.Length == 0 || tok.Length > 2)
                 return SlashCommandResult.Fail("Usage: /toggle-skills [on|off|reset] [here|global]");
 
             bool isGlobal = false;
@@ -230,10 +220,6 @@ namespace GxPT
             int sp = a.IndexOf(' ');
             if (sp < 0)
             {
-                // Offer "run with no arguments" (flip here) as the default entry, so the bare command is
-                // selectable from the popup; then the verb choices.
-                if (a.Length == 0)
-                    result.Add(new ArgCompletion("(toggle skills for this conversation)", "", false));
                 SkillCommandShared.AddMatching(result, new string[] { "on", "off", "reset" }, a, "", true);
             }
             else
