@@ -129,22 +129,23 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void Skills_OffGlobal_ThenReset()
+        public void Skills_Global_OnOff_TogglesMaster()
         {
+            // The global on/off master is controlled only by /toggle-skills global on|off.
             new ToggleSkillsCommand().Invoke("global off", _ctx);
             Assert.True(SkillEnablement.LoadGlobal().FeatureOff);
 
-            new ResetSkillsCommand().Invoke("global", _ctx);
+            new ToggleSkillsCommand().Invoke("global on", _ctx);
             Assert.False(SkillEnablement.LoadGlobal().FeatureOff);
         }
 
         [Fact]
-        public void Skills_GlobalInherit_Fails_AndPointsToReset()
+        public void Skills_GlobalInherit_Fails()
         {
             // The global feature toggle has no upstream to inherit from, so "inherit" is rejected.
             SlashCommandResult r = new ToggleSkillsCommand().Invoke("global inherit", _ctx);
             Assert.NotNull(r.Error);
-            Assert.Contains("reset-skills", r.Error);
+            Assert.False(SkillEnablement.LoadGlobal().FeatureOff); // nothing applied
         }
 
         [Fact]
@@ -384,7 +385,7 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void ResetSkills_Global_ClearsAllGlobalSettings()
+        public void ResetSkills_Global_ClearsPerSkillSettings_LeavesMaster()
         {
             WriteSkill("greeting", "Be a pirate.", "b");
             new ToggleSkillsCommand().Invoke("global off", _ctx);
@@ -393,8 +394,8 @@ namespace GxPT.Tests
             new ResetSkillsCommand().Invoke("global", _ctx);
 
             SkillEnablement g = SkillEnablement.LoadGlobal();
-            Assert.False(g.FeatureOff);
-            Assert.Null(g.GetSkillOverride("greeting"));
+            Assert.True(g.FeatureOff);                       // on/off master left as-is
+            Assert.Null(g.GetSkillOverride("greeting"));     // per-skill override cleared
         }
 
         [Fact]

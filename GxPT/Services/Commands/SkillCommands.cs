@@ -210,9 +210,9 @@ namespace GxPT
             if (isInherit)
             {
                 // The global feature toggle is the most upstream layer (a plain bool), so it has nothing to
-                // inherit from -- there's no "inherit" for it; bulk-clearing is /reset-skills global.
+                // inherit from -- there's no "inherit" for it, only on/off.
                 if (isGlobal)
-                    return SlashCommandResult.Fail("Global skills are always on or off. Use '/reset-skills global' to clear per-skill settings.");
+                    return SlashCommandResult.Fail("Global skills are always on or off; use 'on' or 'off'.");
                 ctx.Skills.SetConversationSkillsFeatureOff(null);
                 info = "Skills: this conversation now follows the global default.";
             }
@@ -356,9 +356,10 @@ namespace GxPT
         }
     }
 
-    // /reset-skills <here|global> -- clear every skill setting at that scope (the bulk action that used to
-    // ride on the feature command's "reset"). "here" drops all of this conversation's overrides so it
-    // follows global again; "global" resets the feature to on and removes every per-skill global setting.
+    // /reset-skills <here|global> -- clear skill settings at that scope (the bulk action that used to ride
+    // on the feature command's "reset"). "here" drops all of this conversation's overrides -- its feature
+    // on/off and every per-skill override -- so it follows global again; "global" removes every per-skill
+    // global override. Neither touches the global on/off master; that is only /toggle-skills global on|off.
     internal sealed class ResetSkillsCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "reset-skills"; } }
@@ -378,11 +379,11 @@ namespace GxPT
             string info;
             if (isGlobal)
             {
+                // Per-skill global overrides only; the on/off master (FeatureOff) is left as-is.
                 SkillEnablement global = SkillEnablement.LoadGlobal();
-                global.FeatureOff = false;
                 global.ClearSkillOverrides();
                 global.SaveGlobal();
-                info = "Skills: global settings reset (feature on, no per-skill settings).";
+                info = "Skills: all per-skill global settings cleared.";
             }
             else
             {

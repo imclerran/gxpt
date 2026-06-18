@@ -278,7 +278,7 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
 | `/list-skills` | Client | List skills with effective on/off state and source (global default vs. this conversation) |
 | `/toggle-skills <here\|global> <on\|off\|inherit>` | Client | Set the **whole feature** at that scope. `global` takes only `on\|off` (it is the most upstream layer); `here` also takes `inherit` (unset → follow global) |
 | `/toggle-skill <slug> <here\|global> <on\|off\|inherit>` | Client | Set **one skill** at that scope (both scopes tri-state, so both take `inherit`); bare `/toggle-skill <slug>` toggles for this conversation |
-| `/reset-skills <here\|global>` | Client | Clear **all** skill settings at that scope: `here` drops every conversation override; `global` resets the feature to on and removes every per-skill global setting |
+| `/reset-skills <here\|global>` | Client | Clear skill settings at that scope: `here` drops every conversation override (its feature on/off and all per-skill); `global` removes every per-skill global override. Neither touches the global on/off master (only `/toggle-skills global on\|off` does) |
 | `/use-skill <slug> [text]` | Client | **Invoke**: resolve `<slug>`, carry its rendered `SKILL.md` block on the result as `SystemContext` (committed to history as a **hidden system message** at the send, so an early return can't orphan it), and send the short user ask `Use the <slug> skill. [text]` |
 
 - **Scope-first, required.** The scope (`here`/`global`) is the first token and picks the
@@ -287,8 +287,10 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
   global feature flag is a plain bool with nothing upstream to inherit from), every other
   layer adds `inherit`. `global` edits `skills.json`.
 - **`inherit` vs. `/reset-skills`.** `inherit` unsets a *single* layer so it falls through
-  to the one upstream. The bulk "clear everything at this scope" action lives in
-  `/reset-skills <here|global>` — that is where the old `reset` verb's behavior moved.
+  to the one upstream. The bulk "clear the overrides at this scope" action lives in
+  `/reset-skills <here|global>` — that is where the old `reset` verb's behavior moved. It
+  clears per-skill overrides (and, for `here`, the conversation feature toggle) but never the
+  global on/off master, which only `/toggle-skills global on|off` changes.
 - **Invocation is `/use-skill <slug>`**, not a per-skill `/<slug>` command — the framework's
   registry is built once at startup, so one command per dynamically-discovered skill
   doesn't fit (decision in §11). `/use-skill` attaches the rendered skill body as a **hidden
@@ -400,8 +402,8 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
   shadowing, malformed frontmatter, manifest assembly for a given enabled set.
 - **Skills slash commands** (`SkillCommands`, against a fake `ISlashCommandContext`) —
   `/list-skills` list; `/toggle-skills` and `/toggle-skill <slug>` set on/off/inherit across
-  `here`/`global` scopes (scope-first); `/reset-skills` bulk-clears each scope; `global inherit`
-  on the feature toggle is rejected and points at `/reset-skills`; conversation overrides vs.
+  `here`/`global` scopes (scope-first); `/reset-skills` bulk-clears each scope (leaving the global
+  on/off master alone); `global inherit` on the feature toggle is rejected; conversation overrides vs.
   `skills.json`; bare-slug toggle; per-scope verb completion; unknown slug/scope failures;
   `/use-skill` attaches the body as hidden context + sends a short ask, and works even when disabled.
 - **Conversation override persistence** — `SkillsFeatureOff` + `SkillOverrides`
