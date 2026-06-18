@@ -26,6 +26,9 @@ namespace GxPT
         private const string StopText = "Stop";
         private const string AwaitingText = "Awaiting user...";
 
+        private const string StopTip = "Stop generating";
+        private const string AwaitingTip = "Waiting for tool approval";
+
         public StopGenerationItem()
         {
             this.AutoSize = false;
@@ -47,6 +50,7 @@ namespace GxPT
                 _hover = false;
                 _pressed = false;
                 this.Text = value ? AwaitingText : StopText;
+                this.ToolTipText = value ? AwaitingTip : StopTip;
                 try { this.Width = PreferredWidth(); }
                 catch { }
                 Invalidate();
