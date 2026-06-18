@@ -56,7 +56,7 @@ namespace GxPT
             else _skills.Remove(slug);
         }
 
-        // Clears every per-skill global setting (used by `/toggle-skills reset global`); leaves FeatureOff.
+        // Clears every per-skill global setting (used by `/reset-skills global`); leaves FeatureOff.
         public void ClearSkillOverrides()
         {
             _skills.Clear();

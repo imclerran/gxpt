@@ -29,7 +29,7 @@ namespace GxPT.Tests.Commands
 
             Assert.True(explain.TakesPathArgument);
             Assert.Contains("files", explain.Requires);
-            Assert.Equal("[path]", explain.ArgumentHint);
+            Assert.Equal("<path>", explain.ArgumentHint);
         }
 
         [Fact]

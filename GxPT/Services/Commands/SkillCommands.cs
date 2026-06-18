@@ -5,14 +5,18 @@ using System.Text;
 namespace GxPT
 {
     // Slash commands for the skills feature (design sec.6), built on the existing ISlashCommand framework:
-    //   /list-skills                                    -- list skills and their effective on/off state
-    //   /toggle-skills [on|off|reset] [here|global]     -- toggle/reset the whole feature at that scope
-    //   /toggle-skill <slug> [on|off|reset] [here|global] -- toggle/reset one skill (bare slug toggles)
-    //   /use-skill <slug> [text]                        -- use a skill (body attached as hidden context)
+    //   /list-skills                                          -- list skills and their effective on/off state
+    //   /toggle-skills <here|global> <on|off|inherit>         -- set the whole feature at that scope
+    //   /toggle-skill <slug> <here|global> <on|off|inherit>   -- set one skill (bare slug toggles here)
+    //   /reset-skills <here|global>                           -- clear all skill settings at that scope
+    //   /use-skill <slug> [text]                              -- use a skill (body attached as hidden context)
+    // Scope comes first and is required: it picks the layer the change lands on, and the autocomplete then
+    // offers only the verbs that layer accepts. "inherit" unsets a layer so it falls through to the one
+    // upstream; the global feature toggle is the most upstream layer (a plain bool, always on or off), so
+    // it has no "inherit" -- bulk-clearing global per-skill settings is /reset-skills global instead.
     // Management commands are Client (local, no LLM send); /use-skill sends a short "Use the X skill" ask
-    // and attaches the skill body as a hidden system message (it never enters the transcript). Scope
-    // defaults to "here" (this conversation); "global" edits skills.json. Conversation overrides are
-    // read/written through ISlashCommandContext; the global default through SkillEnablement directly.
+    // and attaches the skill body as a hidden system message (it never enters the transcript). "global"
+    // edits skills.json; conversation overrides are read/written through ISlashCommandContext.
     internal static class SkillCommandShared
     {
         public static IList<ISlashCommand> BuiltIns()
@@ -21,6 +25,7 @@ namespace GxPT
             list.Add(new ListSkillsCommand());
             list.Add(new ToggleSkillsCommand());
             list.Add(new ToggleSkillCommand());
+            list.Add(new ResetSkillsCommand());
             list.Add(new UseSkillCommand());
             return list;
         }
@@ -46,7 +51,7 @@ namespace GxPT
             return SlashArgs.ParseOnOff(token);
         }
 
-        // Recognizes the trailing scope word. Returns false for anything that isn't here/global.
+        // Recognizes the scope word. Returns false for anything that isn't here/global.
         internal static bool TryScope(string token, out bool isGlobal)
         {
             isGlobal = false;
@@ -55,6 +60,26 @@ namespace GxPT
             if (t == "global") { isGlobal = true; return true; }
             if (t == "here") { isGlobal = false; return true; }
             return false;
+        }
+
+        // Parses a mutation verb: on/off yield onOff with a value (isInherit false); "inherit" yields
+        // isInherit true (onOff null). Returns false for anything else.
+        internal static bool TryParseVerb(string token, out bool? onOff, out bool isInherit)
+        {
+            onOff = null;
+            isInherit = false;
+            if (string.IsNullOrEmpty(token)) return false;
+            if (string.Equals(token.Trim(), "inherit", StringComparison.OrdinalIgnoreCase)) { isInherit = true; return true; }
+            onOff = ParseOnOff(token);
+            return onOff.HasValue;
+        }
+
+        // The verbs a scope accepts: global feature settings are a plain on/off, every other layer is
+        // tri-state and also takes "inherit". Drives both validation and autocomplete.
+        internal static string[] VerbsForScope(bool isGlobal, bool isFeature)
+        {
+            if (isGlobal && isFeature) return new string[] { "on", "off" };
+            return new string[] { "on", "off", "inherit" };
         }
 
         // Resolve a user-typed slug (exact, else kebab-normalized) against the catalog.
@@ -158,50 +183,41 @@ namespace GxPT
         }
     }
 
-    // /toggle-skills [on|off|reset] [here|global]   (a verb is required; listing is /list-skills)
+    // /toggle-skills <here|global> <on|off|inherit>   (scope first; global takes only on|off)
     internal sealed class ToggleSkillsCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "toggle-skills"; } }
         public override string Description { get { return "Turn the skills feature on/off"; } }
-        public override string ArgumentHint { get { return "[on|off|reset] [here|global]"; } }
+        public override string ArgumentHint { get { return "<here|global> <on|off|inherit>"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
         {
             string[] tok = SkillCommandShared.Tokens(args);
+            if (tok.Length != 2) // scope + verb, both required; listing is /list-skills
+                return SlashCommandResult.Fail("Usage: /toggle-skills <here|global> <on|off|inherit>");
+
+            bool isGlobal;
+            if (!SkillCommandShared.TryScope(tok[0], out isGlobal))
+                return SlashCommandResult.Fail("Unknown scope '" + tok[0] + "'. Use 'here' or 'global'.");
+
+            bool? onoff;
+            bool isInherit;
+            if (!SkillCommandShared.TryParseVerb(tok[1], out onoff, out isInherit))
+                return SlashCommandResult.Fail("Usage: /toggle-skills <here|global> <on|off|inherit>");
+
             SkillEnablement global = SkillEnablement.LoadGlobal();
-
-            // A verb is required; trailing junk past verb + optional scope is rejected too. (Listing is
-            // /list-skills, not a bare invocation here.)
-            if (tok.Length == 0 || tok.Length > 2)
-                return SlashCommandResult.Fail("Usage: /toggle-skills [on|off|reset] [here|global]");
-
-            bool isGlobal = false;
-            if (tok.Length >= 2 && !SkillCommandShared.TryScope(tok[1], out isGlobal))
-                return SlashCommandResult.Fail("Unknown scope '" + tok[1] + "'. Use 'here' or 'global'.");
-
-            string verb = tok[0].ToLowerInvariant();
             string info;
-            if (verb == "reset")
+            if (isInherit)
             {
+                // The global feature toggle is the most upstream layer (a plain bool), so it has nothing to
+                // inherit from -- there's no "inherit" for it, only on/off.
                 if (isGlobal)
-                {
-                    global.FeatureOff = false;
-                    global.ClearSkillOverrides();
-                    global.SaveGlobal();
-                    info = "Skills: global defaults reset (feature on, no per-skill settings).";
-                }
-                else
-                {
-                    ctx.Skills.ResetConversationSkills();
-                    info = "Skills: cleared this conversation's overrides.";
-                }
+                    return SlashCommandResult.Fail("Global skills are always on or off; use 'on' or 'off'.");
+                ctx.Skills.SetConversationSkillsFeatureOff(null);
+                info = "Skills: this conversation now follows the global default.";
             }
             else
             {
-                bool? onoff = SkillCommandShared.ParseOnOff(verb);
-                if (!onoff.HasValue)
-                    return SlashCommandResult.Fail("Usage: /toggle-skills [on|off|reset] [here|global]");
-
                 bool on = onoff.Value;
                 if (isGlobal) { global.FeatureOff = !on; global.SaveGlobal(); }
                 else { ctx.Skills.SetConversationSkillsFeatureOff(on ? (bool?)false : (bool?)true); }
@@ -220,31 +236,34 @@ namespace GxPT
             int sp = a.IndexOf(' ');
             if (sp < 0)
             {
-                SkillCommandShared.AddMatching(result, new string[] { "on", "off", "reset" }, a, "", true);
+                // First token: the scope, which then narrows the verb choices.
+                SkillCommandShared.AddMatching(result, new string[] { "here", "global" }, a, "", true);
             }
             else
             {
-                string first = a.Substring(0, sp);
+                string scopeTok = a.Substring(0, sp);
                 string rest = a.Substring(sp + 1).TrimStart();
-                SkillCommandShared.AddMatching(result, new string[] { "here", "global" }, rest, first + " ", false);
+                bool isGlobal;
+                if (!SkillCommandShared.TryScope(scopeTok, out isGlobal)) return result; // unknown scope: nothing
+                SkillCommandShared.AddMatching(result, SkillCommandShared.VerbsForScope(isGlobal, true), rest, scopeTok + " ", false);
             }
             return result;
         }
     }
 
-    // /toggle-skill <slug> [on|off|reset] [here|global]   (bare "/toggle-skill <slug>" toggles for this
-    // conversation)
+    // /toggle-skill <slug> <here|global> <on|off|inherit>   (bare "/toggle-skill <slug>" toggles here)
     internal sealed class ToggleSkillCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "toggle-skill"; } }
         public override string Description { get { return "Enable or disable one skill"; } }
-        public override string ArgumentHint { get { return "<slug> [on|off|reset] [here|global]"; } }
+        public override string ArgumentHint { get { return "<slug> <here|global> <on|off|inherit>"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
         {
             string[] tok = SkillCommandShared.Tokens(args);
-            if (tok.Length == 0 || tok.Length > 3) // slug + optional verb + optional scope; no trailing junk
-                return SlashCommandResult.Fail("Usage: /toggle-skill <slug> [on|off|reset] [here|global]");
+            // Either a bare slug (toggle here) or the full slug + scope + verb; nothing in between.
+            if (tok.Length != 1 && tok.Length != 3)
+                return SlashCommandResult.Fail("Usage: /toggle-skill <slug> <here|global> <on|off|inherit>");
 
             SkillCatalog cat = SkillCommandShared.BuildCatalog(ctx);
             Skill skill;
@@ -265,22 +284,22 @@ namespace GxPT
             }
             else
             {
-                bool isGlobal = false;
-                if (tok.Length >= 3 && !SkillCommandShared.TryScope(tok[2], out isGlobal))
-                    return SlashCommandResult.Fail("Unknown scope '" + tok[2] + "'. Use 'here' or 'global'.");
+                bool isGlobal;
+                if (!SkillCommandShared.TryScope(tok[1], out isGlobal))
+                    return SlashCommandResult.Fail("Unknown scope '" + tok[1] + "'. Use 'here' or 'global'.");
 
-                string verb = tok[1].ToLowerInvariant();
-                if (verb == "reset")
+                bool? onoff;
+                bool isInherit;
+                if (!SkillCommandShared.TryParseVerb(tok[2], out onoff, out isInherit))
+                    return SlashCommandResult.Fail("Usage: /toggle-skill <slug> <here|global> <on|off|inherit>");
+
+                if (isInherit)
                 {
-                    if (isGlobal) { global.SetSkillOverride(slug, null); global.SaveGlobal(); info = "Skill '" + slug + "': global setting cleared."; }
-                    else { ctx.Skills.SetConversationSkillOverride(slug, null); info = "Skill '" + slug + "': conversation override cleared."; }
+                    if (isGlobal) { global.SetSkillOverride(slug, null); global.SaveGlobal(); info = "Skill '" + slug + "': global setting cleared (inherits the feature default)."; }
+                    else { ctx.Skills.SetConversationSkillOverride(slug, null); info = "Skill '" + slug + "': conversation setting cleared (inherits the global default)."; }
                 }
                 else
                 {
-                    bool? onoff = SkillCommandShared.ParseOnOff(verb);
-                    if (!onoff.HasValue)
-                        return SlashCommandResult.Fail("Usage: /toggle-skill <slug> [on|off|reset] [here|global]");
-
                     bool on = onoff.Value;
                     if (isGlobal) { global.SetSkillOverride(slug, on); global.SaveGlobal(); }
                     else { ctx.Skills.SetConversationSkillOverride(slug, on); }
@@ -318,17 +337,71 @@ namespace GxPT
                 int sp2 = a.IndexOf(' ', sp + 1);
                 if (sp2 < 0)
                 {
+                    // Second token: the scope, which then narrows the verb choices.
                     string slug = a.Substring(0, sp);
                     string rest = a.Substring(sp + 1).TrimStart();
-                    SkillCommandShared.AddMatching(result, new string[] { "on", "off", "reset" }, rest, slug + " ", true);
+                    SkillCommandShared.AddMatching(result, new string[] { "here", "global" }, rest, slug + " ", true);
                 }
                 else
                 {
-                    string head = a.Substring(0, sp2);
+                    string head = a.Substring(0, sp2);            // "<slug> <scope>"
+                    string scopeTok = a.Substring(sp + 1, sp2 - sp - 1);
                     string rest = a.Substring(sp2 + 1).TrimStart();
-                    SkillCommandShared.AddMatching(result, new string[] { "here", "global" }, rest, head + " ", false);
+                    bool isGlobal;
+                    if (!SkillCommandShared.TryScope(scopeTok, out isGlobal)) return result; // unknown scope: nothing
+                    SkillCommandShared.AddMatching(result, SkillCommandShared.VerbsForScope(isGlobal, false), rest, head + " ", false);
                 }
             }
+            return result;
+        }
+    }
+
+    // /reset-skills <here|global> -- clear skill settings at that scope (the bulk action that used to ride
+    // on the feature command's "reset"). "here" drops all of this conversation's overrides -- its feature
+    // on/off and every per-skill override -- so it follows global again; "global" removes every per-skill
+    // global override. Neither touches the global on/off master; that is only /toggle-skills global on|off.
+    internal sealed class ResetSkillsCommand : ClientCommandBase, IArgumentCompleter
+    {
+        public override string Name { get { return "reset-skills"; } }
+        public override string Description { get { return "Clear all skill settings at a scope"; } }
+        public override string ArgumentHint { get { return "<here|global>"; } }
+
+        public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
+        {
+            string[] tok = SkillCommandShared.Tokens(args);
+            if (tok.Length != 1)
+                return SlashCommandResult.Fail("Usage: /reset-skills <here|global>");
+
+            bool isGlobal;
+            if (!SkillCommandShared.TryScope(tok[0], out isGlobal))
+                return SlashCommandResult.Fail("Unknown scope '" + tok[0] + "'. Use 'here' or 'global'.");
+
+            string info;
+            if (isGlobal)
+            {
+                // Per-skill global overrides only; the on/off master (FeatureOff) is left as-is.
+                SkillEnablement global = SkillEnablement.LoadGlobal();
+                global.ClearSkillOverrides();
+                global.SaveGlobal();
+                info = "Skills: all per-skill global settings cleared.";
+            }
+            else
+            {
+                ctx.Skills.ResetConversationSkills();
+                info = "Skills: cleared all of this conversation's overrides.";
+            }
+
+            ctx.Skills.RefreshSkillsServer();
+            ctx.WriteInfo(info);
+            return SlashCommandResult.Handled();
+        }
+
+        public IList<ArgCompletion> CompleteArgument(string argText, ISlashCommandContext ctx)
+        {
+            List<ArgCompletion> result = new List<ArgCompletion>();
+            string a = argText ?? string.Empty;
+            if (a.IndexOf(' ') >= 0) return result; // single argument
+            SkillCommandShared.AddMatching(result, new string[] { "here", "global" }, a, "", false);
             return result;
         }
     }

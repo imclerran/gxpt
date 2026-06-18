@@ -43,7 +43,7 @@ namespace GxPT
       ""type"": ""prompt"",
       ""name"": ""explain"",
       ""description"": ""Read a file or folder and explain what it does"",
-      ""argument_hint"": ""[path]"",
+      ""argument_hint"": ""<path>"",
       ""arg_type"": ""path"",
       ""requires"": [""files""],
       ""template"": ""Read `{args}` and explain what it does, its key types, and how it fits into the rest of the project.""

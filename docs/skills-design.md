@@ -276,13 +276,21 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
 | Command | Kind | Effect |
 |---------|------|--------|
 | `/list-skills` | Client | List skills with effective on/off state and source (global default vs. this conversation) |
-| `/toggle-skills [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`); a verb is required |
-| `/toggle-skill <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one skill**; bare `/toggle-skill <slug>` toggles for this conversation |
+| `/toggle-skills <here\|global> <on\|off\|inherit>` | Client | Set the **whole feature** at that scope. `global` takes only `on\|off` (it is the most upstream layer); `here` also takes `inherit` (unset → follow global) |
+| `/toggle-skill <slug> <here\|global> <on\|off\|inherit>` | Client | Set **one skill** at that scope (both scopes tri-state, so both take `inherit`); bare `/toggle-skill <slug>` toggles for this conversation |
+| `/reset-skills <here\|global>` | Client | Clear skill settings at that scope: `here` drops every conversation override (its feature on/off and all per-skill); `global` removes every per-skill global override. Neither touches the global on/off master (only `/toggle-skills global on\|off` does) |
 | `/use-skill <slug> [text]` | Client | **Invoke**: resolve `<slug>`, carry its rendered `SKILL.md` block on the result as `SystemContext` (committed to history as a **hidden system message** at the send, so an early return can't orphan it), and send the short user ask `Use the <slug> skill. [text]` |
 
-- **Slug-first** for `/toggle-skill`, mirroring `/toggle-tool <name> [on|off]`; the verb
-  (`on|off|reset`) is the optional second token, scope (`here`/`global`) the optional
-  third. Scope defaults to `here`; `global` edits `skills.json`.
+- **Scope-first, required.** The scope (`here`/`global`) is the first token and picks the
+  layer the change lands on; the verb follows. This lets autocomplete offer only the verbs
+  that layer accepts — `global` on the feature toggle is `on|off` (no `inherit`, since the
+  global feature flag is a plain bool with nothing upstream to inherit from), every other
+  layer adds `inherit`. `global` edits `skills.json`.
+- **`inherit` vs. `/reset-skills`.** `inherit` unsets a *single* layer so it falls through
+  to the one upstream. The bulk "clear the overrides at this scope" action lives in
+  `/reset-skills <here|global>` — that is where the old `reset` verb's behavior moved. It
+  clears per-skill overrides (and, for `here`, the conversation feature toggle) but never the
+  global on/off master, which only `/toggle-skills global on|off` changes.
 - **Invocation is `/use-skill <slug>`**, not a per-skill `/<slug>` command — the framework's
   registry is built once at startup, so one command per dynamically-discovered skill
   doesn't fit (decision in §11). `/use-skill` attaches the rendered skill body as a **hidden
@@ -297,11 +305,11 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
   changes go straight to `SkillEnablement` (`skills.json`). Both take effect on the
   next message (the manifest/enabled set is recomputed per send).
 - **Autocomplete:** `/toggle-skill` and `/use-skill` complete slugs (annotated with state)
-  via `IArgumentCompleter`; `/toggle-skill`/`/toggle-skills` then complete `on|off|reset`
-  and `here|global`. Each level's accepted value carries a trailing space so the popup
-  advances to the next level immediately (no manual space needed).
-  Command-name completion is hyphen-aware: a typed prefix anchors at the start of a name
-  or just after any `-`, so `/skill` surfaces `/toggle-skill`, `/toggle-skills`, etc.
+  via `IArgumentCompleter`; `/toggle-skills`/`/toggle-skill` then complete `here|global`
+  and, scoped to that choice, `on|off[|inherit]`. Each level's accepted value carries a
+  trailing space so the popup advances to the next level immediately (no manual space
+  needed). Command-name completion is hyphen-aware: a typed prefix anchors at the start of
+  a name or just after any `-`, so `/skill` surfaces `/toggle-skill`, `/toggle-skills`, etc.
 
 ---
 
@@ -315,11 +323,13 @@ which was the bug). Everything defaults to **on**.
 ### The controls (2×2)
 |  | **Global** (`skills.json`) | **This conversation** (`Conversation`) |
 |---|---|---|
-| **All skills** | `/toggle-skills on\|off global` → `feature_off` | `/toggle-skills on\|off` → `SkillsFeatureOff` |
-| **One skill** | `/toggle-skill X on\|off global` → `skills[X]` | `/toggle-skill X on\|off` → `SkillOverrides[X]` |
+| **All skills** | `/toggle-skills global on\|off` → `feature_off` | `/toggle-skills here on\|off\|inherit` → `SkillsFeatureOff` |
+| **One skill** | `/toggle-skill X global on\|off\|inherit` → `skills[X]` | `/toggle-skill X here on\|off\|inherit` → `SkillOverrides[X]` |
 
-All four are **tri-state where applicable** (set / unset = inherit). `reset` clears a
-cell so it falls through to the next rule.
+Three of the four cells are **tri-state** (set / unset = inherit); `inherit` clears that one
+cell so it falls through to the next rule. The exception is **all-skills / global**
+(`feature_off`), a plain bool that is the most upstream layer — it is always `on` or `off`,
+with no `inherit`. Clearing a whole scope at once is `/reset-skills <here|global>`.
 
 ### Resolution ladder (effective state of skill X in conversation C)
 Take the first rule that has been set:
@@ -391,10 +401,11 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
 - **`SkillCatalog` + frontmatter parser** — discovery, project-over-bundled
   shadowing, malformed frontmatter, manifest assembly for a given enabled set.
 - **Skills slash commands** (`SkillCommands`, against a fake `ISlashCommandContext`) —
-  `/list-skills` list, `/toggle-skills` toggle/reset, and `/toggle-skill <slug>` toggle/reset
-  across `here`/`global` scopes; conversation overrides vs. `skills.json`; bare-slug toggle;
-  unknown slug/scope failures; `/use-skill` attaches the body as hidden context + sends a short ask,
-  and works even when disabled.
+  `/list-skills` list; `/toggle-skills` and `/toggle-skill <slug>` set on/off/inherit across
+  `here`/`global` scopes (scope-first); `/reset-skills` bulk-clears each scope (leaving the global
+  on/off master alone); `global inherit` on the feature toggle is rejected; conversation overrides vs.
+  `skills.json`; bare-slug toggle; per-scope verb completion; unknown slug/scope failures;
+  `/use-skill` attaches the body as hidden context + sends a short ask, and works even when disabled.
 - **Conversation override persistence** — `SkillsFeatureOff` + `SkillOverrides`
   round-trip through `ConversationStore`; missing fields default to inherit/empty.
 - **Enablement resolution** — the two-layer precedence: conversation override beats
@@ -422,7 +433,7 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
    asset listing as the tool result.
 4. **`read_skill_file` meta-tool** (ReadOnly) for Level-3 assets.
 5. **Skills slash commands** on the existing `ISlashCommand` framework
-   (`SkillCommands`: `/list-skills`, `/toggle-skills`, `/toggle-skill <slug>`, `/use-skill <slug>`) + per-conversation
+   (`SkillCommands`: `/list-skills`, `/toggle-skills`, `/toggle-skill <slug>`, `/reset-skills`, `/use-skill <slug>`) + per-conversation
    override fields on `Conversation`/`ConversationStore` + global `skills.json`
    enablement. *(Split: 4a = enablement core + gating; 4b = the commands.)*
 6. **`SkillsMcpServer` scaffold + `run_skill_script`**: batch-only entry, handle
