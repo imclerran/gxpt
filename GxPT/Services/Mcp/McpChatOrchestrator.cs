@@ -202,7 +202,7 @@ namespace GxPT
 
         // When there is no user WorkingDir, the per-conversation SCRATCH directory the command server
         // runs in (folderless conversations with the opt-in scratch-command feature). Used ONLY to
-        // resolve and expose workdir-scoped tools (the command server) — never for the workspace prompt
+        // resolve and expose workdir-scoped tools (the command server) - never for the workspace prompt
         // block, which stays absent so a scratch turn is not presented as a real workspace. Instead a
         // distinct scratch-sandbox note (ScratchSystemMessage) tells the model about the temp dir. Null
         // when not applicable (a real workspace is set, or the feature is off).

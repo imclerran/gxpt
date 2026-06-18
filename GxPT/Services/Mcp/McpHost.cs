@@ -170,7 +170,7 @@ namespace GxPT
         }
 
         // Ensure the SCRATCH server set for `workdir` is running: like EnsureWorkingDir, but only the
-        // scratch-eligible scoped specs (the command server) launch here — files/git/msbuild require a
+        // scratch-eligible scoped specs (the command server) launch here - files/git/msbuild require a
         // real workspace and are skipped. Used for folderless conversations whose command server runs in
         // a per-conversation scratch dir. The directory must already exist (it becomes the child's CWD).
         // Idempotent; a null/empty workdir is a no-op.

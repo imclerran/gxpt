@@ -30,7 +30,7 @@ namespace GxPT
 
         // For a WorkdirScoped server, eligible to run in a per-conversation SCRATCH working directory
         // when the user has no workspace set (the command server uses this). A scratch dir launches
-        // ONLY the scoped specs flagged here — files/git/msbuild require a real workspace and stay off.
+        // ONLY the scoped specs flagged here - files/git/msbuild require a real workspace and stay off.
         // Ignored when not WorkdirScoped. The host decides whether scratch dirs are used at all (opt-in
         // setting); this flag only says "this server is allowed there".
         public bool RunsInScratch;

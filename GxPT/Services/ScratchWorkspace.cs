@@ -7,7 +7,7 @@ namespace GxPT
     // Per-conversation scratch working directories for the command MCP server when no workspace is
     // set. Each folderless conversation that uses the command server gets its own sandbox at
     // %AppData%/GxPT/scratch/<conversation_id>, which becomes the command server's GXPT_WORKDIR. Only
-    // the command server runs here — files/git/msbuild require a real workspace and stay off. Scratch
+    // the command server runs here - files/git/msbuild require a real workspace and stay off. Scratch
     // directories are transient: they are removed when the conversation is deleted or when the
     // application closes (whichever comes first), so nothing here is meant to persist. The "scratch"
     // parent folder keeps these dirs from colliding with real GxPT data (Conversations/skills/mcp.json)
@@ -23,7 +23,7 @@ namespace GxPT
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // True when the scratch-command feature is on: the command server is enabled AND the user has
-        // opted into running it in a scratch dir when no workspace is set. Both gates matter — a
+        // opted into running it in a scratch dir when no workspace is set. Both gates matter - a
         // scratch dir is only useful if the command server will actually launch in it.
         public static bool IsEnabled()
         {

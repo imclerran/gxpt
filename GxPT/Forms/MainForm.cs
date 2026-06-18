@@ -658,8 +658,8 @@ namespace GxPT
 
         // The per-conversation scratch directory used to run the command server when this conversation
         // has no workspace and the scratch-command feature is enabled (opt-in); null otherwise (a real
-        // workspace takes precedence, or the feature is off). When create is true the directory — and
-        // the conversation id it is keyed by — is materialized; when false a missing id/dir yields a
+        // workspace takes precedence, or the feature is off). When create is true the directory - and
+        // the conversation id it is keyed by - is materialized; when false a missing id/dir yields a
         // path without side effects (for read-only callers like the tab reconcile / status bar).
         private string ScratchDirForContext(TabManager.ChatTabContext ctx, bool create)
         {
@@ -677,7 +677,7 @@ namespace GxPT
 
         // The working directory used to RESOLVE workdir-scoped MCP tools for a tab (status bar count,
         // turn routing): the user workspace if set, else this conversation's already-created scratch dir
-        // (command server only). Null when neither applies. Read-only — never creates a dir or an id, so
+        // (command server only). Null when neither applies. Read-only - never creates a dir or an id, so
         // the scratch path counts only once a turn has actually materialized it.
         private string ResolutionWorkdirForContext(TabManager.ChatTabContext ctx)
         {
