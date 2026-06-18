@@ -5,8 +5,7 @@
 **Last updated:** 2026-06-18 (reconciled with PR #154 — workspace-wide file
 approval + flag-insensitive command-signature rules, see §7–§8; refined against
 OpenMonoAgent.ai prior art read **from source** — `max_turns`, periodic doom-loop
-detection, wildcard allowlists; and fully-concurrent agents with a file-grain
-write-conflict lock, see §9, §13, and A9/A10/A17–A20)
+detection, wildcard allowlists, and read/write-aware fan-out, see §13 and A9/A17–A19)
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
@@ -82,9 +81,8 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A6 | **`description` is the dispatch trigger** — a single "use this agent when…" line, the only thing in the always-on manifest | Identical to skills' `description` (S4): it is what the parent model reads to decide *whether* to delegate and *which* agent. Names-only-plus-one-liner keeps the manifest cheap (§4). |
 | A7 | **Only the final answer crosses back; no streaming into the parent** | Streaming a sub-agent's intermediate tool chatter into the parent re-imports the context cost the firewall exists to remove (A3). The sub-agent's live output still renders in the transcript UI (its own collapsible block, §9) so the user sees it — it just isn't fed to the *parent model*. |
 | A8 | **A dispatch is one-shot within the parent's turn** (no resumable agent sessions) | Keeps state trivial: the sub-orchestrator is a local object on a worker thread, joined before the parent's `dispatch_agent` tool result is formed. Resumable agents would need persisted sub-histories and a handle scheme — deferred until a real need appears. |
-| A9 | **`dispatch_agent` is batch** (`agents: [{name, task}, …]`); **all children run concurrently** (bounded by `MaxParallelAgents`), **write-capable agents included** | The parent fans out in one tool call; the host joins. Agents are independent workers — serializing them because one *can* write throws away the whole point (the user's explicit requirement). Concurrency is real for every tier; the only thing that must not happen is two agents mutating the **same file** at once, and that is prevented at the file grain by the write-conflict model (A20), **not** by blocking write-agents. (This deliberately goes *beyond* OpenMono, whose `AgentTool` dispatches sub-agents serially — see §13.) |
-| A10 | **Each concurrent child gets its own connection to workdir-scoped servers** (files/git/command); **revealed-tool state is per-sub-agent** | `McpServerConnection` is single-flight (id-correlated, serial dispatch), so a *shared* connection would funnel all children's tool I/O through one pipe — fine for the LLM-overlap win, but it needlessly serializes independent work. Giving each child its own scoped-server connection (≤ `MaxParallelAgents`, so ≤ ~3 extra stdio processes) lets different-file work truly overlap; cross-agent safety then rides the host-level lock (A20), not the transport. Each sub-agent also owns its own `RevealedToolNames` list (fresh context), so no agent churns another's tools array (prompt-cache safety, the per-tab rule). |
-| A20 | **Write-conflict model: a host-level lock manager, acquired per tool call, never held across calls** (deadlock-free). Path-scoped writes (`files__write/edit/delete`) lock the **canonical target path**; non-path mutators (`git__*` writes, `command__run`) lock the **workspace root**; ReadOnly tools never lock | This is what makes "concurrent agents, but not on the same file" precise. Two `files__edit` calls to *different* files run in parallel; two to the *same* canonical path serialize (the second waits). Coarse mutators with no single path (git index, arbitrary shell) can't safely interleave at all, so they take the workspace-root key — serializing repo/shell mutations against each other and against file writes in that workspace, while readers and different-workspace agents proceed. Per-call acquisition (release the instant the call returns) means no agent ever holds one lock while waiting on another, so the fan-out cannot deadlock. The lock key reuses the canonical-path normalization the approval store already uses (PR #154 / `PathSandbox`), so locks and remembered approvals agree on file identity. |
+| A9 | **`dispatch_agent` is batch** (`agents: [{name, task}, …]`); a batch runs **in parallel** when every named agent is **read-only** (`max_tier: readonly`), else **serially** | The parent fans out in one tool call; the host joins. Parallelism overlaps the expensive part (LLM streams). But two *write*-capable children racing the same workspace can corrupt it logically even with per-connection transport serialization (A10), so a batch with any writer serializes — "reads parallel, writes serial" (OpenMono's intra-turn tool rule) lifted to the **agent** grain. (Per the OpenMono source, `AgentTool` defaults non-concurrency-safe and dispatches **serially**; our parallel read-only fan-out is a deliberate, bounded extension, not a port.) |
+| A10 | **Shared MCP server connections are serialized per-connection** under a lock; **revealed-tool state is per-sub-agent** | `McpServerConnection` correlates by request id and the server SDK dispatches serially; concurrent `CallTool` on one connection is unsafe, so a per-connection mutex serializes tool I/O while model streams still overlap. Each sub-agent owns its own `RevealedToolNames` list (fresh context), so no agent churns another's tools array (prompt-cache safety, already the per-tab rule). |
 | A11 | **Effective tools = `allowlist` ∩ `parent-available` ∩ `max_tier`** — a sub-agent can never exceed the parent's own reach | No privilege escalation: delegating cannot grant a capability the parent itself lacks in this workspace (e.g. a folderless turn's sub-agent still can't reach `files__*`). The allowlist *narrows*; it never widens. |
 | A12 | **`dispatch_agent` is never in a sub-agent's tool set** | One level of delegation only — structurally prevents recursive fan-out / fork bombs and unbounded cost. Enforced by the host (the dispatcher strips it from every child's exposed defs), not by author discipline. |
 | A13 | **The approval gate is fully in force for every sub-agent tool call**, with the **shared** remembered-allowlist and per-tab prompt host | The sub-agent isn't a trust upgrade: a Destructive call it makes still always-confirms, an unremembered Write still prompts. Prompts marshal to the parent tab's `ToolApprovalPanel` (the existing `Control.Invoke` path), attributed to the agent. This is the backstop that makes autonomy safe (§8, layer 2). |
@@ -459,26 +457,23 @@ GxPT already runs each tab's turn on a `ThreadPool` worker thread, with the
 orchestrator built fresh and explicitly documented un-shared. Parallel sub-agents
 extend that, not rework it.
 
-- **Fan-out (A9): every child runs concurrently, write agents included.** A batch
-  queues N `ThreadPool` work items (bounded to `MaxParallelAgents`, default 3 — a
-  named constant), each running a child `RunTurn` to completion, joined on a countdown
-  before the tool result forms. There is **no tier-based serialization** — a coder
-  and a reviewer fan out together; the only constraint is that two agents can't mutate
-  the *same file* at once (A20), which is enforced per call, not by holding back the
-  agent. The parent worker thread blocks on the join — the same "turn pauses, user
-  present-or-away" model the gate already uses.
-- **Two wins, two grains.** Overlapping **LLM streams** is the big latency win and is
-  unconditional (independent, no shared state). Overlapping **tool I/O** comes from
-  giving each child its own connection to the workdir-scoped servers (A10), so
-  different-file reads/writes don't queue behind one pipe.
-- **Write-conflict safety is the host lock manager (A20), not transport.** Each
-  path-scoped write/edit/delete acquires the **canonical-path** lock for the duration
-  of that one call; different files never block each other, the same file serializes,
-  and per-call acquisition (no lock held across calls) makes deadlock impossible.
-  Repo/shell mutators (`git__*` writes, `command__run`) take the **workspace-root**
-  key, since their blast radius isn't a single path and git's own index tolerates no
-  concurrency. Readers never lock. So "agents run concurrently, but never edit the
-  same file simultaneously" holds exactly, with maximum overlap everywhere else.
+- **Fan-out, read/write-aware (A9):** a batch where **every** named agent is
+  read-only (`max_tier: readonly`) queues N `ThreadPool` work items (bounded to
+  `MaxParallelAgents`, default 3 — a named constant), each running a child `RunTurn`
+  to completion, joined on a countdown before the tool result forms. A batch that
+  includes **any write-capable agent runs serially** instead — two writers racing the
+  same workspace can produce a logically inconsistent tree even when individual calls
+  are transport-serialized (A10), so concurrency is restricted to the provably-safe
+  read-only case (OpenMono's "reads parallel, writes serial," at the agent grain).
+  Either way the parent worker thread blocks on the join — the same "turn pauses,
+  user present-or-away" model the gate already uses.
+- **The win is overlapping LLM streams**, the turn's real latency. Tool I/O to a
+  **shared** MCP server connection is *also* serialized by a **per-connection mutex**
+  (A10): `McpServerConnection` correlates by id and the server SDK dispatches
+  serially, so concurrent `CallTool` on one connection is unsafe — the lock makes two
+  read-only agents take turns at the file server while their *model* calls still run
+  concurrently. (The mutex protects *transport*; the A9 read-only rule protects
+  *workspace logical consistency* — two distinct concerns, both needed.)
 - **Prompt caching is unaffected:** each child owns a *fresh* `RevealedToolNames`
   and a fresh transcript, so no child churns another's tools array (the per-tab
   invariant, generalized).
@@ -498,8 +493,7 @@ extend that, not rework it.
   **periodic doom-loop detection** (A18) aborts a child stuck in a repeating *cycle*
   (not just a single repeated call) rather than draining the whole budget. Together these make an
   `auto-readonly`, write-granted fan-out safe to leave running: bounded breadth
-  (allowlist/tier), bounded depth (`max_turns`), bounded repetition (doom-loop),
-  bounded concurrency (`MaxParallelAgents`) with same-file races impossible (A20), and
+  (allowlist/tier), bounded depth (`max_turns`), bounded repetition (doom-loop), and
   the always-confirm gate on anything destructive.
 
 ---
@@ -521,13 +515,8 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   period 1–4 over the recent `name:normalized-args` signature window (≥3× for period 1,
   ≥2× for longer — A18) aborts with a wrap-up, catching A→B→A→B oscillations and not
   just A→A→A; the abort returns as content, never a throw.
-- **Concurrency + write-conflict model (A9/A20)** — a mixed read/write batch runs all
-  children concurrently (asserted by overlapping execution); two `files__edit` calls to
-  **different** paths proceed in parallel while two to the **same** canonical path
-  serialize (one waits); `git__*`-write / `command__run` calls serialize on the
-  workspace-root key; ReadOnly calls never block; per-call lock release ⇒ no deadlock
-  even with crossed acquisition order; lock keys match the approval store's canonical
-  path identity.
+- **Read/write fan-out gating** — an all-read-only batch runs children concurrently;
+  a batch with any write-capable agent serializes (A9), asserted by execution order.
 - **Agent slash commands** (`AgentCommands` vs. a fake `ISlashCommandContext`) —
   list/toggle/reset across here/global; conversation override vs. `agents.json`;
   default-OFF feature; `/agent <slug> <task>` sends the hidden dispatch instruction;
@@ -567,10 +556,8 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
 6. **Agent slash commands** on the `ISlashCommand` framework (`/agents`,
    `/agent <slug> …`, `/agent <slug> <task>`) + per-conversation override fields on
    `Conversation`/`ConversationStore` + global `agents.json` (5-rung ladder).
-7. **Concurrent fan-out** — batch `dispatch_agent`, bounded `ThreadPool` execution of
-   all children (write agents included), per-agent scoped-server connections (A10),
-   the host **write-conflict lock manager** (A20: canonical-path + workspace-root keys,
-   per-call), cancellation propagation, usage aggregation.
+7. **Parallel fan-out** — batch `dispatch_agent`, bounded `ThreadPool` execution,
+   per-connection mutex, cancellation propagation, usage aggregation.
 8. **Transcript UI** — collapsible per-child agent blocks (live tool activity shown,
    not fed to the parent), collapsing to the returned summary.
 9. **Bundled agents + deploy** — ship a starter suite via an `agents/` source folder
@@ -599,24 +586,24 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   ceremony while Destructive stays explicit.
 - **`MaxParallelAgents`** — *lean 3* (named constant, tunable), balancing latency
   win against API/thread pressure on XP-era hardware.
-- **Per-agent scoped-server connections (A10)** — *lean yes*: each concurrent child
-  gets its own files/git/command connection (≤ `MaxParallelAgents` extra stdio
-  processes) so different-file tool I/O overlaps. The cheaper alternative — one shared
-  connection, tool calls serialized on it (only LLM overlaps) — stays the fallback if
-  process count proves heavy on XP; the A20 lock is correct either way (it just has
-  less to do when the transport already serializes).
-- **Write-conflict lock granularity (A20)** — *lean canonical-file + workspace-root*.
-  A middle option (directory-boundary locks) was considered but rejected: it would
-  block edits to unrelated files in a busy folder. File-grain maximizes overlap; the
-  workspace-root key is reserved for mutators with no single path (git/shell). Residual
-  *logical* conflict (two agents editing the same file across separate calls based on
-  stale reads) is accepted — locks are per-call, not per-turn transactions — and is
-  rare by construction, since the dispatcher hands children **disjoint** tasks.
 - **Explicit `/agent <slug> <task>` routing** — *lean route-through-the-model*
   (a real gated `dispatch_agent` call) rather than a direct host spawn, so there's
   exactly one spawning path and it's always gated/recorded.
 
 **Deferred:**
+- **Concurrent *write* agents via disjoint sub-workdirs.** Considered and set aside in
+  favor of the simpler **read-concurrent / write-serial** rule (A9). The idea: give
+  each write-child its own sub-workdir (write-root) under the parent — reusing the
+  existing per-workdir `PathSandbox`/`EnsureWorkingDir` routing — so two writers in
+  disjoint subtrees can't touch the same file by construction, no lock manager. It is
+  genuinely attractive (and a smaller blast radius too), but it carries real residual
+  complexity that isn't worth it yet: a filesystem subtree doesn't partition **git**
+  (one `.git` at the repo root) or contain **`command__run`** (a shell escapes its cwd),
+  writers still need to *read* up-tree (asymmetric read-root/write-root scoping), and
+  the host must verify the chosen sub-workdirs are pairwise disjoint at dispatch.
+  Serializing write-agents avoids all of it. Revisit if a real workflow needs several
+  writers at once and the disjoint-subtree contract (incl. the parent doing repo-level
+  git after the join) proves clean enough to adopt.
 - **Nested delegation** (an agent dispatching agents) — structurally blocked (A12);
   revisit only with a hard depth cap and cost budget if a real workflow needs it.
 - **Resumable / multi-turn agents** — today a dispatch is one-shot within the
@@ -681,19 +668,17 @@ really a 2-stage read-parallel/write-serial dispatcher).
   PR #154's workspace-write/command-signature grants extend it cleanly. A
   capability-object refactor is a large change for marginal gain here — noted, not
   adopted.
-- **We run sub-agents concurrently — including write agents — where OpenMono runs
-  them serially.** The source shows OpenMono parallelizes **tools within one turn**
-  (`ToolDispatcher` splits calls on `tool.IsReadOnly && tool.IsConcurrencySafe` →
-  `Task.WhenAll`, writes after) but dispatches **sub-agents serially** (`AgentTool`
-  extends `ToolBase`, which defaults both flags `false`, so a spawn lands in the serial
-  write-group). GxPT can't do the intra-turn tool part — net35 has no `async`/`Task`
-  and the loop is *deliberately serial* (`mcp35-toolloop-spec.md` §6) — but it can and
-  **does** run the *agents* concurrently at every tier (§9, A9), which is the higher-
-  value axis here. We borrow OpenMono's "writes must not collide" instinct but enforce
-  it at the **file grain** (A20: a per-canonical-path lock, with a workspace-root key
-  for git/shell mutators) rather than by serializing whole write-agents — so two coders
-  on different files overlap fully, two on the same file take turns, and nothing
-  deadlocks (per-call locks). This is a deliberate, supported divergence, not a port.
+- **The parallelism axis is opposite, by design.** The source shows OpenMono
+  parallelizes **tools within one turn** (`ToolDispatcher` splits calls on
+  `tool.IsReadOnly && tool.IsConcurrencySafe` → `Task.WhenAll`, writes after) but
+  dispatches **sub-agents serially** (`AgentTool` extends `ToolBase`, which defaults
+  both flags `false`, so a spawn lands in the serial write-group). GxPT can't do the
+  intra-turn part — net35 has no `async`/`Task` and the loop is *deliberately serial*
+  (`mcp35-toolloop-spec.md` §6) — so we take the **agent**-grain version instead:
+  parallel read-only *children* (§9, A9). Same governing principle ("reads parallel,
+  writes serial"), applied one level up — and our read-only fan-out is genuinely
+  *more* concurrent than OpenMono's serial agents, which the read/write gate (A9) +
+  per-connection mutex (A10) keep safe.
 - **Agents are files, not hardcoded records.** OpenMono's agents are C# records in a
   static `BuiltInAgents.All` dictionary — type-safe and simple, but only the authors
   can add one. We keep the **markdown-file** model (the skills/Claude-Code convention,
