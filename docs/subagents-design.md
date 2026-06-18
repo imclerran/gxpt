@@ -7,7 +7,9 @@ approval + flag-insensitive command-signature rules, see §7–§8; refined agai
 OpenMonoAgent.ai prior art read **from source** — `max_turns`, periodic doom-loop
 detection, wildcard allowlists, and read-concurrent/write-serial fan-out, see §13 and
 A9/A17–A19; added running-agents observability — in-transcript dispatch panel + a
-`Stop N agents` button (stop-all, v1) — see §14 and A20)
+`Stop N agents` button (stop-all, v1) — see §14 and A20; aligned slash commands to
+PR #156's verb-first hyphen-prefixed style — `/list-agents`, `/toggle-agents`,
+`/toggle-agent`, `/dispatch-agent` — see §6)
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
@@ -56,9 +58,10 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 - **Host-native dispatch, no new server.** `dispatch_agent` is a host-synthesized
   meta-tool handled in the orchestrator — the skills `open_skill` precedent (S1):
   spawning an in-process loop is not a child process, so it needs no `…McpServer`.
-- **Slash commands, no settings-page UI** — `/agents`, `/agent <slug> …`, and an
-  explicit `/agent <slug> <task>` dispatch, on the existing `ISlashCommand`
-  framework, scoped per conversation, mirroring `/skills`.
+- **Slash commands, no settings-page UI** — `/list-agents`, `/toggle-agents`,
+  `/toggle-agent <slug> …`, and an explicit `/dispatch-agent <slug> <task>`, on the
+  existing `ISlashCommand` framework, scoped per conversation, in the verb-first
+  hyphen-prefixed style PR #156 set for skills (`/list-skills`, `/toggle-skill`, …).
 
 ### Non-goals
 - **Nested fan-out.** A sub-agent never gets `dispatch_agent` in its tool set — no
@@ -89,7 +92,7 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A12 | **`dispatch_agent` is never in a sub-agent's tool set** | One level of delegation only — structurally prevents recursive fan-out / fork bombs and unbounded cost. Enforced by the host (the dispatcher strips it from every child's exposed defs), not by author discipline. |
 | A13 | **The approval gate is fully in force for every sub-agent tool call**, with the **shared** remembered-allowlist and per-tab prompt host | The sub-agent isn't a trust upgrade: a Destructive call it makes still always-confirms, an unremembered Write still prompts. Prompts marshal to the parent tab's `ToolApprovalPanel` (the existing `Control.Invoke` path), attributed to the agent. This is the backstop that makes autonomy safe (§8, layer 2). |
 | A14 | **Autonomy is a per-agent dial** (`gated` \| `auto-readonly`), approved **once at dispatch** (remember by agent name), bounded by `max_tier` | "Leeway to act autonomously" without surrendering the gate: an `auto-readonly` research agent, approved once, runs a long read-only dig unattended; the moment it reaches for Write/Destructive it re-enters the normal gate. The grant can't exceed the tier ceiling, and Write/Destructive never auto-approve from a dial (only an exact remembered rule does). |
-| A15 | **Enablement reuses the skills tri-state ladder** (`/agents`, `/agent <slug> on\|off\|reset [here\|global]`), default **OFF** for the feature, opt-in per agent | Same `SkillEnablement`/conversation-override machinery (S10), so the manifest/dispatch surface only appears when the user has turned agents on — agents are more powerful (they spawn loops + cost) than skills, so they lead **off** rather than all-on (the one deliberate departure from S6). |
+| A15 | **Enablement reuses the skills tri-state ladder** (`/list-agents`, `/toggle-agents`, `/toggle-agent <slug> [on\|off\|reset] [here\|global]`), default **OFF** for the feature, opt-in per agent | Same `SkillEnablement`/conversation-override machinery (S10), so the manifest/dispatch surface only appears when the user has turned agents on — agents are more powerful (they spawn loops + cost) than skills, so they lead **off** rather than all-on (the one deliberate departure from S6). Command naming follows PR #156's verb-first hyphen-prefixed style (§6). |
 | A16 | **Catalog & frontmatter are pure logic** (`AgentCatalog`, `Services/Agents/`), no WinForms — net48 linked-source tests, like `SkillCatalog` | Same dual-world test pattern (§10). Discovery, allowlist resolution, tier ceiling, and the manifest are all testable without the UI or a live model. |
 | A17 | **Per-agent `max_turns` budget** feeds the child orchestrator's existing `maxIterations` ctor arg | The orchestrator *already* takes `maxIterations` as a constructor parameter — a per-agent budget is free plumbing. OpenMonoAgent.ai assigns distinct budgets per specialist (from source: Explore/Plan 100, Verify 150, general 200, Coder 300 — far higher than its docs imply). Two implications: bounding an explore agent below a coder is the right grain, **and** our `DefaultMaxIterations = 25` is tuned for *interactive* turns (the continuation prompt is its release valve) — an **unattended** child has no continuation prompt, so write-capable bundled agents should set a generous `max_turns`, with doom-loop (A18) + cap-wrap-up as the backstops. |
 | A18 | **Periodic doom-loop detection in the orchestrator**: over a short rolling window of recent `name:normalized-args` signatures, abort with a wrap-up when a cycle of period *p* (1–4) repeats (≥3× for *p*=1, ≥2× for *p*=2–4) | The `MaxIterations` cap bounds *total* work but a stuck agent still burns the whole budget on a cycle — worse for an unattended sub-agent (A14). The OpenMono `DoomLoopDetector` (from source: `MaxPeriod=4`, `MaxHistory=12`, `reps = period==1 ? 3 : 2`, args JSON-normalized with sorted keys) is smarter than "N identical in a row": it catches **oscillations** (edit→test-fail→revert→edit…, an A→B→A→B period-2 cycle) a consecutive-only check misses. Cheap (a ~12-entry signature ring in `RunTurn`), benefits the **main** agent too, ends as content not a throw. |
@@ -281,20 +284,33 @@ that — it only constructs and joins.
 
 ## 6. Slash commands (on the existing `ISlashCommand` framework)
 
-Register in an `AgentCommands.BuiltIns()` beside the skills/built-ins. `Client`
-kind (run locally, no LLM send) except `/agent <slug> <task>`, which dispatches.
+Register in an `AgentCommands.BuiltIns()` beside the skills/built-ins, in the
+**verb-first, hyphen-prefixed** style PR #156 established for skills (`/list-skills`,
+`/toggle-skills`, `/toggle-skill`, `/use-skill`). `Client` kind (run locally, no LLM
+send) except `/dispatch-agent`, which sends.
 
 | Command | Kind | Effect |
 |---------|------|--------|
-| `/agents` | Client | List agents with effective on/off state + source (bundled/user/project) |
-| `/agents [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`) |
-| `/agent <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one agent**; bare `/agent <slug>` toggles for this conversation |
-| `/agent <slug> <task…>` | Send | **Explicit dispatch**: send a hidden instruction `Dispatch the <slug> agent with this task: <task>` so the model issues a real `dispatch_agent` call (works regardless of enablement — an explicit user action, like `/use`) |
+| `/list-agents` | Client | List agents with effective on/off state + source (bundled/user/project). Listing is its own command (no args), per PR #156. |
+| `/toggle-agents <on\|off\|reset> [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`). Requires a verb (listing lives in `/list-agents`). |
+| `/toggle-agent <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one agent**; bare `/toggle-agent <slug>` toggles for this conversation |
+| `/dispatch-agent <slug> <task…>` | Send | **Explicit dispatch**: sends a hidden instruction `Dispatch the <slug> agent with this task: <task>` so the model issues a real `dispatch_agent` call (works regardless of enablement — an explicit user action, the `/use-skill` analogue) |
 
-- **Slug-first**, mirroring `/skill` and `/tool`. Autocomplete completes slugs
-  (annotated with state) then `on\|off\|reset` then `here\|global`, via
-  `IArgumentCompleter` — the exact pattern `SkillCommands` uses.
-- Explicit `/agent <slug> <task>` routes through the model (not a direct host
+- **Naming follows PR #156**: a verb-first, hyphen-prefixed name per command, with
+  listing split from toggling (`/list-agents` vs. `/toggle-agents`, which now requires
+  a verb) — the same split #156 made for skills. The agent *invocation* verb is
+  `dispatch` (matching the `dispatch_agent` tool and `AgentDispatcher`), where skills
+  use `use`.
+- **Discovery via `SlashMatch.HyphenPrefix`** (PR #156): each hyphen segment is an
+  anchor, so typing `/agent` matches `list-agents`, `toggle-agents`, `toggle-agent`,
+  and `dispatch-agent`; `/dispatch` narrows to `dispatch-agent`. No need to type a full
+  prefix. The registry's `Match()` already does this — agent commands inherit it free.
+- **Slug-first within `/toggle-agent` and `/dispatch-agent`**, mirroring
+  `/toggle-skill` / `/use-skill`. Autocomplete completes slugs (annotated with state)
+  then `on\|off\|reset` then `here\|global`, via `IArgumentCompleter` + the shared
+  `SkillCommandShared.AddMatching` helper (the completion utility #156 factored out) —
+  the exact pattern the skill commands use.
+- Explicit `/dispatch-agent <slug> <task>` routes through the model (not a direct host
   spawn) so the dispatch is a normal, gated `dispatch_agent` tool call with a
   transcript record and approval — no second, ungated entry point into spawning.
 
@@ -527,9 +543,11 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
 - **Read/write fan-out gating** — an all-read-only batch runs children concurrently;
   a batch with any write-capable agent serializes (A9), asserted by execution order.
 - **Agent slash commands** (`AgentCommands` vs. a fake `ISlashCommandContext`) —
-  list/toggle/reset across here/global; conversation override vs. `agents.json`;
-  default-OFF feature; `/agent <slug> <task>` sends the hidden dispatch instruction;
-  unknown slug/scope failures.
+  `/list-agents` listing; `/toggle-agents` / `/toggle-agent` toggle/reset across
+  here/global (toggle requires a verb); conversation override vs. `agents.json`;
+  default-OFF feature; `/dispatch-agent <slug> <task>` sends the hidden dispatch
+  instruction; unknown slug/scope failures; `SlashMatch.HyphenPrefix` matches `/agent`
+  to all four agent commands (segment-boundary, per PR #156).
 - **Enablement resolution** — the 5-rung ladder with feature-default OFF;
   force-on over a global-off; reset → inherit.
 - **`AutonomyApprovalPolicy`** (decorator) — `auto-readonly` + grant ⇒ ReadOnly
@@ -562,9 +580,10 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
    strip of `dispatch_agent`.
 5. **Approval integration** — `AutonomyApprovalPolicy` decorator + the one-time
    agent-name grant in the approval store; agent-attributed prompts.
-6. **Agent slash commands** on the `ISlashCommand` framework (`/agents`,
-   `/agent <slug> …`, `/agent <slug> <task>`) + per-conversation override fields on
-   `Conversation`/`ConversationStore` + global `agents.json` (5-rung ladder).
+6. **Agent slash commands** on the `ISlashCommand` framework, verb-first/hyphen-prefixed
+   per PR #156 (`/list-agents`, `/toggle-agents`, `/toggle-agent <slug> …`,
+   `/dispatch-agent <slug> <task>`; `SlashMatch.HyphenPrefix` matching) + per-conversation
+   override fields on `Conversation`/`ConversationStore` + global `agents.json` (5-rung ladder).
 7. **Concurrent fan-out + must-have observability** — batch `dispatch_agent`,
    read-concurrent/write-serial execution on bounded `ThreadPool` work items,
    per-connection mutex, usage aggregation; the **group cancellation** + the
@@ -599,7 +618,7 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   ceremony while Destructive stays explicit.
 - **`MaxParallelAgents`** — *lean 3* (named constant, tunable), balancing latency
   win against API/thread pressure on XP-era hardware.
-- **Explicit `/agent <slug> <task>` routing** — *lean route-through-the-model*
+- **Explicit `/dispatch-agent <slug> <task>` routing** — *lean route-through-the-model*
   (a real gated `dispatch_agent` call) rather than a direct host spawn, so there's
   exactly one spawning path and it's always gated/recorded.
 
