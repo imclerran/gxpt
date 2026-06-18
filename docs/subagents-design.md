@@ -2,7 +2,8 @@
 
 **Status:** Design (proposal). No implementation yet.
 **Branch:** `claude/compassionate-goldberg-5c9ccz`
-**Last updated:** 2026-06-16
+**Last updated:** 2026-06-18 (reconciled with PR #154 — workspace-wide file
+approval + flag-insensitive command-signature rules; see §7–§8)
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
@@ -309,10 +310,13 @@ agent is on.
   on the `Conversation`, round-tripped by `ConversationStore` (absent = inherit).
 
 Per-tab by construction; no `settings.json` key, no checkbox — all control is §6.
-The autonomy *grant* (A14) is separate persisted state: a remembered "this agent
-may run autonomously" lives in the approval store keyed by agent name, revocable
-from the same approvals affordance that clears tool allowlists
-(`mcp35-approval-spec.md` §5).
+The autonomy *grant* (A14) is separate persisted state in the **shared approval
+store** alongside the existing remember kinds (per-tool, command-signature/path
+rules, and the workdir-keyed workspace-write set from PR #154): a remembered "this
+agent may run autonomously" keyed by agent name, revocable from the same approvals
+affordance that clears tool allowlists and workspace-write grants
+(`mcp35-approval-spec.md` §5). Slotting it beside the workdir-write set means one
+view/clear surface governs every grant a sub-agent can inherit.
 
 ---
 
@@ -356,14 +360,25 @@ max_tier` (A11). Properties:
 
 ### Layer 2 — the runtime approval gate (per call, unchanged backstop)
 Every tool call a sub-agent makes flows through the **same** `ToolApprovalPolicy`
-with the **shared** remembered-allowlist and the parent tab's prompt host (A13):
+with the **shared** `IApprovalStore` and the parent tab's prompt host (A13). The
+policy is **per-turn `WorkingDir`-aware** (PR #154), so the child must be built with
+its `WorkingDir` set to the parent's — which it is (children share the parent's
+folder, §5) — and the `AutonomyApprovalPolicy` decorator (layer 3) forwards
+`WorkingDir` to the inner policy so the workspace fast-path below still fires for
+sub-agents:
 - **Destructive always-confirms** — a sub-agent cannot silently `files__delete` /
   `command__run` a new command / `git__push`, even if its allowlist includes them
   and the user is away (the turn simply blocks at the modal — correct, and the same
-  semantics as the main agent).
-- **Remembered rules stay narrow** — an injected attempt (a malicious tool result
-  steering the sub-agent) to run a *new* command/path won't match an existing
-  argument-scoped rule, so it still prompts. The prompt-injection backstop
+  semantics as the main agent). `files__delete` stays Destructive and is **excluded**
+  from the workspace-write grant (PR #154), so no blanket ever covers a delete.
+- **Remembered grants stay narrow / user-vetted** — sub-agents inherit exactly the
+  three remember kinds the store holds, no more: per-tool (ReadOnly/Write), the
+  argument-scoped **command-signature** and **path** rules, and the session-scoped
+  **workspace-write** set (PR #154, keyed by `server + canonical workdir`). An
+  injected attempt (a malicious tool result steering the sub-agent) to run a tool
+  whose **command signature** or path differs from any remembered grant still
+  prompts — the signature is flag-insensitive but *target*-sensitive (a different
+  file/subcommand re-prompts, PR #154), so the prompt-injection backstop
   (`mcp35-approval-spec.md` §6) covers sub-agents identically.
 - **Attribution** — the prompt header shows which agent is asking
   (`code-explorer · files__read`), so the user always knows *who* wants the effect.
@@ -385,14 +400,31 @@ Crucially:
   ceiling is `readonly` means the whole agent is unattended; on a higher-ceiling
   agent it still only auto-allows the *ReadOnly* slice.
 - **A dial never auto-approves Write/Destructive** — only an explicit, narrow
-  remembered *rule* (exact command/path) does, exactly as for the main agent. The
-  dial is a tier-scoped convenience over already-remember-eligible ReadOnly calls
-  (which the main agent could itself "always allow"), not a new bypass.
+  remembered *rule* (command signature / path) or the user's **workspace-write
+  grant** does, exactly as for the main agent. The dial is a tier-scoped convenience
+  over already-remember-eligible ReadOnly calls (which the main agent could itself
+  "always allow"), not a new bypass.
 - Implementation: the dispatcher wraps the shared `IToolApprovalPolicy` in an
   `AutonomyApprovalPolicy` that, for an `auto-readonly` child, returns `Allow`
   without a prompt **iff** the call classifies ReadOnly *and* the one-time
   agent-name grant is present; everything else delegates to the real policy. No
   change to the gate itself — a decorator at the dispatch seam.
+
+**Write-autonomy is delivered by the user's workspace grant, not a per-agent dial
+(reinforced by PR #154).** PR #154 added *"Allow all edits in this workspace,"* a
+session-scoped, workdir-keyed approval covering every Write-tier `files__` tool in
+the current folder (`files__delete` excluded). Sub-agents inherit it through the
+shared store, so a `gated`, write-capable agent's `files__write`/`files__edit` calls
+pass silently **once the user has made that workspace-level choice** — coarse
+write-autonomy that is *user-controlled at the workspace grain*, not declared by an
+agent's frontmatter. This is deliberately *not* an `auto-write` autonomy level:
+keeping write breadth a user decision (made once, visibly, revocable from the same
+approvals affordance) is safer than letting an authored agent self-grant it, and it
+composes cleanly — the per-agent dial covers the ReadOnly slice, the workspace grant
+covers Writes, and `files__delete` + `command__run` + `git__push` stay on the
+always-confirm backstop for every agent regardless. (If a real need for per-agent
+write-autonomy appears later, it would be a *fourth* remember kind gated like the
+workspace grant — noted, not adopted.)
 
 ### Why this is both safer *and* more autonomous
 - **Safer than a raw tool allowlist:** the allowlist alone (layer 1) wouldn't stop a
