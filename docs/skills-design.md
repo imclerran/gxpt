@@ -257,7 +257,7 @@ validate_skill(scope?, slug)                                    -- ReadOnly: doe
   folderless turn to the workdir-less one. Each instance tailors its surface to what it
   can do: **with a workspace** → full set, `scope` defaults to `project`; **without** →
   authoring tools only (no `run_skill_script`, which needs a cwd), `scope` defaults to
-  `user`. So `/use`-ing skill-writer in a folderless conversation can still author
+  `user`. So `/use-skill`-ing skill-writer in a folderless conversation can still author
   user-global skills, while project authoring + `run_skill_script` stay workspace-bound.
 - **Deferred:** `rename_skill` (folder rename — delete+recreate covers it for now).
 
@@ -269,23 +269,23 @@ GxPT now has a slash-command framework (`Services/Commands/`: `ISlashCommand`,
 `SlashCommandRegistry`/`Processor`, `commands.json`, gating, autocomplete) — so
 skills register as **commands on it**, not a new router (this supersedes the
 original `SlashCommandRouter` plan). The management commands are `Client` kind (run
-locally, no LLM send — `WriteInfo` + `Handled()`); `/use` is also `Client` but returns
+locally, no LLM send — `WriteInfo` + `Handled()`); `/use-skill` is also `Client` but returns
 `Send(...)` with a short ask while attaching the body as hidden context (below).
 Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
 
 | Command | Kind | Effect |
 |---------|------|--------|
-| `/skills` | Client | List skills with effective on/off state and source (global default vs. this conversation) |
-| `/skills [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`) |
-| `/skill <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one skill**; bare `/skill <slug>` toggles for this conversation |
-| `/use <slug> [text]` | Client | **Invoke**: resolve `<slug>`, carry its rendered `SKILL.md` block on the result as `SystemContext` (committed to history as a **hidden system message** at the send, so an early return can't orphan it), and send the short user ask `Use the <slug> skill. [text]` |
+| `/list-skills` | Client | List skills with effective on/off state and source (global default vs. this conversation) |
+| `/toggle-skills [on\|off\|reset] [here\|global]` | Client | Toggle/reset the **whole feature** at that scope (default `here`); a verb is required |
+| `/toggle-skill <slug> [on\|off\|reset] [here\|global]` | Client | Toggle/reset **one skill**; bare `/toggle-skill <slug>` toggles for this conversation |
+| `/use-skill <slug> [text]` | Client | **Invoke**: resolve `<slug>`, carry its rendered `SKILL.md` block on the result as `SystemContext` (committed to history as a **hidden system message** at the send, so an early return can't orphan it), and send the short user ask `Use the <slug> skill. [text]` |
 
-- **Slug-first** for `/skill`, mirroring `/tool <name> [on|off]`; the verb
+- **Slug-first** for `/toggle-skill`, mirroring `/toggle-tool <name> [on|off]`; the verb
   (`on|off|reset`) is the optional second token, scope (`here`/`global`) the optional
   third. Scope defaults to `here`; `global` edits `skills.json`.
-- **Invocation is `/use <slug>`**, not a per-skill `/<slug>` command — the framework's
+- **Invocation is `/use-skill <slug>`**, not a per-skill `/<slug>` command — the framework's
   registry is built once at startup, so one command per dynamically-discovered skill
-  doesn't fit (decision in §11). `/use` attaches the rendered skill body as a **hidden
+  doesn't fit (decision in §11). `/use-skill` attaches the rendered skill body as a **hidden
   system message** (sent to the model, never shown in the transcript — the same channel
   `/compact` uses) and sends only a short `Use the <slug> skill. [text]` user message, so
   it pre-loads without an `open_skill` round-trip and without dumping the body into the
@@ -296,11 +296,12 @@ Registered in `SkillCommands.BuiltIns()` alongside the other built-ins.
   (`Get/SetConversationSkill…`), persisted on the `Conversation`; `global`-scope
   changes go straight to `SkillEnablement` (`skills.json`). Both take effect on the
   next message (the manifest/enabled set is recomputed per send).
-- **Autocomplete:** `/skill` and `/use` complete slugs (annotated with state) via
-  `IArgumentCompleter`; `/skill`/`/skills` then complete `on|off|reset` and
-  `here|global`. Each level's accepted value carries a trailing space so the popup
-  advances to the next level immediately (no manual space needed); `/skills` also
-  offers a `(list current skills)` entry so the bare command is selectable.
+- **Autocomplete:** `/toggle-skill` and `/use-skill` complete slugs (annotated with state)
+  via `IArgumentCompleter`; `/toggle-skill`/`/toggle-skills` then complete `on|off|reset`
+  and `here|global`. Each level's accepted value carries a trailing space so the popup
+  advances to the next level immediately (no manual space needed).
+  Command-name completion is hyphen-aware: a typed prefix anchors at the start of a name
+  or just after any `-`, so `/skill` surfaces `/toggle-skill`, `/toggle-skills`, etc.
 
 ---
 
@@ -314,8 +315,8 @@ which was the bug). Everything defaults to **on**.
 ### The controls (2×2)
 |  | **Global** (`skills.json`) | **This conversation** (`Conversation`) |
 |---|---|---|
-| **All skills** | `/skills on\|off global` → `feature_off` | `/skills on\|off` → `SkillsFeatureOff` |
-| **One skill** | `/skill X on\|off global` → `skills[X]` | `/skill X on\|off` → `SkillOverrides[X]` |
+| **All skills** | `/toggle-skills on\|off global` → `feature_off` | `/toggle-skills on\|off` → `SkillsFeatureOff` |
+| **One skill** | `/toggle-skill X on\|off global` → `skills[X]` | `/toggle-skill X on\|off` → `SkillOverrides[X]` |
 
 All four are **tri-state where applicable** (set / unset = inherit). `reset` clears a
 cell so it falls through to the next rule.
@@ -348,7 +349,7 @@ scope.
   on the `Conversation`, round-tripped by `ConversationStore` (absent = inherit/empty).
 
 Per-tab by construction; **no `settings.json` key, no checkbox** — all control is the
-§6 slash commands. The `/skills` list shows each skill's effective state **and the rung
+§6 slash commands. The `/list-skills` list shows each skill's effective state **and the rung
 that decided it** (e.g. `on here`, `off globally`, `all skills off here`, `default`),
 under a `Default: ON globally · OFF here` header naming the feature toggle (rungs 3–4) —
 the default for any skill with no per-skill setting.
@@ -390,9 +391,9 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
 - **`SkillCatalog` + frontmatter parser** — discovery, project-over-bundled
   shadowing, malformed frontmatter, manifest assembly for a given enabled set.
 - **Skills slash commands** (`SkillCommands`, against a fake `ISlashCommandContext`) —
-  `/skills` list/toggle/reset and `/skill <slug>` toggle/reset across `here`/`global`
-  scopes; conversation overrides vs. `skills.json`; bare-slug toggle; unknown
-  slug/scope failures; `/use` attaches the body as hidden context + sends a short ask,
+  `/list-skills` list, `/toggle-skills` toggle/reset, and `/toggle-skill <slug>` toggle/reset
+  across `here`/`global` scopes; conversation overrides vs. `skills.json`; bare-slug toggle;
+  unknown slug/scope failures; `/use-skill` attaches the body as hidden context + sends a short ask,
   and works even when disabled.
 - **Conversation override persistence** — `SkillsFeatureOff` + `SkillOverrides`
   round-trip through `ConversationStore`; missing fields default to inherit/empty.
@@ -421,7 +422,7 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
    asset listing as the tool result.
 4. **`read_skill_file` meta-tool** (ReadOnly) for Level-3 assets.
 5. **Skills slash commands** on the existing `ISlashCommand` framework
-   (`SkillCommands`: `/skills`, `/skill <slug>`, `/use <slug>`) + per-conversation
+   (`SkillCommands`: `/list-skills`, `/toggle-skills`, `/toggle-skill <slug>`, `/use-skill <slug>`) + per-conversation
    override fields on `Conversation`/`ConversationStore` + global `skills.json`
    enablement. *(Split: 4a = enablement core + gating; 4b = the commands.)*
 6. **`SkillsMcpServer` scaffold + `run_skill_script`**: batch-only entry, handle
@@ -450,7 +451,7 @@ Same dual-world pattern as the rest of the repo (net48 linked-source via
 - ~~Trigger model~~ → model-initiated (`open_skill`) **and** slash command (S3).
 - ~~Slash commands: new router vs. existing framework~~ → built as `ISlashCommand`s on
   `main`'s framework (§6); the `SlashCommandRouter` plan is dropped.
-- ~~User-initiated invocation under the static registry~~ → a single `/use <slug>`
+- ~~User-initiated invocation under the static registry~~ → a single `/use-skill <slug>`
   command (body attached as hidden context, short ask sent), not per-skill `/<slug>`
   commands (§6).
 - ~~Per-skill settings UI~~ → dropped; enablement is slash-command driven, default

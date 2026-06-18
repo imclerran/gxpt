@@ -1,7 +1,7 @@
 namespace GxPT
 {
     // Shared parsing for slash-command arguments, so the same vocabulary isn't maintained in two places
-    // (e.g. /tool on|off and /skill on|off both recognize the same on/off words).
+    // (e.g. /toggle-tool on|off and /toggle-skill on|off both recognize the same on/off words).
     internal static class SlashArgs
     {
         // Recognizes an on/off word: true for on/true/1/yes/enable/enabled, false for the off variants,

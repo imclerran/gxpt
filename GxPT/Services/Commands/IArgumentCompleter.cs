@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace GxPT
 {
     // A command that supplies its own argument completions to the autocomplete popup (e.g. /model over
-    // the model list, /tool over the MCP server names). Path completion is handled separately by the
+    // the model list, /toggle-tool over the MCP server names). Path completion is handled separately by the
     // popup itself (filesystem-backed); this seam is for list/choice-style arguments.
     internal interface IArgumentCompleter
     {

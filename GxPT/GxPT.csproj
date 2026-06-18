@@ -128,6 +128,7 @@
     <Compile Include="Services\Commands\MainFormSlashContext.cs" />
     <Compile Include="Services\Commands\PromptCommand.cs" />
     <Compile Include="Services\Commands\SlashCommandGate.cs" />
+    <Compile Include="Services\Commands\SlashMatch.cs" />
     <Compile Include="Services\Commands\SlashCommandRegistry.cs" />
     <Compile Include="Services\Commands\SlashCommandProcessor.cs" />
     <Compile Include="Services\Commands\SlashCommandConfig.cs" />

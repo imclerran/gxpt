@@ -58,7 +58,7 @@ is about release notes."
 - **name**: a short, human title in title case ("Release Notes", "Brand Voice"). Shown in the
   skill list.
 - **slug**: the folder name, kebab-case, derived from the name. It is how the user runs the
-  skill (`/use release-notes`) and how files are addressed. `create_skill` derives a slug from
+  skill (`/use-skill release-notes`) and how files are addressed. `create_skill` derives a slug from
   the name; keep the name simple so the slug is clean, or pass the slug you want.
 
 ## When to split into multiple files

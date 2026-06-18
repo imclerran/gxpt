@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace GxPT
 {
-    // Which rule decided a skill's effective state (most specific first). Surfaced by the /skills list so
+    // Which rule decided a skill's effective state (most specific first). Surfaced by the /list-skills list so
     // the user can see *why* a skill is on or off.
     internal enum SkillRule
     {

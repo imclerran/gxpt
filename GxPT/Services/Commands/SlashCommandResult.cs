@@ -14,7 +14,7 @@ namespace GxPT
         public string Error;
 
         // Optional hidden system message to commit to history alongside the outgoing user message (used
-        // by /use to attach a skill's body without it showing in the transcript). Carried on the result
+        // by /use-skill to attach a skill's body without it showing in the transcript). Carried on the result
         // rather than mutated during command Process, so an early return (e.g. an active edit) can't
         // leave an orphaned system message behind.
         public string SystemContext;
