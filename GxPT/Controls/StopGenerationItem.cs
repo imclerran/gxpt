@@ -24,7 +24,7 @@ namespace GxPT
         public const int ItemHeight = 15;  // tspGenProgress's height
 
         private const string StopText = "Stop";
-        private const string AwaitingText = "awaiting user...";
+        private const string AwaitingText = "Awaiting user...";
 
         public StopGenerationItem()
         {
@@ -86,10 +86,11 @@ namespace GxPT
             Rectangle bounds = new Rectangle(0, 0, this.Width, this.Height);
 
             // Awaiting state: a flat status label, no border/fill, so it reads as passive text rather
-            // than a clickable Stop button.
+            // than a clickable Stop button. Uses ControlText (like the strip's other labels) rather
+            // than the lighter GrayText, which next to them reads as thinner/smaller.
             if (_awaiting)
             {
-                TextRenderer.DrawText(g, this.Text, this.Font, bounds, SystemColors.GrayText,
+                TextRenderer.DrawText(g, this.Text, this.Font, bounds, SystemColors.ControlText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
                 return;
