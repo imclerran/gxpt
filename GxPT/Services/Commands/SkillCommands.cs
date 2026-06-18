@@ -163,7 +163,7 @@ namespace GxPT
     {
         public override string Name { get { return "toggle-skills"; } }
         public override string Description { get { return "Turn the skills feature on/off"; } }
-        public override string ArgumentHint { get { return "[on|off|reset] [here|global]"; } }
+        public override string ArgumentHint { get { return "<on|off|reset> [here|global]"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
         {
