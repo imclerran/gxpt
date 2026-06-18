@@ -3,7 +3,9 @@
 **Status:** Design (proposal). No implementation yet.
 **Branch:** `claude/compassionate-goldberg-5c9ccz`
 **Last updated:** 2026-06-18 (reconciled with PR #154 — workspace-wide file
-approval + flag-insensitive command-signature rules; see §7–§8)
+approval + flag-insensitive command-signature rules, see §7–§8; refined against
+OpenMonoAgent.ai prior art — `max_turns`, doom-loop detection, wildcard allowlists,
+see §13 and A17–A19)
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
@@ -87,6 +89,9 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A14 | **Autonomy is a per-agent dial** (`gated` \| `auto-readonly`), approved **once at dispatch** (remember by agent name), bounded by `max_tier` | "Leeway to act autonomously" without surrendering the gate: an `auto-readonly` research agent, approved once, runs a long read-only dig unattended; the moment it reaches for Write/Destructive it re-enters the normal gate. The grant can't exceed the tier ceiling, and Write/Destructive never auto-approve from a dial (only an exact remembered rule does). |
 | A15 | **Enablement reuses the skills tri-state ladder** (`/agents`, `/agent <slug> on\|off\|reset [here\|global]`), default **OFF** for the feature, opt-in per agent | Same `SkillEnablement`/conversation-override machinery (S10), so the manifest/dispatch surface only appears when the user has turned agents on — agents are more powerful (they spawn loops + cost) than skills, so they lead **off** rather than all-on (the one deliberate departure from S6). |
 | A16 | **Catalog & frontmatter are pure logic** (`AgentCatalog`, `Services/Agents/`), no WinForms — net48 linked-source tests, like `SkillCatalog` | Same dual-world test pattern (§10). Discovery, allowlist resolution, tier ceiling, and the manifest are all testable without the UI or a live model. |
+| A17 | **Per-agent `max_turns` budget** feeds the child orchestrator's existing `maxIterations` ctor arg | The orchestrator *already* takes `maxIterations` as a constructor parameter — a per-agent budget is free plumbing. OpenMonoAgent.ai assigns distinct budgets per specialist (Explore 15, Plan 10, Coder 30, Verify 20); bounding an unattended explore agent lower than a coder is the right grain for cost control, and a tight budget is itself a safety bound on an autonomous (A14) run. |
+| A18 | **Doom-loop detection in the orchestrator**: N (default 3) consecutive *identical* (tool-name + canonical args) calls ⇒ abort the loop with a wrap-up | The `MaxIterations` cap bounds *total* work but a stuck agent still burns the whole budget repeating one failed call — wasteful, and worse for an unattended sub-agent (A14) with no user watching. OpenMono aborts on "3 identical tool-call sequences in a row." Cheap to add (a small ring buffer of the last few `(name,args)` hashes in `RunTurn`), benefits the **main** agent too, and ends as content (the loop's existing failure stance), not a throw. |
+| A19 | **Allowlist `tools` supports glob wildcards** (`files__*`, `mcp__*`, `*__read`, `*`) matched against the qualified catalog | Server-qualified names (`files__read`, `git__status`) make prefix/suffix globs natural and far less brittle than enumerating every tool — "all file tools" is `files__*`, "everything a server exposes" is `mcp__myserver__*`. The OpenMono precedent ("allow-lists support `*`, `mcp__*`"). Still intersected with parent-available and `max_tier` (A11), so a wildcard never widens past the parent or the ceiling. |
 
 ---
 
@@ -124,6 +129,7 @@ name: Code Explorer
 description: Use to search and summarize unfamiliar code across the workspace before making changes. Read-only.
 tools: [files__read, files__list, files__search]
 max_tier: readonly
+max_turns: 15
 autonomy: auto-readonly
 model: anthropic/claude-sonnet-4-6
 ---
@@ -142,14 +148,19 @@ find something after a genuine search, say so and name where you looked.
   - `description` *(required)* — the **single-line** "use this agent when…" the
     parent reads in the manifest (A6).
   - `tools` *(optional)* — inline list `[a, b, c]` of server-qualified function
-    names the agent may use. **Omitted ⇒ inherit a conservative default set**
-    (all ReadOnly-tier tools available in the workspace), *not* everything (A5,
-    fail-safe). `tools: [*]` opts into the full parent-available set (still
-    capped by `max_tier` and the gate).
+    names the agent may use, **with glob wildcards** (`files__*`, `mcp__*`, `*__read`,
+    `*`) matched against the qualified catalog (A19, the OpenMono allowlist-wildcard
+    precedent). **Omitted ⇒ inherit a conservative default set** (all ReadOnly-tier
+    tools available in the workspace), *not* everything (A5, fail-safe). `tools: [*]`
+    opts into the full parent-available set (still capped by `max_tier` and the gate).
   - `max_tier` *(optional)* — `readonly` \| `write` \| `destructive` ceiling,
     classified via the existing `ToolClassifier`. Caps the allowlist regardless of
     what `tools` names. Default `write` (an agent can edit but the gate still
     confirms; `destructive` must be opted into explicitly).
+  - `max_turns` *(optional)* — per-agent iteration budget, fed straight into the
+    child orchestrator's `maxIterations` ctor arg (A17). Omitted ⇒ the host default
+    (`DefaultMaxIterations`). Lets an `explore` agent cap at ~15 while a `coder` runs
+    ~30, so an unattended specialist's cost is bounded *to its job*, not the parent's.
   - `autonomy` *(optional)* — `gated` (default) \| `auto-readonly` (§8 layer 3).
   - `model` *(optional)* — model id override; omitted ⇒ the parent turn's model.
 - The **body** is the agent's **system prompt** — it replaces `AgentSystemPrompt`'s
@@ -470,9 +481,15 @@ extend that, not rework it.
 - **UI:** each running child renders as a collapsible transcript block ("▸ Code
   Explorer — running… 3 tools"), its tool calls/results shown but *not* fed to the
   parent model (A7). On completion the block collapses to the returned summary.
-- **Cost guardrails:** `MaxParallelAgents` bounds concurrency; each child carries the
-  normal `MaxIterations` budget and wraps up (no continuation prompt) at its cap, so
-  a fan-out can't loop unbounded or stampede the API.
+- **Cost guardrails (three bounds, the unattended-run safety net):**
+  `MaxParallelAgents` bounds concurrency; each child carries its **`max_turns`**
+  budget (A17) and wraps up at its cap with **no continuation prompt** (the dispatch
+  is meant to be unattended — a child can't block the fan-out waiting on a user); and
+  **doom-loop detection** (A18) aborts a child that repeats one call N times rather
+  than draining the whole budget on a stuck step. Together these make an
+  `auto-readonly`, write-granted fan-out safe to leave running: bounded breadth
+  (allowlist/tier), bounded depth (`max_turns`), bounded repetition (doom-loop), and
+  the always-confirm gate on anything destructive.
 
 ---
 
@@ -484,9 +501,14 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   project>user>bundled shadowing, inline-list `tools` parsing, `max_tier`/`autonomy`
   enum parsing, malformed/missing frontmatter, manifest assembly for an enabled set.
 - **`AgentToolResolver`** — `allowlist ∩ parent-available ∩ max_tier`; omitted
-  `tools` ⇒ ReadOnly-only; `tools: [*]` ⇒ full set tier-capped; an allowlisted tool
-  the parent lacks in this workdir is excluded (no escalation); `dispatch_agent`
-  always stripped from a child.
+  `tools` ⇒ ReadOnly-only; `tools: [*]` ⇒ full set tier-capped; **wildcard patterns**
+  (`files__*`, `mcp__*`, `*__read`) expand against the qualified catalog (A19); an
+  allowlisted tool the parent lacks in this workdir is excluded (no escalation);
+  `dispatch_agent` always stripped from a child.
+- **`max_turns` + doom-loop** (in the orchestrator, so the main agent is covered too)
+  — a child built with `max_turns` wraps up at that cap (A17); N consecutive identical
+  `(name, canonical-args)` calls abort with a wrap-up rather than draining the budget
+  (A18), and the abort returns as content, never a throw.
 - **Agent slash commands** (`AgentCommands` vs. a fake `ISlashCommandContext`) —
   list/toggle/reset across here/global; conversation override vs. `agents.json`;
   default-OFF feature; `/agent <slug> <task>` sends the hidden dispatch instruction;
@@ -530,9 +552,13 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
    per-connection mutex, cancellation propagation, usage aggregation.
 8. **Transcript UI** — collapsible per-child agent blocks (live tool activity shown,
    not fed to the parent), collapsing to the returned summary.
-9. **Bundled agents + deploy** — ship `code-explorer`, `test-runner`, `pr-reviewer`
-   via an `agents/` source folder copied next to the exe (`AfterBuild` + setup
-   `.vdproj`), like bundled skills.
+9. **Bundled agents + deploy** — ship a starter suite via an `agents/` source folder
+   copied next to the exe (`AfterBuild` + setup `.vdproj`), like bundled skills. The
+   OpenMono specialist set is a proven shape to seed with: **explore** (read-only
+   discovery, `auto-readonly`, low `max_turns`), **plan** (read-only architecture,
+   `max_tier: readonly`), **coder** (write, higher `max_turns`), **verify**
+   (read + build/test, adversarial), plus a **general-purpose** catch-all — alongside
+   the task-shaped `pr-reviewer`. Each is just an `AGENT.md`; nothing new in code.
 10. **(Optional/later)** an agent-authoring surface (an `agent-writer` skill, the
     skill-writer precedent); folder-form agents with bundled assets; user-global
     `scope` parity in any authoring flow.
@@ -568,4 +594,62 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
 - **Folder-form agents + bundled assets**; **user-global authoring `scope`** parity.
 - **Per-agent model *routing policy*** beyond a static `model:` override (e.g. "use
   a cheaper model for explore agents") — the static override covers the common case.
-```
+
+---
+
+## 13. Prior art & external validation — OpenMonoAgent.ai
+
+[OpenMonoAgent.ai](https://github.com/StartupHakk/OpenMonoAgent.ai) is a .NET sub-agent
+coding system (local llama.cpp inference). It's a useful mirror because it solved the
+same problem in a comparable stack, and most of its choices **independently match**
+ours — which raises confidence — while a few sharpened this design (A17–A19, §9).
+
+### Where it confirms our choices (convergent design)
+| OpenMono | Our design | Note |
+|----------|-----------|------|
+| `AgentTool` "spawns an isolated session with a restricted tool set and a dedicated system prompt" | `dispatch_agent` → child orchestrator, fresh context, allowlist, body-as-system-prompt (A1–A5) | Nearly verbatim — the isolated-session-with-locked-tools shape is the consensus pattern. |
+| Sub-agent **reuses the parent's `PermissionEngine`** (preserves user consent) | Child reuses the parent's `ToolApprovalPolicy`/`IApprovalStore` (A13) | Strong validation of Layer 2: don't re-prompt or fork consent; the gate is shared. |
+| Returns **final text + artifacts** as a single tool response; parent never sees inner iterations | Only the final assistant message returns (A3/A7) | The context-firewall value is the agreed core. |
+| Sub-agent inherits parent context (`OPENMONO.md`, memory, git status) but its **own message list** | Standing guidance + workspace block + AGENTS.md + memory, in a fresh history (§5) | Same "shared standing context, isolated transcript." |
+| Hard-coded allowlists per agent type; **read-only vs write tiers** | `tools` ∩ `max_tier` (A5/A11), classified by `ToolClassifier` tiers | Same tiered-capability instinct; ours is author-declared per agent rather than five fixed types. |
+| **Spawn is a capability** (`AgentSpawnCap(type, task)`) routed through the permission engine | `dispatch_agent` itself goes through approval; autonomy grant remembered by agent name (A14) | Both gate the *spawn*, not just the spawned calls. |
+
+### Where it sharpened our design (adopted)
+- **Distinct turn budgets per specialist** (Explore 15 / Plan 10 / Coder 30 /
+  Verify 20) → adopted as **`max_turns`** (A17), free plumbing over the orchestrator's
+  existing `maxIterations` arg, and a real autonomy safety bound.
+- **Doom-loop detection** ("3 identical tool-call sequences → abort") → adopted as
+  A18; a gap in our prior draft, and exactly the valve an *unattended* agent needs so
+  it can't drain its budget on one stuck call. Benefits the main agent too.
+- **Allowlist wildcards** (`*`, `mcp__*`) → adopted as A19; natural over GxPT's
+  server-qualified names (`files__*`), far less brittle than enumerating tools.
+- **A proven bundled suite** (explore / plan / coder / verify / general) → seeds our
+  phase-9 starter agents — pure `AGENT.md` files, no new code.
+
+### Where we deliberately diverge (and why)
+- **Capability-based `PermissionEngine`** (`FileWriteCap`, `ProcessExecCap`,
+  `NetworkEgressCap`, …) is richer than our tier + argument-scope classifier. We
+  **keep the tier model**: it already ships, the approval spec is built on it, and
+  PR #154's workspace-write/command-signature grants extend it cleanly. A
+  capability-object refactor is a large change for marginal gain here — noted, not
+  adopted.
+- **Intra-turn read-only tool parallelism** (`Task.WhenAll`; "read-only tasks start
+  while the LLM is still streaming"). We **reject** this for GxPT: net35 has no
+  `async`/`Task`, and the tool loop is *deliberately serial* (`mcp35-toolloop-spec.md`
+  §6). We get the safe slice of the same idea at the **agent** grain — parallel
+  children (§9) with per-connection serialization (A10) — without touching the
+  per-turn loop. The principle "reads overlap, writes serialize" still holds, one
+  level up.
+- **Global "plan mode"** as a session state that forces read-only. Our per-agent
+  `max_tier: readonly` covers the same need for a *plan* agent without a new global
+  mode; a conversation-level plan toggle is a possible separate feature, not part of
+  the sub-agent system.
+
+### Worth tracking (not yet adopted)
+- **Context compaction inside a long-running child** (OpenMono: checkpoint at 65%,
+  compact at 80%). GxPT has `/compact` + the context meter; wiring auto-compaction
+  into a child that nears its window would help deep autonomous runs. Folds into the
+  existing compaction machinery — a §11 phase-8/UI follow-on, not new architecture.
+- **Artifact storage for large tool results** (>10 KB off to disk, referenced by
+  handle) to keep a child's context lean — orthogonal to sub-agents but a clean
+  companion to `FormatResult`'s existing length cap.
