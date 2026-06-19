@@ -73,27 +73,29 @@ namespace GxPT.Tests
             Assert.Null(absent.Tools);
         }
 
+        // Expected is the enum's name (a string), not the enum itself: a public xUnit test method can't
+        // take an `internal` enum parameter (CS0051). The body compares against fm.MaxTier.ToString().
         [Theory]
-        [InlineData("readonly", AgentMaxTier.ReadOnly)]
-        [InlineData("read-only", AgentMaxTier.ReadOnly)]
-        [InlineData("WRITE", AgentMaxTier.Write)]
-        [InlineData("destructive", AgentMaxTier.Destructive)]
-        [InlineData("nonsense", AgentMaxTier.Write)]   // invalid => default Write
-        public void Parse_MaxTier(string value, AgentMaxTier expected)
+        [InlineData("readonly", "ReadOnly")]
+        [InlineData("read-only", "ReadOnly")]
+        [InlineData("WRITE", "Write")]
+        [InlineData("destructive", "Destructive")]
+        [InlineData("nonsense", "Write")]   // invalid => default Write
+        public void Parse_MaxTier(string value, string expected)
         {
             AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\nmax_tier: " + value + "\n---\nb\n");
-            Assert.Equal(expected, fm.MaxTier);
+            Assert.Equal(expected, fm.MaxTier.ToString());
         }
 
         [Theory]
-        [InlineData("gated", AgentAutonomy.Gated)]
-        [InlineData("auto-readonly", AgentAutonomy.AutoReadOnly)]
-        [InlineData("Auto_ReadOnly", AgentAutonomy.AutoReadOnly)]
-        [InlineData("bogus", AgentAutonomy.Gated)]     // invalid => default Gated
-        public void Parse_Autonomy(string value, AgentAutonomy expected)
+        [InlineData("gated", "Gated")]
+        [InlineData("auto-readonly", "AutoReadOnly")]
+        [InlineData("Auto_ReadOnly", "AutoReadOnly")]
+        [InlineData("bogus", "Gated")]     // invalid => default Gated
+        public void Parse_Autonomy(string value, string expected)
         {
             AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\nautonomy: " + value + "\n---\nb\n");
-            Assert.Equal(expected, fm.Autonomy);
+            Assert.Equal(expected, fm.Autonomy.ToString());
         }
 
         [Fact]
