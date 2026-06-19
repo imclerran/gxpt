@@ -650,7 +650,7 @@
             this.lblMemoryEnabled.Name = "lblMemoryEnabled";
             this.lblMemoryEnabled.Size = new System.Drawing.Size(121, 26);
             this.lblMemoryEnabled.TabIndex = 20;
-            this.lblMemoryEnabled.Text = "Memory";
+            this.lblMemoryEnabled.Text = "Enable Memory";
             this.lblMemoryEnabled.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // chkMemoryEnabled
@@ -662,7 +662,7 @@
             this.chkMemoryEnabled.Name = "chkMemoryEnabled";
             this.chkMemoryEnabled.Size = new System.Drawing.Size(457, 17);
             this.chkMemoryEnabled.TabIndex = 21;
-            this.chkMemoryEnabled.Text = "Remember facts about my workspaces (persistent project memory)";
+            this.chkMemoryEnabled.Text = "";
             this.chkMemoryEnabled.UseVisualStyleBackColor = true;
             // 
             // lblMemoryMaxLines
