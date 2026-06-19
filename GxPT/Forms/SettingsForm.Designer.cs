@@ -662,7 +662,7 @@
             this.chkMemoryEnabled.Name = "chkMemoryEnabled";
             this.chkMemoryEnabled.Size = new System.Drawing.Size(457, 17);
             this.chkMemoryEnabled.TabIndex = 21;
-            this.chkMemoryEnabled.Text = "";
+            this.chkMemoryEnabled.Text = "Remember facts about my workspaces (persistent project memory)";
             this.chkMemoryEnabled.UseVisualStyleBackColor = true;
             // 
             // lblMemoryMaxLines
