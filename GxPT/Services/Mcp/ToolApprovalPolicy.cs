@@ -54,19 +54,31 @@ namespace GxPT
             _annotations = annotations;
         }
 
-        // The orchestrator calls this. functionName is the qualified name; args already parsed.
-        public ApprovalDecision Check(string functionName, JObject args)
+        // Classifies a qualified tool name into its ToolPolicy (tier + remember scope). First-party tools
+        // are classified by the authoritative hardcoded table (annotations ignored), so only look them up
+        // for third-party tools. Absent annotations -> null -> classifier fails closed (Write/Tool), so a
+        // forgotten readOnlyHint never silently widens access. Shared by Check and the public TierOf.
+        private ToolPolicy ClassifyTool(string functionName)
         {
             string server = ServerOf(functionName);
             bool firstParty = server != null && _firstPartyServers.ContainsKey(server);
-            // Pull the tool's declared capability hints from the discovered definition. First-party tools
-            // are classified by the authoritative hardcoded table (annotations ignored), so only look them
-            // up for third-party tools. Absent annotations -> null -> classifier fails closed (Write/Tool),
-            // so a forgotten readOnlyHint never silently widens access.
             JObject annotations = (!firstParty && _annotations != null)
                 ? _annotations.AnnotationsFor(functionName)
                 : null;
-            ToolPolicy pol = _classifier.Classify(functionName, annotations, firstParty);
+            return _classifier.Classify(functionName, annotations, firstParty);
+        }
+
+        // The classified tier of a tool, by qualified name - used by AgentToolResolver to enforce a
+        // sub-agent's max_tier ceiling with the same classification the approval gate uses.
+        public ToolTier TierOf(string functionName)
+        {
+            return ClassifyTool(functionName).Tier;
+        }
+
+        // The orchestrator calls this. functionName is the qualified name; args already parsed.
+        public ApprovalDecision Check(string functionName, JObject args)
+        {
+            ToolPolicy pol = ClassifyTool(functionName);
 
             // Read-only tools never modify anything -> always allowed, no prompt. Driven by the
             // classified tier (not a name list), so every ReadOnly tool auto-allows: the read-only

@@ -2998,6 +2998,36 @@ namespace GxPT
                     ICollection<string> hiddenTools = SkillToolGate.HiddenTools(enabledSkills);
                     if (hiddenTools.Count > 0) orch.HiddenToolNames = hiddenTools;
 
+                    // Sub-agents: when the agents feature is enabled (settings.json `agents_enabled`),
+                    // discover all agents under <exe>/agents + <workdir>/.gxpt/agents + %AppData%/GxPT/agents
+                    // and expose the manifest + dispatch_agent. Rebuilt per send, so on-disk edits take
+                    // effect on the next turn. No per-agent enablement (design A15); the per-conversation
+                    // override is a later phase, so this uses the global setting only.
+                    if (AgentEnablement.GlobalEnabled())
+                    {
+                        AgentCatalog agentCatalog =
+                            AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);
+                        if (agentCatalog.Agents.Count > 0)
+                        {
+                            List<Agent> agentsForTurn = new List<Agent>(agentCatalog.Agents);
+                            orch.AgentsManifestSystemMessageProvider =
+                                delegate { return AgentInjection.BuildManifestMessage(agentsForTurn); };
+                            // tierOf reuses the approval policy's classification so an agent's max_tier
+                            // ceiling matches the gate; the AllowAll fallback (no policy) leaves it null
+                            // and the resolver treats every tool as Write.
+                            Func<string, ToolTier> tierOf = null;
+                            ToolApprovalPolicy tap = approval as ToolApprovalPolicy;
+                            if (tap != null) tierOf = tap.TierOf;
+                            AgentDispatcher dispatcher = new AgentDispatcher(
+                                agentsForTurn, _client, _mcpRegistry, approval, model, ctx.WorkingDir,
+                                LoggerSink.Instance, tierOf,
+                                McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
+                            dispatcher.Cancellation = ctx.Cancellation;
+                            dispatcher.UsageReported = orch.UsageReported;
+                            orch.AgentDispatcher = dispatcher;
+                        }
+                    }
+
                     // Assistant text appends to the current assistant bubble; a tool call closes it so
                     // the next run of text starts a fresh bubble below the tool record. Inter-turn
                     // whitespace (a stray newline some models emit before the next tool call) must NOT
