@@ -299,6 +299,12 @@ namespace GxPT
             // Shut down MCP servers (close stdio children / HTTP sessions).
             try { if (_mcpHost != null) _mcpHost.Dispose(); }
             catch { }
+
+            // Remove every per-conversation scratch directory this process created. Done AFTER the host
+            // is disposed so the command children (which had a scratch dir as their CWD) have exited and
+            // no longer hold it open.
+            try { ScratchWorkspace.DeleteAllCreated(); }
+            catch { }
         }
 
         private List<string> GetOpenConversationIdsInOrder()
@@ -650,6 +656,53 @@ namespace GxPT
             if (_inputManager != null) _inputManager.FocusInputSoon();
         }
 
+        // The per-conversation scratch directory used to run the command server when this conversation
+        // has no workspace and the scratch-command feature is enabled (opt-in); null otherwise (a real
+        // workspace takes precedence, or the feature is off). When create is true the directory - and
+        // the conversation id it is keyed by - is materialized; when false a missing id/dir yields a
+        // path without side effects (for read-only callers like the tab reconcile / status bar).
+        private string ScratchDirForContext(TabManager.ChatTabContext ctx, bool create)
+        {
+            if (ctx == null || ctx.Conversation == null) return null;
+            if (!string.IsNullOrEmpty(ctx.WorkingDir)) return null;     // a real workspace wins
+            if (!ScratchWorkspace.IsEnabled()) return null;
+            string id = ctx.Conversation.Id;
+            if (string.IsNullOrEmpty(id))
+            {
+                if (!create) return null;
+                id = ConversationStore.EnsureConversationId(ctx.Conversation);
+            }
+            return create ? ScratchWorkspace.EnsureDir(id) : ScratchWorkspace.PathFor(id);
+        }
+
+        // The working directory used to RESOLVE workdir-scoped MCP tools for a tab (status bar count,
+        // turn routing): the user workspace if set, else this conversation's already-created scratch dir
+        // (command server only). Null when neither applies. Read-only - never creates a dir or an id, so
+        // the scratch path counts only once a turn has actually materialized it.
+        private string ResolutionWorkdirForContext(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null) return null;
+            if (!string.IsNullOrEmpty(ctx.WorkingDir)) return ctx.WorkingDir;
+            string s = ScratchDirForContext(ctx, false);
+            return (!string.IsNullOrEmpty(s) && System.IO.Directory.Exists(s)) ? s : null;
+        }
+
+        // Release and delete a conversation's scratch working directory (if any). Stops the scratch
+        // command server bound to it first so the directory isn't held open, then removes it. Safe for
+        // conversations that never used a scratch dir. Used when a conversation is deleted.
+        internal void DeleteScratchForConversation(string conversationId)
+        {
+            if (string.IsNullOrEmpty(conversationId)) return;
+            try
+            {
+                string path = ScratchWorkspace.PathFor(conversationId);
+                if (string.IsNullOrEmpty(path)) return;
+                if (_mcpHost != null) _mcpHost.ReleaseWorkingDir(path); // tear down the command server holding it
+                ScratchWorkspace.DeletePath(path);
+            }
+            catch { }
+        }
+
         // Reconcile the MCP host's workdir-scoped servers (files/git/command) with the open tabs:
         // pre-warm the active conversation's folder and tear down any folder no longer referenced by an
         // open tab. Each distinct working directory runs its own server set, kept alive across tab
@@ -668,27 +721,51 @@ namespace GxPT
             // the status bar's tool count is workdir-scoped — refresh it alongside the servers.
             UpdateToolSkillCounts();
             string active = null;
+            bool activeScratch = false;
             var inUse = new List<string>();
             try
             {
                 var act = _tabManager != null ? _tabManager.GetActiveContext() : null;
-                if (act != null) active = act.WorkingDir;
+                if (act != null)
+                {
+                    if (!string.IsNullOrEmpty(act.WorkingDir)) active = act.WorkingDir;
+                    else
+                    {
+                        // Folderless active tab: pre-warm its scratch command server, but only once a
+                        // turn has created the dir (the first send creates + connects it). Connecting a
+                        // not-yet-created dir would launch the child with a missing CWD.
+                        string s = ResolutionWorkdirForContext(act);
+                        if (!string.IsNullOrEmpty(s)) { active = s; activeScratch = true; }
+                    }
+                }
                 if (_tabManager != null)
                 {
                     foreach (var c in _tabManager.TabContexts.Values)
-                        if (c != null && !string.IsNullOrEmpty(c.WorkingDir)) inUse.Add(c.WorkingDir);
+                    {
+                        if (c == null) continue;
+                        if (!string.IsNullOrEmpty(c.WorkingDir)) { inUse.Add(c.WorkingDir); continue; }
+                        // Keep a folderless tab's scratch server alive across tab switches by listing its
+                        // scratch dir among the retained workdirs.
+                        string s = ResolutionWorkdirForContext(c);
+                        if (!string.IsNullOrEmpty(s)) inUse.Add(s);
+                    }
                 }
             }
             catch { }
 
             McpHost hostRef = _mcpHost;
             string activeRef = active;
+            bool activeScratchRef = activeScratch;
             string[] inUseArr = inUse.ToArray();
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    if (!string.IsNullOrEmpty(activeRef)) hostRef.EnsureWorkingDir(activeRef);
+                    if (!string.IsNullOrEmpty(activeRef))
+                    {
+                        if (activeScratchRef) hostRef.EnsureScratchDir(activeRef);
+                        else hostRef.EnsureWorkingDir(activeRef);
+                    }
                     hostRef.RetainOnly(inUseArr); // release folders whose last tab closed
                 }
                 catch (Exception ex) { try { Logger.Log("mcp", "MCP workdir reconcile failed: " + ex.Message); } catch { } }
@@ -865,7 +942,9 @@ namespace GxPT
                 int toolCount = 0;
                 if (_mcpRegistry != null)
                 {
-                    IList<string> names = _mcpRegistry.NamesForWorkdir(workdir);
+                    // Tools may include a folderless conversation's scratch command server; skills/project
+                    // discovery above stays on the real workspace (scratch has no project skills).
+                    IList<string> names = _mcpRegistry.NamesForWorkdir(ResolutionWorkdirForContext(ctx));
                     ICollection<string> hidden = SkillToolGate.HiddenTools(enabledSkills);
                     for (int i = 0; i < names.Count; i++)
                         if (!hidden.Contains(names[i])) toolCount++;
@@ -1364,23 +1443,40 @@ namespace GxPT
                 // rebuilt after a Settings save starts with no active workdir and those servers never
                 // launch even though the current conversation has a folder set.
                 string activeWorkdir = null;
+                bool activeScratch = false;
                 try
                 {
                     var actCtx = _tabManager != null ? _tabManager.GetActiveContext() : null;
-                    if (actCtx != null) activeWorkdir = actCtx.WorkingDir;
+                    if (actCtx != null)
+                    {
+                        if (!string.IsNullOrEmpty(actCtx.WorkingDir)) activeWorkdir = actCtx.WorkingDir;
+                        else
+                        {
+                            // Folderless active tab with an already-created scratch dir: re-bind its
+                            // command-only set after the rebuild.
+                            string s = ResolutionWorkdirForContext(actCtx);
+                            if (!string.IsNullOrEmpty(s)) { activeWorkdir = s; activeScratch = true; }
+                        }
+                    }
                 }
                 catch { }
 
                 // Connecting (handshakes / process spawns) can block — do it off the UI thread.
                 McpHost hostRef = _mcpHost;
                 string wd = activeWorkdir;
+                bool wdScratch = activeScratch;
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate
                 {
                     try
                     {
                         hostRef.Start(specs);
-                        // Launch the workdir-scoped servers for the active conversation's folder.
-                        if (!string.IsNullOrEmpty(wd)) hostRef.EnsureWorkingDir(wd);
+                        // Launch the workdir-scoped servers for the active conversation's folder (or the
+                        // command-only set for its scratch dir when folderless).
+                        if (!string.IsNullOrEmpty(wd))
+                        {
+                            if (wdScratch) hostRef.EnsureScratchDir(wd);
+                            else hostRef.EnsureWorkingDir(wd);
+                        }
                     }
                     catch (Exception ex) { try { Logger.Log("mcp", "host start failed: " + ex.Message); } catch { } }
                 });
@@ -2294,7 +2390,12 @@ namespace GxPT
             // Skills also route through the tool loop (they inject a manifest and expose open_skill),
             // so a conversation with skills but no MCP tools still takes this path.
             bool hasMcpTools = _mcpRegistry != null && _mcpRegistry.HasToolsForWorkdir(ctx.WorkingDir);
-            if (hasMcpTools || ConversationHasSkills(ctx))
+            // Folderless conversations can still route through the tool loop for the command server in a
+            // scratch dir (opt-in). The scratch server may not be connected yet at this point - it is
+            // launched in BeginToolSend - so gate on the feature/settings, not the live registry.
+            bool scratchCommand = string.IsNullOrEmpty(ctx.WorkingDir)
+                && ctx.Conversation != null && ScratchWorkspace.IsEnabled();
+            if (hasMcpTools || ConversationHasSkills(ctx) || scratchCommand)
             {
                 BeginToolSend(ctx, modelToUse, zdrForSend);
                 return;
@@ -2767,9 +2868,18 @@ namespace GxPT
                 {
                     // Make sure THIS conversation's folder has its own scoped server set before the
                     // turn runs (idempotent; no-op if already connected), and route the turn's tool
-                    // calls to that folder so a concurrent turn in another tab can't interfere.
-                    if (_mcpHost != null && !string.IsNullOrEmpty(ctx.WorkingDir))
-                        _mcpHost.EnsureWorkingDir(ctx.WorkingDir);
+                    // calls to that folder so a concurrent turn in another tab can't interfere. A
+                    // folderless conversation with the opt-in scratch-command feature instead gets a
+                    // per-conversation scratch dir (command server only); compute it once here (creates
+                    // the dir + ensures the id), launch its command-only set, and route the turn at it.
+                    string scratchDir = ScratchDirForContext(ctx, true);
+                    if (_mcpHost != null)
+                    {
+                        if (!string.IsNullOrEmpty(ctx.WorkingDir))
+                            _mcpHost.EnsureWorkingDir(ctx.WorkingDir);
+                        else if (!string.IsNullOrEmpty(scratchDir))
+                            _mcpHost.EnsureScratchDir(scratchDir);
+                    }
 
                     // Per-turn approval policy bound to THIS tab's panel, so the prompt appears on the
                     // conversation that requested the tool. The remembered-choice store is shared
@@ -2799,6 +2909,9 @@ namespace GxPT
                     var orch = new McpChatOrchestrator(_client, _mcpRegistry, approval,
                                                        model, LoggerSink.Instance);
                     orch.WorkingDir = ctx.WorkingDir;
+                    // Route scoped-tool resolution at the scratch dir when folderless (null otherwise);
+                    // the prompt's workspace block stays absent and a scratch-sandbox note is used instead.
+                    orch.ScratchWorkingDir = string.IsNullOrEmpty(ctx.WorkingDir) ? scratchDir : null;
                     orch.Zdr = zdr ? true : (bool?)null;
                     // Reveal state is per-conversation (recency-ordered; persisted with the
                     // conversation) so concurrent tabs don't churn each other's tools array - the

@@ -56,6 +56,57 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Scratch_workingdir_resolves_command_tool_and_injects_scratch_note_not_workspace()
+        {
+            // No user workspace, but a per-conversation scratch dir runs the command server. The
+            // orchestrator resolves the scratch-bound tool via ScratchWorkingDir (not WorkingDir) and
+            // tells the model about the scratch sandbox - never presenting it as a real workspace.
+            RegistryFakeTransport ft;
+            var conn = FakeConn.Ready("command", out ft, new ToolDef("run"));
+            var reg = new McpToolRegistry(null);
+            reg.AddConnection(conn, "C:\\scratch\\abc"); // scoped to the scratch dir
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("ran"); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "command__run", "{\"cmd\":\"echo hi\"}"));
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            var orch = New(streamer, reg);
+            orch.WorkingDir = null;
+            orch.ScratchWorkingDir = "C:\\scratch\\abc";
+            orch.RevealedToolNames = new List<string> { "command__run" }; // pre-revealed so it's exposed
+
+            var ui = new RecordingUi();
+            orch.RunTurn(new List<ChatMessage>(), "run echo", ui);
+
+            // The call routed to the scratch-bound connection (not "[Unknown tool]").
+            Assert.Equal(new[] { "command__run" }, ui.ToolCalls.ToArray());
+            Assert.Contains("ran", ui.ToolResults[0]);
+            Assert.False(ui.ToolErrors[0]);
+
+            // Stable head carries the scratch note and NO workspace block.
+            var msgs = streamer.SeenMessages[0];
+            Assert.Equal("system", msgs[0].Role);
+            Assert.Contains("operating as an agent", msgs[0].Content);
+            Assert.Equal("system", msgs[1].Role);
+            Assert.Contains("temporary scratch directory", msgs[1].Content);
+            Assert.Contains("C:\\scratch\\abc", msgs[1].Content);
+            foreach (var m in msgs)
+                if (m.Role == "system" && m.Content != null)
+                    Assert.DoesNotContain("running in this workspace directory", m.Content);
+            // The manifest tail advertises the scratch command tool.
+            Assert.Contains("command__run", msgs[msgs.Count - 1].Content);
+        }
+
+        [Fact]
+        public void Scratch_note_is_absent_when_no_scratch_dir()
+        {
+            Assert.Null(McpChatOrchestrator.ScratchSystemMessage(null));
+            Assert.Null(McpChatOrchestrator.ScratchSystemMessage(""));
+            Assert.Contains("C:\\scratch\\x", McpChatOrchestrator.ScratchSystemMessage("C:\\scratch\\x"));
+        }
+
+        [Fact]
         public void Passes_manifest_tail_and_tools_to_streamer()
         {
             RegistryFakeTransport ft;

@@ -68,16 +68,22 @@
             this.tabJson = new System.Windows.Forms.TabPage();
             this.tabMcp = new System.Windows.Forms.TabPage();
             this.tblMcp = new System.Windows.Forms.TableLayoutPanel();
+            this.grpMcpWeb = new System.Windows.Forms.GroupBox();
+            this.tblMcpWeb = new System.Windows.Forms.TableLayoutPanel();
             this.chkMcpWeb = new System.Windows.Forms.CheckBox();
             this.txtWebSearchKey = new System.Windows.Forms.TextBox();
             this.chkMcpGithub = new System.Windows.Forms.CheckBox();
             this.txtGithubPat = new System.Windows.Forms.TextBox();
+            this.grpMcpWorkspace = new System.Windows.Forms.GroupBox();
+            this.tblMcpWorkspace = new System.Windows.Forms.TableLayoutPanel();
             this.tblMcpKeyless = new System.Windows.Forms.TableLayoutPanel();
             this.chkMcpFiles = new System.Windows.Forms.CheckBox();
             this.chkMcpCommand = new System.Windows.Forms.CheckBox();
             this.chkMcpGit = new System.Windows.Forms.CheckBox();
             this.chkMcpMsBuild = new System.Windows.Forms.CheckBox();
-            this.lblMcpCustom = new System.Windows.Forms.Label();
+            this.chkMcpCommandScratch = new System.Windows.Forms.CheckBox();
+            this.grpMcpCustom = new System.Windows.Forms.GroupBox();
+            this.tblMcpCustom = new System.Windows.Forms.TableLayoutPanel();
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
             this.tblSettings.SuspendLayout();
@@ -93,7 +99,13 @@
             this.tabJson.SuspendLayout();
             this.tabMcp.SuspendLayout();
             this.tblMcp.SuspendLayout();
+            this.grpMcpWeb.SuspendLayout();
+            this.tblMcpWeb.SuspendLayout();
+            this.grpMcpWorkspace.SuspendLayout();
+            this.tblMcpWorkspace.SuspendLayout();
             this.tblMcpKeyless.SuspendLayout();
+            this.grpMcpCustom.SuspendLayout();
+            this.tblMcpCustom.SuspendLayout();
             this.SuspendLayout();
             // 
             // flowLayoutPanel1
@@ -588,28 +600,80 @@
             // 
             // tblMcp
             // 
-            this.tblMcp.ColumnCount = 2;
-            this.tblMcp.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
+            this.tblMcp.ColumnCount = 1;
             this.tblMcp.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.tblMcp.Controls.Add(this.chkMcpWeb, 0, 0);
-            this.tblMcp.Controls.Add(this.txtWebSearchKey, 1, 0);
-            this.tblMcp.Controls.Add(this.chkMcpGithub, 0, 1);
-            this.tblMcp.Controls.Add(this.txtGithubPat, 1, 1);
-            this.tblMcp.Controls.Add(this.tblMcpKeyless, 0, 2);
-            this.tblMcp.Controls.Add(this.lblMcpCustom, 0, 3);
-            this.tblMcp.Controls.Add(this.rtbMcpJson, 0, 4);
+            this.tblMcp.Controls.Add(this.grpMcpWeb, 0, 0);
+            this.tblMcp.Controls.Add(this.grpMcpWorkspace, 0, 1);
+            this.tblMcp.Controls.Add(this.grpMcpCustom, 0, 2);
             this.tblMcp.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tblMcp.Location = new System.Drawing.Point(3, 3);
             this.tblMcp.Name = "tblMcp";
-            this.tblMcp.RowCount = 5;
-            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMcp.RowCount = 3;
+            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 86F));
+            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 84F));
             this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblMcp.Size = new System.Drawing.Size(590, 357);
             this.tblMcp.TabIndex = 0;
-            // 
+            //
+            // grpMcpWeb
+            //
+            this.grpMcpWeb.Controls.Add(this.tblMcpWeb);
+            this.grpMcpWeb.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpMcpWeb.Location = new System.Drawing.Point(3, 3);
+            this.grpMcpWeb.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.grpMcpWeb.Name = "grpMcpWeb";
+            this.grpMcpWeb.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpMcpWeb.Size = new System.Drawing.Size(584, 80);
+            this.grpMcpWeb.TabIndex = 0;
+            this.grpMcpWeb.TabStop = false;
+            this.grpMcpWeb.Text = "Web && integrations";
+            //
+            // tblMcpWeb
+            //
+            this.tblMcpWeb.ColumnCount = 2;
+            this.tblMcpWeb.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
+            this.tblMcpWeb.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblMcpWeb.Controls.Add(this.chkMcpWeb, 0, 0);
+            this.tblMcpWeb.Controls.Add(this.txtWebSearchKey, 1, 0);
+            this.tblMcpWeb.Controls.Add(this.chkMcpGithub, 0, 1);
+            this.tblMcpWeb.Controls.Add(this.txtGithubPat, 1, 1);
+            this.tblMcpWeb.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblMcpWeb.Location = new System.Drawing.Point(6, 13);
+            this.tblMcpWeb.Name = "tblMcpWeb";
+            this.tblMcpWeb.RowCount = 2;
+            this.tblMcpWeb.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMcpWeb.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMcpWeb.Size = new System.Drawing.Size(572, 49);
+            this.tblMcpWeb.TabIndex = 0;
+            //
+            // grpMcpWorkspace
+            //
+            this.grpMcpWorkspace.Controls.Add(this.tblMcpWorkspace);
+            this.grpMcpWorkspace.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpMcpWorkspace.Location = new System.Drawing.Point(3, 77);
+            this.grpMcpWorkspace.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.grpMcpWorkspace.Name = "grpMcpWorkspace";
+            this.grpMcpWorkspace.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpMcpWorkspace.Size = new System.Drawing.Size(584, 78);
+            this.grpMcpWorkspace.TabIndex = 1;
+            this.grpMcpWorkspace.TabStop = false;
+            this.grpMcpWorkspace.Text = "Workspace tools";
+            //
+            // tblMcpWorkspace
+            //
+            this.tblMcpWorkspace.ColumnCount = 1;
+            this.tblMcpWorkspace.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblMcpWorkspace.Controls.Add(this.tblMcpKeyless, 0, 0);
+            this.tblMcpWorkspace.Controls.Add(this.chkMcpCommandScratch, 0, 1);
+            this.tblMcpWorkspace.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblMcpWorkspace.Location = new System.Drawing.Point(6, 13);
+            this.tblMcpWorkspace.Name = "tblMcpWorkspace";
+            this.tblMcpWorkspace.RowCount = 2;
+            this.tblMcpWorkspace.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMcpWorkspace.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMcpWorkspace.Size = new System.Drawing.Size(572, 59);
+            this.tblMcpWorkspace.TabIndex = 0;
+            //
             // chkMcpWeb
             // 
             this.chkMcpWeb.Anchor = System.Windows.Forms.AnchorStyles.Left;
@@ -654,7 +718,6 @@
             // 
             this.tblMcpKeyless.AutoSize = true;
             this.tblMcpKeyless.ColumnCount = 4;
-            this.tblMcp.SetColumnSpan(this.tblMcpKeyless, 2);
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
             this.tblMcpKeyless.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
@@ -663,13 +726,13 @@
             this.tblMcpKeyless.Controls.Add(this.chkMcpCommand, 1, 0);
             this.tblMcpKeyless.Controls.Add(this.chkMcpGit, 2, 0);
             this.tblMcpKeyless.Controls.Add(this.chkMcpMsBuild, 3, 0);
-            this.tblMcpKeyless.Location = new System.Drawing.Point(0, 52);
+            this.tblMcpKeyless.Location = new System.Drawing.Point(0, 16);
             this.tblMcpKeyless.Margin = new System.Windows.Forms.Padding(0);
             this.tblMcpKeyless.Name = "tblMcpKeyless";
             this.tblMcpKeyless.RowCount = 1;
             this.tblMcpKeyless.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblMcpKeyless.Size = new System.Drawing.Size(248, 25);
-            this.tblMcpKeyless.TabIndex = 4;
+            this.tblMcpKeyless.Size = new System.Drawing.Size(258, 25);
+            this.tblMcpKeyless.TabIndex = 1;
             // 
             // chkMcpFiles
             // 
@@ -718,34 +781,60 @@
             this.chkMcpMsBuild.TabIndex = 7;
             this.chkMcpMsBuild.Text = "MSBuild";
             this.chkMcpMsBuild.UseVisualStyleBackColor = true;
-            // 
-            // lblMcpCustom
-            // 
-            this.lblMcpCustom.AutoSize = true;
-            this.tblMcp.SetColumnSpan(this.lblMcpCustom, 2);
-            this.lblMcpCustom.Location = new System.Drawing.Point(3, 85);
-            this.lblMcpCustom.Margin = new System.Windows.Forms.Padding(3, 8, 3, 3);
-            this.lblMcpCustom.Name = "lblMcpCustom";
-            this.lblMcpCustom.Size = new System.Drawing.Size(133, 13);
-            this.lblMcpCustom.TabIndex = 8;
-            this.lblMcpCustom.Text = "Custom servers (mcp.json):";
-            // 
+            //
+            // chkMcpCommandScratch
+            //
+            this.chkMcpCommandScratch.Anchor = System.Windows.Forms.AnchorStyles.Left;
+            this.chkMcpCommandScratch.AutoSize = true;
+            this.chkMcpCommandScratch.Location = new System.Drawing.Point(3, 45);
+            this.chkMcpCommandScratch.Margin = new System.Windows.Forms.Padding(3, 4, 3, 2);
+            this.chkMcpCommandScratch.Name = "chkMcpCommandScratch";
+            this.chkMcpCommandScratch.Size = new System.Drawing.Size(355, 17);
+            this.chkMcpCommandScratch.TabIndex = 2;
+            this.chkMcpCommandScratch.Text = "Run Command in a temporary scratch folder when no workspace is set";
+            this.chkMcpCommandScratch.UseVisualStyleBackColor = true;
+            //
+            // grpMcpCustom
+            //
+            this.grpMcpCustom.Controls.Add(this.tblMcpCustom);
+            this.grpMcpCustom.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpMcpCustom.Location = new System.Drawing.Point(3, 167);
+            this.grpMcpCustom.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.grpMcpCustom.Name = "grpMcpCustom";
+            this.grpMcpCustom.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpMcpCustom.Size = new System.Drawing.Size(584, 187);
+            this.grpMcpCustom.TabIndex = 2;
+            this.grpMcpCustom.TabStop = false;
+            this.grpMcpCustom.Text = "Custom servers (mcp.json)";
+            //
+            // tblMcpCustom
+            //
+            this.tblMcpCustom.ColumnCount = 1;
+            this.tblMcpCustom.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblMcpCustom.Controls.Add(this.rtbMcpJson, 0, 0);
+            this.tblMcpCustom.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblMcpCustom.Location = new System.Drawing.Point(6, 13);
+            this.tblMcpCustom.Name = "tblMcpCustom";
+            this.tblMcpCustom.RowCount = 1;
+            this.tblMcpCustom.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblMcpCustom.Size = new System.Drawing.Size(572, 168);
+            this.tblMcpCustom.TabIndex = 0;
+            //
             // rtbMcpJson
-            // 
+            //
             this.rtbMcpJson.AcceptsTab = true;
             this.rtbMcpJson.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.tblMcp.SetColumnSpan(this.rtbMcpJson, 2);
             this.rtbMcpJson.DetectUrls = false;
             this.rtbMcpJson.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rtbMcpJson.Font = new System.Drawing.Font("Consolas", 9F);
             this.rtbMcpJson.HideSelection = false;
-            this.rtbMcpJson.Location = new System.Drawing.Point(3, 104);
+            this.rtbMcpJson.Location = new System.Drawing.Point(3, 20);
             this.rtbMcpJson.Name = "rtbMcpJson";
-            this.rtbMcpJson.Size = new System.Drawing.Size(584, 250);
-            this.rtbMcpJson.TabIndex = 8;
+            this.rtbMcpJson.Size = new System.Drawing.Size(566, 145);
+            this.rtbMcpJson.TabIndex = 1;
             this.rtbMcpJson.Text = "";
             this.rtbMcpJson.WordWrap = false;
-            // 
+            //
             // SettingsForm
             // 
             this.AcceptButton = this.btnSave;
@@ -775,9 +864,16 @@
             this.tabJson.ResumeLayout(false);
             this.tabMcp.ResumeLayout(false);
             this.tblMcp.ResumeLayout(false);
-            this.tblMcp.PerformLayout();
+            this.grpMcpWeb.ResumeLayout(false);
+            this.tblMcpWeb.ResumeLayout(false);
+            this.tblMcpWeb.PerformLayout();
+            this.grpMcpWorkspace.ResumeLayout(false);
+            this.tblMcpWorkspace.ResumeLayout(false);
+            this.tblMcpWorkspace.PerformLayout();
             this.tblMcpKeyless.ResumeLayout(false);
             this.tblMcpKeyless.PerformLayout();
+            this.grpMcpCustom.ResumeLayout(false);
+            this.tblMcpCustom.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -824,7 +920,13 @@
         private System.Windows.Forms.ComboBox cmbColor;
         private System.Windows.Forms.TabPage tabMcp;
         private System.Windows.Forms.TableLayoutPanel tblMcp;
+        private System.Windows.Forms.GroupBox grpMcpWeb;
+        private System.Windows.Forms.TableLayoutPanel tblMcpWeb;
+        private System.Windows.Forms.GroupBox grpMcpWorkspace;
+        private System.Windows.Forms.TableLayoutPanel tblMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpKeyless;
+        private System.Windows.Forms.GroupBox grpMcpCustom;
+        private System.Windows.Forms.TableLayoutPanel tblMcpCustom;
         private System.Windows.Forms.CheckBox chkMcpWeb;
         private System.Windows.Forms.TextBox txtWebSearchKey;
         private System.Windows.Forms.CheckBox chkMcpGithub;
@@ -832,8 +934,8 @@
         private System.Windows.Forms.CheckBox chkMcpFiles;
         private System.Windows.Forms.CheckBox chkMcpGit;
         private System.Windows.Forms.CheckBox chkMcpCommand;
+        private System.Windows.Forms.CheckBox chkMcpCommandScratch;
         private System.Windows.Forms.CheckBox chkMcpMsBuild;
-        private System.Windows.Forms.Label lblMcpCustom;
         private System.Windows.Forms.RichTextBox rtbMcpJson;
     }
 }

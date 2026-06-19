@@ -546,6 +546,10 @@ namespace GxPT
                 }
 
                 ConversationStore.DeletePath(info.Path);
+                // Remove the conversation's scratch working directory (if any), stopping its command
+                // server first so the directory isn't held open.
+                try { if (!string.IsNullOrEmpty(info.Id)) _mainForm.DeleteScratchForConversation(info.Id); }
+                catch { }
                 RefreshSidebarList();
             }
             catch { }
