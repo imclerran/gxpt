@@ -74,6 +74,8 @@
     <Compile Include="..\GxPT\Services\Agents\AgentCatalog.cs" Link="Linked\Agents\AgentCatalog.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentRoots.cs" Link="Linked\Agents\AgentRoots.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentToolResolver.cs" Link="Linked\Agents\AgentToolResolver.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentInjection.cs" Link="Linked\Agents\AgentInjection.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentEnablement.cs" Link="Linked\Agents\AgentEnablement.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandKind.cs" Link="Linked\Commands\SlashCommandKind.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandResult.cs" Link="Linked\Commands\SlashCommandResult.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashArgs.cs" Link="Linked\Commands\SlashArgs.cs" />

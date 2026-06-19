@@ -137,6 +137,13 @@ namespace GxPT
         // block, so a skill-less conversation leaves no trace in context.
         public Func<string> SkillsManifestSystemMessageProvider { get; set; }
 
+        // Optional provider of the agents manifest system block (the always-on slug/description list of
+        // dispatchable sub-agents plus its framing), rebuilt each request and injected as an ephemeral
+        // system message ordered after the skills block and before the MCP names manifest (design sec.5).
+        // Gated by the single agents feature toggle (the host only sets it when agents are enabled), so a
+        // conversation with agents off leaves no trace in context. Null/empty => no agents block.
+        public Func<string> AgentsManifestSystemMessageProvider { get; set; }
+
         // Optional skills meta-tool surface (open_skill). When set and it has skills, open_skill is
         // exposed in the tools array and handled locally without an MCP round-trip, like reveal_tools.
         public SkillTools SkillTools { get; set; }
@@ -363,7 +370,9 @@ namespace GxPT
                     ? MemorySystemMessageProvider() : null;
                 string skillsBlock = SkillsManifestSystemMessageProvider != null
                     ? SkillsManifestSystemMessageProvider() : null;
-                string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, manifest);
+                string agentsBlock = AgentsManifestSystemMessageProvider != null
+                    ? AgentsManifestSystemMessageProvider() : null;
+                string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, agentsBlock, manifest);
                 if (!string.IsNullOrEmpty(ephemeralTail))
                     requestMessages.Add(new ChatMessage("user", ephemeralTail));
 
@@ -633,13 +642,14 @@ namespace GxPT
         // parameter, which would put this back in front of the cached history; as a trailing user
         // message it merges into the same user turn as any preceding tool results ([tool_result...,
         // text] is the order Anthropic requires). Returns null when every block is empty, so a turn
-        // without memory/skills/tools leaves no trace. Never persisted; the UI never renders it.
-        internal static string BuildEphemeralContextText(string memory, string skills, string toolManifest)
+        // without memory/skills/agents/tools leaves no trace. Never persisted; the UI never renders it.
+        internal static string BuildEphemeralContextText(string memory, string skills, string agents, string toolManifest)
         {
             bool hasMemory = !string.IsNullOrEmpty(memory);
             bool hasSkills = !string.IsNullOrEmpty(skills);
+            bool hasAgents = !string.IsNullOrEmpty(agents);
             bool hasManifest = !string.IsNullOrEmpty(toolManifest);
-            if (!hasMemory && !hasSkills && !hasManifest) return null;
+            if (!hasMemory && !hasSkills && !hasAgents && !hasManifest) return null;
 
             StringBuilder sb = new StringBuilder();
             sb.Append("[Ephemeral context appended by the host application for this request. ");
@@ -648,6 +658,8 @@ namespace GxPT
                 sb.Append("\n\n<memory>\n").Append(memory).Append("\n</memory>");
             if (hasSkills)
                 sb.Append("\n\n<skills>\n").Append(skills).Append("\n</skills>");
+            if (hasAgents)
+                sb.Append("\n\n<agents>\n").Append(agents).Append("\n</agents>");
             if (hasManifest)
                 sb.Append("\n\n<available_tools>\n").Append(toolManifest).Append("\n</available_tools>");
             return sb.ToString();
