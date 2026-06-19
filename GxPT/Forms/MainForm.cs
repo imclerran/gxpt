@@ -3038,7 +3038,14 @@ namespace GxPT
                                 LoggerSink.Instance, tierOf,
                                 McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
                             dispatcher.Cancellation = ctx.Cancellation;
-                            dispatcher.UsageReported = orch.UsageReported;
+                            // Child usage adds to cost/token totals but must NOT move the parent's context
+                            // gauge (the child has its own isolated context) - so it routes through the
+                            // updateContextGauge=false overload, not orch.UsageReported.
+                            dispatcher.UsageReported = delegate(ResponseUsage u)
+                            {
+                                RecordUsageAndReconcile(revealConvo, u,
+                                    OpenRouterClient.ModelSupportsPromptCaching(model), false);
+                            };
                             orch.AgentDispatcher = dispatcher;
                         }
                     }
@@ -5312,8 +5319,15 @@ namespace GxPT
         // dashboard shows cache activity on every request.
         private void RecordUsageAndReconcile(Conversation convo, ResponseUsage u, bool cachingModel)
         {
+            RecordUsageAndReconcile(convo, u, cachingModel, true);
+        }
+
+        // updateContextGauge=false (sub-agent usage): accumulate cost/token totals and reconcile cost, but
+        // do not move the parent conversation's context gauge - the child runs in its own isolated context.
+        private void RecordUsageAndReconcile(Conversation convo, ResponseUsage u, bool cachingModel, bool updateContextGauge)
+        {
             if (convo == null || u == null) return;
-            convo.RecordUsage(u);
+            convo.RecordUsage(u, updateContextGauge);
             NotifyUsageUpdated(convo);
 
             if (string.IsNullOrEmpty(u.Id) || _client == null) return;

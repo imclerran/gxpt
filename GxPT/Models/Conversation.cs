@@ -99,6 +99,16 @@ namespace GxPT
         // counted as zero, so totals stay "sum of what was billed and reported".
         internal void RecordUsage(ResponseUsage u)
         {
+            RecordUsage(u, true);
+        }
+
+        // updateContextGauge=false records a request's cost/token TOTALS without moving the "newest
+        // request's context size" gauge (Last* fields). Used for sub-agent (dispatch_agent) usage: a child
+        // runs in an isolated context, so the user is still billed for it (totals), but its prompt size
+        // must not be shown as this conversation's context fill - that gauge tracks the parent's own
+        // requests only.
+        internal void RecordUsage(ResponseUsage u, bool updateContextGauge)
+        {
             if (u == null) return;
             lock (_usageGate)
             {
@@ -108,9 +118,12 @@ namespace GxPT
                 TotalCachedTokens += u.CachedTokens;
                 TotalCompletionTokens += u.CompletionTokens;
                 TotalReasoningTokens += u.ReasoningTokens;
-                LastPromptTokens = u.PromptTokens;
-                LastCachedTokens = u.CachedTokens;
-                LastCacheWriteTokens = u.CacheWriteTokens;
+                if (updateContextGauge)
+                {
+                    LastPromptTokens = u.PromptTokens;
+                    LastCachedTokens = u.CachedTokens;
+                    LastCacheWriteTokens = u.CacheWriteTokens;
+                }
             }
             LastUpdated = DateTime.Now;
         }
