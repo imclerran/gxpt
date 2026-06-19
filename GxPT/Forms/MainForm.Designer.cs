@@ -433,9 +433,7 @@
             this.chkZdrTab.TabIndex = 3;
             this.chkZdrTab.Text = "ZDR";
             this.chkZdrTab.UseVisualStyleBackColor = true;
-            this.toolTipZdr.SetToolTip(this.chkZdrTab, "Zero Data Retention: route this conversation only to providers that don\'t r" +
-                "etain your prompts or responses. Once a message is sent with ZDR on, it stays on" +
-                " for the conversation.");
+            this.toolTipZdr.SetToolTip(this.chkZdrTab, "Enable Zero Data Retention for this conversation");
             // 
             // pnlBottom
             // 
