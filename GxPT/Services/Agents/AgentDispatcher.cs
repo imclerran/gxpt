@@ -41,6 +41,15 @@ namespace GxPT
         public Action<ResponseUsage> UsageReported { get; set; }
         public RequestCancellation Cancellation { get; set; }
 
+        // Optional observability hooks (design sec.14): the dispatcher reports fan-out / per-child lifecycle
+        // so the host can show the activity panel and relabel the Stop button. Null => headless.
+        public IAgentActivityUi ActivityUi { get; set; }
+
+        // Optional group cancellation: when set, children use THIS handle instead of the parent turn's
+        // (Cancellation), so a "Stop N agents" click can cancel the fan-out without ending the turn. Null
+        // => children fall back to Cancellation (parent Stop cancels them, the phase-4 behavior).
+        public RequestCancellation GroupCancellation { get; set; }
+
         public AgentDispatcher(IList<Agent> agents, IChatStreamer streamer, McpToolRegistry registry,
                                IToolApprovalPolicy approval, string parentModel, string workingDir,
                                ILogSink log, Func<string, ToolTier> tierOf,
@@ -141,18 +150,34 @@ namespace GxPT
                 else { agents[i] = agent; runnable.Add(i); }
             }
 
-            // Read-only batches run concurrently (the win is overlapping LLM streams); a batch with any
-            // write-capable agent runs serially (design A9 - the chosen "reads parallel, writes serial"
-            // rule). Concurrent children safely share the MCP connections (the transport is multiplexed:
-            // atomic request ids + serialized writes) and the streamer (per-call), so no extra locking.
-            if (RunsInParallel(agents, runnable))
-                RunParallel(agents, tasks, runnable, results);
-            else
-                for (int k = 0; k < runnable.Count; k++)
-                {
-                    int i = runnable[k];
-                    results[i] = RunChild(agents[i], tasks[i]);
-                }
+            // Observability: announce the fan-out so the host can show the panel + relabel Stop. Paired
+            // with OnFanOutEnd in finally so the button always reverts, even on an unexpected throw.
+            IAgentActivityUi ui = ActivityUi;
+            if (ui != null && runnable.Count > 0)
+            {
+                List<string> slugs = new List<string>(runnable.Count);
+                for (int k = 0; k < runnable.Count; k++) slugs.Add(agents[runnable[k]].Slug);
+                ui.OnFanOutStart(slugs);
+            }
+            try
+            {
+                // Read-only batches run concurrently (the win is overlapping LLM streams); a batch with any
+                // write-capable agent runs serially (design A9 - the chosen "reads parallel, writes serial"
+                // rule). Concurrent children safely share the MCP connections (the transport is multiplexed:
+                // atomic request ids + serialized writes) and the streamer (per-call), so no extra locking.
+                if (RunsInParallel(agents, runnable))
+                    RunParallel(agents, tasks, runnable, results);
+                else
+                    for (int k = 0; k < runnable.Count; k++)
+                    {
+                        int i = runnable[k];
+                        results[i] = RunChildReported(i, agents[i], tasks[i]);
+                    }
+            }
+            finally
+            {
+                if (ui != null && runnable.Count > 0) ui.OnFanOutEnd();
+            }
 
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < n; i++)
@@ -200,7 +225,7 @@ namespace GxPT
                     dones[g] = done;
                     System.Threading.ThreadPool.QueueUserWorkItem(delegate
                     {
-                        try { results[slot] = RunChild(agent, task); }
+                        try { results[slot] = RunChildReported(slot, agent, task); }
                         catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
                         finally { done.Set(); }
                     });
@@ -209,6 +234,16 @@ namespace GxPT
                 for (int g = 0; g < groupSize; g++) dones[g].Close();
                 pos += groupSize;
             }
+        }
+
+        // Wraps RunChild with the activity-UI start/finished hooks (called from both the serial and the
+        // parallel paths). Safe to call concurrently: a host implementation marshals to the UI thread.
+        private string RunChildReported(int index, Agent agent, string task)
+        {
+            IAgentActivityUi ui = ActivityUi;
+            if (ui != null) ui.OnAgentStart(index, agent.Slug, task);
+            try { return RunChild(agent, task); }
+            finally { if (ui != null) ui.OnAgentFinished(index, agent.Slug); }
         }
 
         // Builds and runs one child orchestrator to completion, returning its final answer.
@@ -220,7 +255,9 @@ namespace GxPT
             McpChatOrchestrator child = new McpChatOrchestrator(_streamer, _registry, _approval, model,
                                                                 _log, maxIter, _callTimeoutMs);
             child.WorkingDir = _workingDir;
-            child.Cancellation = Cancellation;
+            // A "Stop N agents" click trips GroupCancellation (cancels the fan-out, not the turn); when the
+            // host hasn't set one, fall back to the parent turn's handle so a plain Stop still cancels.
+            child.Cancellation = GroupCancellation != null ? GroupCancellation : Cancellation;
             child.UsageReported = UsageReported;
 
             // Restrict the child to the agent's effective tool set by hiding everything else the parent can

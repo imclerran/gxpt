@@ -195,5 +195,52 @@ namespace GxPT.Tests
             Assert.False(AgentDispatcher.RunsInParallel(all, new System.Collections.Generic.List<int> { 0, 1, 2 }));  // one writer -> serial
             Assert.False(AgentDispatcher.RunsInParallel(all, new System.Collections.Generic.List<int> { 0 }));       // single -> serial
         }
+
+        // ---- observability hooks (phase 7b engine) ----
+
+        private sealed class FakeActivityUi : IAgentActivityUi
+        {
+            private readonly object _gate = new object();
+            public int FanOutStarts, FanOutEnds, Starts, Finishes, LastFanOutCount;
+
+            public void OnFanOutStart(System.Collections.Generic.IList<string> slugs)
+            { lock (_gate) { FanOutStarts++; LastFanOutCount = slugs.Count; } }
+            public void OnAgentStart(int index, string slug, string task) { lock (_gate) { Starts++; } }
+            public void OnAgentFinished(int index, string slug) { lock (_gate) { Finishes++; } }
+            public void OnFanOutEnd() { lock (_gate) { FanOutEnds++; } }
+        }
+
+        [Fact]
+        public void ActivityUi_ReportsFanOutAndPerAgentLifecycle()
+        {
+            Agent a = WriteReadOnlyAgent("ra", "A");
+            Agent b = WriteReadOnlyAgent("rb", "B");
+            var ui = new FakeActivityUi();
+            var d = new AgentDispatcher(new System.Collections.Generic.List<Agent> { a, b },
+                new TaskEchoStreamer(), null, null, "m", null, null,
+                delegate(string n) { return ToolTier.ReadOnly; }, 25, 60000);
+            d.ActivityUi = ui;
+
+            d.Dispatch("{\"agents\":[{\"name\":\"ra\",\"task\":\"t1\"},{\"name\":\"rb\",\"task\":\"t2\"}]}");
+
+            Assert.Equal(1, ui.FanOutStarts);
+            Assert.Equal(1, ui.FanOutEnds);
+            Assert.Equal(2, ui.LastFanOutCount);
+            Assert.Equal(2, ui.Starts);
+            Assert.Equal(2, ui.Finishes);
+        }
+
+        [Fact]
+        public void ActivityUi_NoFanOutWhenNothingRunnable()
+        {
+            var ui = new FakeActivityUi();
+            AgentDispatcher d = Dispatcher(new ScriptedStreamer());   // no agents in catalog
+            d.ActivityUi = ui;
+
+            d.Dispatch("{\"agents\":[{\"name\":\"ghost\",\"task\":\"t\"}]}");
+
+            Assert.Equal(0, ui.FanOutStarts);   // nothing runnable -> no fan-out announced
+            Assert.Equal(0, ui.FanOutEnds);
+        }
     }
 }
