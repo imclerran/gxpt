@@ -37,7 +37,8 @@ namespace GxPT
             "qwen/qwen3.7-max",
             "qwen/qwen3.7-plus",
             "minimax/minimax-m3",
-            "stepfun/step-3.7-flash"
+            "stepfun/step-3.7-flash",
+            "z-ai/glm-5.2"
         };
 
         // Convenience copy as a List (callers that mutate or store a List).
