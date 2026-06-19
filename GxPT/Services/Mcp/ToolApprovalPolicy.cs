@@ -78,6 +78,7 @@ namespace GxPT
         // The orchestrator calls this. functionName is the qualified name; args already parsed.
         public ApprovalDecision Check(string functionName, JObject args)
         {
+            string server = ServerOf(functionName);
             ToolPolicy pol = ClassifyTool(functionName);
 
             // Read-only tools never modify anything -> always allowed, no prompt. Driven by the
