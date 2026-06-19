@@ -69,6 +69,10 @@
     <Compile Include="..\GxPT\Services\Skills\SkillEnablement.cs" Link="Linked\Skills\SkillEnablement.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillResolve.cs" Link="Linked\Skills\SkillResolve.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillToolGate.cs" Link="Linked\Skills\SkillToolGate.cs" />
+    <Compile Include="..\GxPT\Services\Agents\Agent.cs" Link="Linked\Agents\Agent.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentFrontmatter.cs" Link="Linked\Agents\AgentFrontmatter.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentCatalog.cs" Link="Linked\Agents\AgentCatalog.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentRoots.cs" Link="Linked\Agents\AgentRoots.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandKind.cs" Link="Linked\Commands\SlashCommandKind.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandResult.cs" Link="Linked\Commands\SlashCommandResult.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashArgs.cs" Link="Linked\Commands\SlashArgs.cs" />
