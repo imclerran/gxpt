@@ -33,6 +33,16 @@
             this.btnSave = new System.Windows.Forms.Button();
             this.rtbJson = new System.Windows.Forms.RichTextBox();
             this.tblSettings = new System.Windows.Forms.TableLayoutPanel();
+            this.grpAccount = new System.Windows.Forms.GroupBox();
+            this.tblAccount = new System.Windows.Forms.TableLayoutPanel();
+            this.grpModels = new System.Windows.Forms.GroupBox();
+            this.tblModels = new System.Windows.Forms.TableLayoutPanel();
+            this.grpAppearance = new System.Windows.Forms.GroupBox();
+            this.tblAppearance = new System.Windows.Forms.TableLayoutPanel();
+            this.grpMemory = new System.Windows.Forms.GroupBox();
+            this.tblMemory = new System.Windows.Forms.TableLayoutPanel();
+            this.grpPrivacy = new System.Windows.Forms.GroupBox();
+            this.tblPrivacy = new System.Windows.Forms.TableLayoutPanel();
             this.lblApiKey = new System.Windows.Forms.Label();
             this.lblModels = new System.Windows.Forms.Label();
             this.lblDefaultModel = new System.Windows.Forms.Label();
@@ -87,6 +97,16 @@
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
             this.tblSettings.SuspendLayout();
+            this.grpAccount.SuspendLayout();
+            this.tblAccount.SuspendLayout();
+            this.grpModels.SuspendLayout();
+            this.tblModels.SuspendLayout();
+            this.grpAppearance.SuspendLayout();
+            this.tblAppearance.SuspendLayout();
+            this.grpMemory.SuspendLayout();
+            this.tblMemory.SuspendLayout();
+            this.grpPrivacy.SuspendLayout();
+            this.tblPrivacy.SuspendLayout();
             this.pnlModelsRow.SuspendLayout();
             this.pnlModelsRight.SuspendLayout();
             this.grpRecommended.SuspendLayout();
@@ -148,52 +168,181 @@
             // 
             // tblSettings
             // 
-            this.tblSettings.ColumnCount = 2;
-            this.tblSettings.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle());
+            this.tblSettings.ColumnCount = 1;
             this.tblSettings.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.tblSettings.Controls.Add(this.lblApiKey, 0, 0);
-            this.tblSettings.Controls.Add(this.lblModels, 0, 1);
-            this.tblSettings.Controls.Add(this.lblDefaultModel, 0, 2);
-            this.tblSettings.Controls.Add(this.lblTheme, 0, 4);
-            this.tblSettings.Controls.Add(this.lblTranscriptMaxWidth, 0, 6);
-            this.tblSettings.Controls.Add(this.lblMessageMaxWidth, 0, 7);
-            this.tblSettings.Controls.Add(this.lblFontSize, 0, 8);
-            this.tblSettings.Controls.Add(this.lblEnableLogging, 0, 11);
-            this.tblSettings.Controls.Add(this.txtApiKey, 1, 0);
-            this.tblSettings.Controls.Add(this.pnlModelsRow, 1, 1);
-            this.tblSettings.Controls.Add(this.cmbDefaultModel, 1, 2);
-            this.tblSettings.Controls.Add(this.cmbTheme, 1, 4);
-            this.tblSettings.Controls.Add(this.nudTranscriptMaxWidth, 1, 6);
-            this.tblSettings.Controls.Add(this.nudMessageMaxWidth, 1, 7);
-            this.tblSettings.Controls.Add(this.nudFontSize, 1, 8);
-            this.tblSettings.Controls.Add(this.chkEnableLogging, 1, 11);
-            this.tblSettings.Controls.Add(this.lblProviderDataCollection, 0, 3);
-            this.tblSettings.Controls.Add(this.chkZdr, 1, 3);
-            this.tblSettings.Controls.Add(this.lblColor, 0, 5);
-            this.tblSettings.Controls.Add(this.cmbColor, 1, 5);
-            this.tblSettings.Controls.Add(this.lblMemoryEnabled, 0, 9);
-            this.tblSettings.Controls.Add(this.chkMemoryEnabled, 1, 9);
-            this.tblSettings.Controls.Add(this.lblMemoryMaxLines, 0, 10);
-            this.tblSettings.Controls.Add(this.nudMemoryMaxLines, 1, 10);
+            this.tblSettings.Controls.Add(this.grpAccount, 0, 0);
+            this.tblSettings.Controls.Add(this.grpModels, 0, 1);
+            this.tblSettings.Controls.Add(this.grpAppearance, 0, 2);
+            this.tblSettings.Controls.Add(this.grpMemory, 0, 3);
+            this.tblSettings.Controls.Add(this.grpPrivacy, 0, 4);
             this.tblSettings.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tblSettings.Location = new System.Drawing.Point(3, 3);
             this.tblSettings.Name = "tblSettings";
-            this.tblSettings.RowCount = 12;
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblSettings.RowCount = 5;
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 170F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 82F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 80F));
             this.tblSettings.Size = new System.Drawing.Size(590, 405);
             this.tblSettings.TabIndex = 2;
-            // 
+            //
+            // grpAccount
+            //
+            this.grpAccount.Controls.Add(this.tblAccount);
+            this.grpAccount.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpAccount.Location = new System.Drawing.Point(3, 3);
+            this.grpAccount.Name = "grpAccount";
+            this.grpAccount.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpAccount.Size = new System.Drawing.Size(584, 48);
+            this.grpAccount.TabIndex = 0;
+            this.grpAccount.TabStop = false;
+            this.grpAccount.Text = "Account";
+            //
+            // tblAccount
+            //
+            this.tblAccount.ColumnCount = 2;
+            this.tblAccount.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblAccount.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblAccount.Controls.Add(this.lblApiKey, 0, 0);
+            this.tblAccount.Controls.Add(this.txtApiKey, 1, 0);
+            this.tblAccount.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblAccount.Location = new System.Drawing.Point(6, 13);
+            this.tblAccount.Name = "tblAccount";
+            this.tblAccount.RowCount = 1;
+            this.tblAccount.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAccount.Size = new System.Drawing.Size(572, 29);
+            this.tblAccount.TabIndex = 0;
+            //
+            // grpModels
+            //
+            this.grpModels.Controls.Add(this.tblModels);
+            this.grpModels.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpModels.Location = new System.Drawing.Point(3, 57);
+            this.grpModels.Name = "grpModels";
+            this.grpModels.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpModels.Size = new System.Drawing.Size(584, 173);
+            this.grpModels.TabIndex = 1;
+            this.grpModels.TabStop = false;
+            this.grpModels.Text = "Models";
+            //
+            // tblModels
+            //
+            this.tblModels.ColumnCount = 2;
+            this.tblModels.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblModels.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblModels.Controls.Add(this.lblModels, 0, 0);
+            this.tblModels.Controls.Add(this.pnlModelsRow, 1, 0);
+            this.tblModels.Controls.Add(this.lblDefaultModel, 0, 1);
+            this.tblModels.Controls.Add(this.cmbDefaultModel, 1, 1);
+            this.tblModels.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblModels.Location = new System.Drawing.Point(6, 13);
+            this.tblModels.Name = "tblModels";
+            this.tblModels.RowCount = 2;
+            this.tblModels.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblModels.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblModels.Size = new System.Drawing.Size(572, 154);
+            this.tblModels.TabIndex = 0;
+            //
+            // grpAppearance
+            //
+            this.grpAppearance.Controls.Add(this.tblAppearance);
+            this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpAppearance.Location = new System.Drawing.Point(3, 236);
+            this.grpAppearance.Name = "grpAppearance";
+            this.grpAppearance.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpAppearance.Size = new System.Drawing.Size(584, 164);
+            this.grpAppearance.TabIndex = 2;
+            this.grpAppearance.TabStop = false;
+            this.grpAppearance.Text = "Appearance";
+            //
+            // tblAppearance
+            //
+            this.tblAppearance.ColumnCount = 2;
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblAppearance.Controls.Add(this.lblTheme, 0, 0);
+            this.tblAppearance.Controls.Add(this.cmbTheme, 1, 0);
+            this.tblAppearance.Controls.Add(this.lblColor, 0, 1);
+            this.tblAppearance.Controls.Add(this.cmbColor, 1, 1);
+            this.tblAppearance.Controls.Add(this.lblTranscriptMaxWidth, 0, 2);
+            this.tblAppearance.Controls.Add(this.nudTranscriptMaxWidth, 1, 2);
+            this.tblAppearance.Controls.Add(this.lblMessageMaxWidth, 0, 3);
+            this.tblAppearance.Controls.Add(this.nudMessageMaxWidth, 1, 3);
+            this.tblAppearance.Controls.Add(this.lblFontSize, 0, 4);
+            this.tblAppearance.Controls.Add(this.nudFontSize, 1, 4);
+            this.tblAppearance.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblAppearance.Location = new System.Drawing.Point(6, 13);
+            this.tblAppearance.Name = "tblAppearance";
+            this.tblAppearance.RowCount = 5;
+            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblAppearance.Size = new System.Drawing.Size(572, 145);
+            this.tblAppearance.TabIndex = 0;
+            //
+            // grpMemory
+            //
+            this.grpMemory.Controls.Add(this.tblMemory);
+            this.grpMemory.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpMemory.Location = new System.Drawing.Point(3, 406);
+            this.grpMemory.Name = "grpMemory";
+            this.grpMemory.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpMemory.Size = new System.Drawing.Size(584, 76);
+            this.grpMemory.TabIndex = 3;
+            this.grpMemory.TabStop = false;
+            this.grpMemory.Text = "Memory";
+            //
+            // tblMemory
+            //
+            this.tblMemory.ColumnCount = 2;
+            this.tblMemory.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblMemory.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblMemory.Controls.Add(this.lblMemoryEnabled, 0, 0);
+            this.tblMemory.Controls.Add(this.chkMemoryEnabled, 1, 0);
+            this.tblMemory.Controls.Add(this.lblMemoryMaxLines, 0, 1);
+            this.tblMemory.Controls.Add(this.nudMemoryMaxLines, 1, 1);
+            this.tblMemory.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblMemory.Location = new System.Drawing.Point(6, 13);
+            this.tblMemory.Name = "tblMemory";
+            this.tblMemory.RowCount = 2;
+            this.tblMemory.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMemory.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblMemory.Size = new System.Drawing.Size(572, 57);
+            this.tblMemory.TabIndex = 0;
+            //
+            // grpPrivacy
+            //
+            this.grpPrivacy.Controls.Add(this.tblPrivacy);
+            this.grpPrivacy.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpPrivacy.Location = new System.Drawing.Point(3, 488);
+            this.grpPrivacy.Name = "grpPrivacy";
+            this.grpPrivacy.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpPrivacy.Size = new System.Drawing.Size(584, 74);
+            this.grpPrivacy.TabIndex = 4;
+            this.grpPrivacy.TabStop = false;
+            this.grpPrivacy.Text = "Privacy && diagnostics";
+            //
+            // tblPrivacy
+            //
+            this.tblPrivacy.ColumnCount = 2;
+            this.tblPrivacy.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblPrivacy.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblPrivacy.Controls.Add(this.lblProviderDataCollection, 0, 0);
+            this.tblPrivacy.Controls.Add(this.chkZdr, 1, 0);
+            this.tblPrivacy.Controls.Add(this.lblEnableLogging, 0, 1);
+            this.tblPrivacy.Controls.Add(this.chkEnableLogging, 1, 1);
+            this.tblPrivacy.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tblPrivacy.Location = new System.Drawing.Point(6, 13);
+            this.tblPrivacy.Name = "tblPrivacy";
+            this.tblPrivacy.RowCount = 2;
+            this.tblPrivacy.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblPrivacy.RowStyles.Add(new System.Windows.Forms.RowStyle());
+            this.tblPrivacy.Size = new System.Drawing.Size(572, 55);
+            this.tblPrivacy.TabIndex = 0;
+            //
             // lblApiKey
             // 
             this.lblApiKey.AutoSize = true;
@@ -573,7 +722,7 @@
             this.tabVisual.Padding = new System.Windows.Forms.Padding(3);
             this.tabVisual.Size = new System.Drawing.Size(596, 411);
             this.tabVisual.TabIndex = 0;
-            this.tabVisual.Text = "Visual";
+            this.tabVisual.Text = "General";
             this.tabVisual.UseVisualStyleBackColor = true;
             // 
             // tabJson
@@ -840,17 +989,31 @@
             this.AcceptButton = this.btnSave;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(604, 460);
+            this.ClientSize = new System.Drawing.Size(604, 600);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.flowLayoutPanel1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.MinimumSize = new System.Drawing.Size(620, 498);
+            this.MinimumSize = new System.Drawing.Size(620, 640);
             this.Name = "SettingsForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Settings";
             this.flowLayoutPanel1.ResumeLayout(false);
             this.tblSettings.ResumeLayout(false);
-            this.tblSettings.PerformLayout();
+            this.grpAccount.ResumeLayout(false);
+            this.tblAccount.ResumeLayout(false);
+            this.tblAccount.PerformLayout();
+            this.grpModels.ResumeLayout(false);
+            this.tblModels.ResumeLayout(false);
+            this.tblModels.PerformLayout();
+            this.grpAppearance.ResumeLayout(false);
+            this.tblAppearance.ResumeLayout(false);
+            this.tblAppearance.PerformLayout();
+            this.grpMemory.ResumeLayout(false);
+            this.tblMemory.ResumeLayout(false);
+            this.tblMemory.PerformLayout();
+            this.grpPrivacy.ResumeLayout(false);
+            this.tblPrivacy.ResumeLayout(false);
+            this.tblPrivacy.PerformLayout();
             this.pnlModelsRow.ResumeLayout(false);
             this.pnlModelsRow.PerformLayout();
             this.pnlModelsRight.ResumeLayout(false);
@@ -885,6 +1048,16 @@
         private System.Windows.Forms.Button btnSave;
         private System.Windows.Forms.RichTextBox rtbJson;
         private System.Windows.Forms.TableLayoutPanel tblSettings;
+        private System.Windows.Forms.GroupBox grpAccount;
+        private System.Windows.Forms.TableLayoutPanel tblAccount;
+        private System.Windows.Forms.GroupBox grpModels;
+        private System.Windows.Forms.TableLayoutPanel tblModels;
+        private System.Windows.Forms.GroupBox grpAppearance;
+        private System.Windows.Forms.TableLayoutPanel tblAppearance;
+        private System.Windows.Forms.GroupBox grpMemory;
+        private System.Windows.Forms.TableLayoutPanel tblMemory;
+        private System.Windows.Forms.GroupBox grpPrivacy;
+        private System.Windows.Forms.TableLayoutPanel tblPrivacy;
         private System.Windows.Forms.Label lblApiKey;
         private System.Windows.Forms.Label lblModels;
         private System.Windows.Forms.Label lblDefaultModel;
