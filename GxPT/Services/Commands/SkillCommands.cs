@@ -410,6 +410,9 @@ namespace GxPT
     // short user message ("Use the <slug> skill. [text]") and attaches the skill's full instructions as a
     // HIDDEN system message (context the model sees but the transcript never shows) - so the body never
     // clutters the user transcript. Custom behavior, not a generic prompt expansion.
+    // If the skill is currently disabled, this also enables it for the conversation (and brings the Skills
+    // MCP server up): a disabled skill's tools are gated off, so without this the skill-writer skill (and
+    // any other tool-backed skill) would load its body but have no tools to actually run.
     internal sealed class UseSkillCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "use-skill"; } }
@@ -430,6 +433,19 @@ namespace GxPT
             Skill skill;
             if (!SkillCommandShared.ResolveSkill(cat, slugArg, out skill))
                 return SlashCommandResult.Fail("Unknown skill: " + slugArg);
+
+            // A disabled skill's MCP server is gated off, so /use-skill alone would load the body but leave
+            // its tools unavailable. Enable it for this conversation and bring the Skills MCP server into
+            // line so the skill can actually be used (mirrors /toggle-skill <slug> on for this scope).
+            SkillEnablement global = SkillEnablement.LoadGlobal();
+            bool enabled = SkillResolve.IsEnabled(global, skill.Slug,
+                SkillCommandShared.ConvOverrideFor(ctx, skill.Slug), ctx.Skills.GetConversationSkillsFeatureOff());
+            if (!enabled)
+            {
+                ctx.Skills.SetConversationSkillOverride(skill.Slug, true);
+                ctx.Skills.RefreshSkillsServer();
+                ctx.WriteInfo("Skill '" + skill.Slug + "' was disabled; enabled it for this conversation.");
+            }
 
             // The skill body rides as a hidden system message (committed at send, not now), so the
             // transcript shows only the short ask and an early return can't orphan it.
