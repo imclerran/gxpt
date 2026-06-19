@@ -1471,15 +1471,6 @@ namespace GxPT
             bool commandOn = this.chkMcpCommand.Checked;
             this.chkMcpCommandScratch.Enabled = commandOn;
             if (!commandOn) this.chkMcpCommandScratch.Checked = false;
-            try
-            {
-                this._mcpTip.SetToolTip(this.chkMcpCommandScratch,
-                    "When no workspace folder is set, let the command server run in a temporary "
-                    + "per-conversation scratch directory (%AppData%\\GxPT\\scratch\\<id>). Files, Git "
-                    + "and MSBuild stay disabled without a workspace. Scratch dirs are deleted when the "
-                    + "conversation is deleted or the app closes.");
-            }
-            catch { }
         }
 
         // Tavily keys look like "tvly-dev-XXXXXXXX" (or "tvly-XXXXXXXX"). Lenient prefix + length check.
