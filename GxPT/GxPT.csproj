@@ -129,6 +129,8 @@
     <Compile Include="Services\Commands\IModelControl.cs" />
     <Compile Include="Services\Commands\IServerControl.cs" />
     <Compile Include="Services\Commands\ISkillEnablementStore.cs" />
+    <Compile Include="Services\Commands\IAgentEnablementStore.cs" />
+    <Compile Include="Services\Commands\AgentCommands.cs" />
     <Compile Include="Services\Commands\ISlashCommand.cs" />
     <Compile Include="Services\Commands\WorkspacePath.cs" />
     <Compile Include="Services\Commands\IArgumentCompleter.cs" />

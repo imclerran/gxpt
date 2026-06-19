@@ -84,6 +84,8 @@
     <Compile Include="..\GxPT\Services\Commands\IModelControl.cs" Link="Linked\Commands\IModelControl.cs" />
     <Compile Include="..\GxPT\Services\Commands\IServerControl.cs" Link="Linked\Commands\IServerControl.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISkillEnablementStore.cs" Link="Linked\Commands\ISkillEnablementStore.cs" />
+    <Compile Include="..\GxPT\Services\Commands\IAgentEnablementStore.cs" Link="Linked\Commands\IAgentEnablementStore.cs" />
+    <Compile Include="..\GxPT\Services\Commands\AgentCommands.cs" Link="Linked\Commands\AgentCommands.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISlashCommand.cs" Link="Linked\Commands\ISlashCommand.cs" />
     <Compile Include="..\GxPT\Services\Commands\WorkspacePath.cs" Link="Linked\Commands\WorkspacePath.cs" />
     <Compile Include="..\GxPT\Services\Commands\IArgumentCompleter.cs" Link="Linked\Commands\IArgumentCompleter.cs" />

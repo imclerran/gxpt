@@ -29,6 +29,9 @@ namespace GxPT
         // Per-conversation skills enablement (used by /toggle-skills and /toggle-skill).
         ISkillEnablementStore Skills { get; }
 
+        // Per-conversation sub-agents enablement (used by /toggle-agents).
+        IAgentEnablementStore Agents { get; }
+
         // ---- conversation / app actions ----
         void NewConversation();
         void ExportConversations();

@@ -1656,6 +1656,7 @@ namespace GxPT
             var all = new List<ISlashCommand>();
             all.AddRange(ClientCommands.BuiltIns());
             all.AddRange(SkillCommandShared.BuiltIns());
+            all.AddRange(AgentCommands.BuiltIns());
             all.AddRange(SlashCommandConfig.LoadMerged(userJson, LoggerSink.Instance));
 
             _slashRegistry = new SlashCommandRegistry(all);
@@ -1795,6 +1796,20 @@ namespace GxPT
             var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
             if (c == null || c.Conversation == null) return;
             c.Conversation.SkillsFeatureOff = value;
+            SaveConversationContext(c);
+        }
+
+        internal bool? SlashGetConversationAgentsEnabled()
+        {
+            var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
+            return (c != null && c.Conversation != null) ? c.Conversation.AgentsEnabled : null;
+        }
+
+        internal void SlashSetConversationAgentsEnabled(bool? value)
+        {
+            var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
+            if (c == null || c.Conversation == null) return;
+            c.Conversation.AgentsEnabled = value;
             SaveConversationContext(c);
         }
 
@@ -3001,9 +3016,9 @@ namespace GxPT
                     // Sub-agents: when the agents feature is enabled (settings.json `agents_enabled`),
                     // discover all agents under <exe>/agents + <workdir>/.gxpt/agents + %AppData%/GxPT/agents
                     // and expose the manifest + dispatch_agent. Rebuilt per send, so on-disk edits take
-                    // effect on the next turn. No per-agent enablement (design A15); the per-conversation
-                    // override is a later phase, so this uses the global setting only.
-                    if (AgentEnablement.GlobalEnabled())
+                    // effect on the next turn. No per-agent enablement (design A15); the conversation
+                    // override (/toggle-agents here) wins over the global settings.json default.
+                    if (AgentEnablement.FeatureEnabled(convo != null ? convo.AgentsEnabled : null))
                     {
                         AgentCatalog agentCatalog =
                             AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);

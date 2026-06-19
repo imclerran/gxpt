@@ -56,6 +56,10 @@ namespace GxPT
         // = force off); a slug absent inherits the global default. Set by the /toggle-skills and /toggle-skill commands.
         public bool? SkillsFeatureOff { get; set; }
         public Dictionary<string, bool> SkillOverrides { get; set; }
+        // Per-conversation sub-agents feature override (design A15/sec.7): null = inherit the global
+        // default (settings.json agents_enabled), true = on, false = off. No per-agent state. Set by the
+        // /toggle-agents command.
+        public bool? AgentsEnabled { get; set; }
         // Server-qualified MCP tool names this conversation has revealed, in recency order (reveal
         // and call both move a name to the end). Owned by the conversation - not the registry - so
         // concurrent tabs don't share reveal state (which would churn each other's tools array and
