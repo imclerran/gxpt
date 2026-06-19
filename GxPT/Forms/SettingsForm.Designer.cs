@@ -181,7 +181,7 @@
             this.tblSettings.RowCount = 5;
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 170F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 118F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 82F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 80F));
             this.tblSettings.Size = new System.Drawing.Size(590, 405);
@@ -258,29 +258,29 @@
             //
             // tblAppearance
             //
-            this.tblAppearance.ColumnCount = 2;
+            this.tblAppearance.ColumnCount = 4;
             this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
-            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
             this.tblAppearance.Controls.Add(this.lblTheme, 0, 0);
             this.tblAppearance.Controls.Add(this.cmbTheme, 1, 0);
-            this.tblAppearance.Controls.Add(this.lblColor, 0, 1);
-            this.tblAppearance.Controls.Add(this.cmbColor, 1, 1);
-            this.tblAppearance.Controls.Add(this.lblTranscriptMaxWidth, 0, 2);
-            this.tblAppearance.Controls.Add(this.nudTranscriptMaxWidth, 1, 2);
-            this.tblAppearance.Controls.Add(this.lblMessageMaxWidth, 0, 3);
-            this.tblAppearance.Controls.Add(this.nudMessageMaxWidth, 1, 3);
-            this.tblAppearance.Controls.Add(this.lblFontSize, 0, 4);
-            this.tblAppearance.Controls.Add(this.nudFontSize, 1, 4);
+            this.tblAppearance.Controls.Add(this.lblColor, 2, 0);
+            this.tblAppearance.Controls.Add(this.cmbColor, 3, 0);
+            this.tblAppearance.Controls.Add(this.lblTranscriptMaxWidth, 0, 1);
+            this.tblAppearance.Controls.Add(this.nudTranscriptMaxWidth, 1, 1);
+            this.tblAppearance.Controls.Add(this.lblMessageMaxWidth, 2, 1);
+            this.tblAppearance.Controls.Add(this.nudMessageMaxWidth, 3, 1);
+            this.tblAppearance.Controls.Add(this.lblFontSize, 0, 2);
+            this.tblAppearance.Controls.Add(this.nudFontSize, 1, 2);
             this.tblAppearance.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tblAppearance.Location = new System.Drawing.Point(6, 13);
             this.tblAppearance.Name = "tblAppearance";
-            this.tblAppearance.RowCount = 5;
+            this.tblAppearance.RowCount = 3;
             this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
             this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblAppearance.RowStyles.Add(new System.Windows.Forms.RowStyle());
-            this.tblAppearance.Size = new System.Drawing.Size(572, 145);
+            this.tblAppearance.Size = new System.Drawing.Size(572, 90);
             this.tblAppearance.TabIndex = 0;
             //
             // grpMemory
@@ -989,11 +989,11 @@
             this.AcceptButton = this.btnSave;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(604, 600);
+            this.ClientSize = new System.Drawing.Size(604, 620);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.flowLayoutPanel1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.MinimumSize = new System.Drawing.Size(620, 640);
+            this.MinimumSize = new System.Drawing.Size(620, 600);
             this.Name = "SettingsForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Settings";
