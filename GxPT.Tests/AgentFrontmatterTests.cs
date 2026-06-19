@@ -130,6 +130,24 @@ namespace GxPT.Tests
             Assert.Equal("body line", fm.Body);
         }
 
+        [Theory]
+        [InlineData("max_turns: 50", 50)]
+        [InlineData("max_turns: 0", 0)]        // 0 stays unset
+        [InlineData("max_turns: -5", 0)]       // negative ignored -> unset
+        [InlineData("max_turns: abc", 0)]      // non-numeric ignored -> unset
+        public void Parse_MaxTurns(string line, int expected)
+        {
+            AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\n" + line + "\n---\nb\n");
+            Assert.Equal(expected, fm.MaxTurns);
+        }
+
+        [Fact]
+        public void Parse_MaxTurns_DefaultsToZeroWhenAbsent()
+        {
+            AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\n---\nb\n");
+            Assert.Equal(0, fm.MaxTurns);
+        }
+
         [Fact]
         public void Parse_NoFrontmatter_WholeTextIsBody()
         {

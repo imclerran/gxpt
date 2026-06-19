@@ -121,6 +121,7 @@
     <Compile Include="Services\Agents\AgentToolResolver.cs" />
     <Compile Include="Services\Agents\AgentInjection.cs" />
     <Compile Include="Services\Agents\AgentEnablement.cs" />
+    <Compile Include="Services\Agents\AgentDispatcher.cs" />
     <Compile Include="Services\Commands\SlashCommandKind.cs" />
     <Compile Include="Services\Commands\SlashCommandResult.cs" />
     <Compile Include="Services\Commands\SlashArgs.cs" />

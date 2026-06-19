@@ -60,13 +60,18 @@ namespace GxPT
         // Optional model id override; null/empty => the parent turn's model.
         public string Model { get; private set; }
 
+        // Per-agent iteration budget (design A17), fed to the child orchestrator's maxIterations. 0 => unset
+        // (use the host default). Lets an explore agent cap low and a coder run long; a tight budget is also
+        // a safety bound on an unattended run.
+        public int MaxTurns { get; private set; }
+
         // Absolute path to the agent's <slug>.md. The body (= system prompt) is read from here at dispatch.
         public string FilePath { get; private set; }
 
         public AgentSource Source { get; private set; }
 
         public Agent(string slug, string name, string description, string[] tools,
-                     AgentMaxTier maxTier, AgentAutonomy autonomy, string model,
+                     AgentMaxTier maxTier, AgentAutonomy autonomy, string model, int maxTurns,
                      string filePath, AgentSource source)
         {
             Slug = slug;
@@ -76,6 +81,7 @@ namespace GxPT
             MaxTier = maxTier;
             Autonomy = autonomy;
             Model = model;
+            MaxTurns = maxTurns;
             FilePath = filePath;
             Source = source;
         }

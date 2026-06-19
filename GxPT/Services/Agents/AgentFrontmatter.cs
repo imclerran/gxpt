@@ -26,6 +26,9 @@ namespace GxPT
         public AgentAutonomy Autonomy { get; private set; }
         public string Model { get; private set; }
 
+        // Per-agent iteration budget (design A17); 0 => unset (host default). Negative/non-numeric ignored.
+        public int MaxTurns { get; private set; }
+
         public string Body { get; private set; }
         public bool HasFrontmatter { get; private set; }
 
@@ -35,6 +38,7 @@ namespace GxPT
             Tools = null;
             MaxTier = AgentMaxTier.Write;     // default ceiling (design A5/sec.3)
             Autonomy = AgentAutonomy.Gated;   // default dial (design sec.8 layer 3)
+            MaxTurns = 0;                     // unset
         }
 
         public static AgentFrontmatter Parse(string text)
@@ -98,6 +102,11 @@ namespace GxPT
                 {
                     AgentAutonomy autonomy;
                     if (!autoSet && TryParseAutonomy(value, out autonomy)) { fm.Autonomy = autonomy; autoSet = true; }
+                }
+                else if (key == "max_turns")
+                {
+                    int n;
+                    if (fm.MaxTurns == 0 && int.TryParse(value.Trim(), out n) && n > 0) fm.MaxTurns = n;
                 }
             }
 

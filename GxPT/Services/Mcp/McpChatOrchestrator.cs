@@ -148,6 +148,12 @@ namespace GxPT
         // exposed in the tools array and handled locally without an MCP round-trip, like reveal_tools.
         public SkillTools SkillTools { get; set; }
 
+        // Optional sub-agent dispatch surface (dispatch_agent). When set and it has agents, dispatch_agent
+        // is exposed in the tools array and handled locally (a child McpChatOrchestrator runs the agent and
+        // its final answer is the tool result). The host only sets it when the agents feature is enabled.
+        // A child never gets a dispatcher, so a sub-agent cannot dispatch (no nesting, A12).
+        public AgentDispatcher AgentDispatcher { get; set; }
+
         // Server-qualified MCP tool names to omit from this turn's context (names manifest + exposed
         // defs) and refuse to call. Used to gate the skill-authoring tools on the meta-skill (SkillToolGate).
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
@@ -326,6 +332,11 @@ namespace GxPT
                     if (tools == null) tools = new List<JObject>();
                     tools.Add(SkillTools.OpenSkillDef());
                     tools.Add(SkillTools.ReadSkillFileDef());
+                }
+                if (AgentDispatcher != null && AgentDispatcher.HasAgents)
+                {
+                    if (tools == null) tools = new List<JObject>();
+                    tools.Add(AgentDispatcher.DispatchAgentDef());
                 }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
@@ -721,6 +732,15 @@ namespace GxPT
                 _log.Log("mcp", "[turn " + turnId + "] read_skill_file: "
                     + (skillSlug != null ? skillSlug : "?") + " / " + (relpath != null ? relpath : "?"));
                 return SkillTools.ReadFile(skillSlug, relpath);
+            }
+
+            // dispatch_agent is a host meta-tool too: run the sub-agent(s) in isolated child orchestrators
+            // and return their final answer(s). No MCP round-trip; the child gets no dispatcher, so it
+            // cannot nest (A12). Failures inside a child come back as content, not an exception.
+            if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name))
+            {
+                _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
+                return AgentDispatcher.Dispatch(call.ArgumentsJson);
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.
