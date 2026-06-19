@@ -22,6 +22,9 @@ namespace GxPT
         // A sane bound on one batch, so a single tool call can't fan out unboundedly.
         private const int MaxAgentsPerCall = 8;
 
+        // Max children running at once in a read-only fan-out (design: bounded concurrency). Tunable.
+        private const int MaxParallelAgents = 3;
+
         private readonly Dictionary<string, Agent> _bySlug;
         private readonly IChatStreamer _streamer;
         private readonly McpToolRegistry _registry;
@@ -119,32 +122,93 @@ namespace GxPT
             bool truncated = n > MaxAgentsPerCall;
             if (truncated) n = MaxAgentsPerCall;
 
+            // Resolve each entry up front into a per-slot result (unknown slug / missing task are filled
+            // immediately) and a list of slots that will actually run a child, in order.
+            string[] names = new string[n];
+            Agent[] agents = new Agent[n];
+            string[] tasks = new string[n];
+            string[] results = new string[n];
+            List<int> runnable = new List<int>();
+            for (int i = 0; i < n; i++)
+            {
+                names[i] = entries[i][0];
+                tasks[i] = entries[i][1];
+                Agent agent;
+                if (names[i] == null || !_bySlug.TryGetValue(names[i], out agent))
+                    results[i] = "Unknown agent: " + (names[i] != null ? names[i] : "(null)");
+                else if (string.IsNullOrEmpty(tasks[i]))
+                    results[i] = "No task was provided for this agent.";
+                else { agents[i] = agent; runnable.Add(i); }
+            }
+
+            // Read-only batches run concurrently (the win is overlapping LLM streams); a batch with any
+            // write-capable agent runs serially (design A9 - the chosen "reads parallel, writes serial"
+            // rule). Concurrent children safely share the MCP connections (the transport is multiplexed:
+            // atomic request ids + serialized writes) and the streamer (per-call), so no extra locking.
+            if (RunsInParallel(agents, runnable))
+                RunParallel(agents, tasks, runnable, results);
+            else
+                for (int k = 0; k < runnable.Count; k++)
+                {
+                    int i = runnable[k];
+                    results[i] = RunChild(agents[i], tasks[i]);
+                }
+
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < n; i++)
             {
-                string name = entries[i][0];
-                string task = entries[i][1];
-
                 if (sb.Length > 0) sb.Append("\n\n");
-                sb.Append("## Agent: ").Append(name != null ? name : "(null)").Append('\n');
-
-                Agent agent;
-                if (name == null || !_bySlug.TryGetValue(name, out agent))
-                {
-                    sb.Append("Unknown agent: ").Append(name != null ? name : "(null)");
-                    continue;
-                }
-                if (string.IsNullOrEmpty(task))
-                {
-                    sb.Append("No task was provided for this agent.");
-                    continue;
-                }
-                sb.Append(RunChild(agent, task));
+                sb.Append("## Agent: ").Append(names[i] != null ? names[i] : "(null)").Append('\n')
+                  .Append(results[i]);
             }
             if (truncated)
                 sb.Append("\n\n[Note: only the first ").Append(MaxAgentsPerCall)
                   .Append(" agents in this call were dispatched.]");
             return sb.ToString();
+        }
+
+        // A batch runs in parallel iff there is more than one runnable agent and every one of them is
+        // read-only (max_tier ReadOnly) - so none can mutate the workspace (design A9). Any write-capable
+        // agent forces the whole batch serial.
+        internal static bool RunsInParallel(Agent[] agents, List<int> runnable)
+        {
+            if (agents == null || runnable == null || runnable.Count < 2) return false;
+            for (int k = 0; k < runnable.Count; k++)
+            {
+                Agent a = agents[runnable[k]];
+                if (a == null || a.MaxTier != AgentMaxTier.ReadOnly) return false;
+            }
+            return true;
+        }
+
+        // Runs the runnable slots concurrently in waves of at most MaxParallelAgents, each child writing
+        // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
+        // is valid here; no lock is held across the join, so the fan-out cannot deadlock.
+        private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results)
+        {
+            int pos = 0;
+            while (pos < runnable.Count)
+            {
+                int groupSize = Math.Min(MaxParallelAgents, runnable.Count - pos);
+                System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[groupSize];
+                for (int g = 0; g < groupSize; g++)
+                {
+                    int slot = runnable[pos + g];
+                    Agent agent = agents[slot];
+                    string task = tasks[slot];
+                    System.Threading.ManualResetEvent done = new System.Threading.ManualResetEvent(false);
+                    dones[g] = done;
+                    System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        try { results[slot] = RunChild(agent, task); }
+                        catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                        finally { done.Set(); }
+                    });
+                }
+                System.Threading.WaitHandle.WaitAll(dones);
+                for (int g = 0; g < groupSize; g++) dones[g].Close();
+                pos += groupSize;
+            }
         }
 
         // Builds and runs one child orchestrator to completion, returning its final answer.

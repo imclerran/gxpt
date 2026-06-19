@@ -128,5 +128,72 @@ namespace GxPT.Tests
             Assert.False(Dispatcher(new ScriptedStreamer()).HasAgents);
             Assert.True(Dispatcher(new ScriptedStreamer(), WriteAgent("x", "d", "b")).HasAgents);
         }
+
+        // ---- parallel fan-out (phase 7) ----
+
+        // A read-only agent (max_tier: readonly) - eligible for the parallel path.
+        private Agent WriteReadOnlyAgent(string slug, string desc)
+        {
+            string file = Path.Combine(_dir, slug + ".md");
+            File.WriteAllText(file,
+                "---\nname: " + slug + "\ndescription: " + desc + "\nmax_tier: readonly\n---\nbody\n",
+                new UTF8Encoding(false));
+            AgentCatalog cat = AgentCatalog.Build(_dir, null);
+            Agent a;
+            cat.TryGet(slug, out a);
+            return a;
+        }
+
+        // A streamer whose answer is derived from the request (the task in the last user message), so a
+        // parallel batch's results are deterministic regardless of which child runs first.
+        private sealed class TaskEchoStreamer : IChatStreamer
+        {
+            public void StreamChat(string model, System.Collections.Generic.IList<ChatMessage> messages,
+                System.Collections.Generic.IList<Newtonsoft.Json.Linq.JObject> tools, ClientProperties props,
+                Action<ChatCompletionChunk> onChunk, Action<string> onError, RequestCancellation cancel)
+            {
+                string task = "";
+                for (int i = messages.Count - 1; i >= 0; i--)
+                    if (messages[i].Role == "user") { task = messages[i].Content; break; }
+                if (onChunk != null)
+                    foreach (ChatCompletionChunk ch in Chunks.Text("answer for: " + task)) onChunk(ch);
+            }
+        }
+
+        [Fact]
+        public void ParallelDispatch_ReadOnlyBatch_AllResultsCorrect_InOrder()
+        {
+            Agent a = WriteReadOnlyAgent("ra", "Read A.");
+            Agent b = WriteReadOnlyAgent("rb", "Read B.");
+            Agent c = WriteReadOnlyAgent("rc", "Read C.");
+            var d = new AgentDispatcher(new System.Collections.Generic.List<Agent> { a, b, c },
+                new TaskEchoStreamer(), null, null, "m", null, null,
+                delegate(string n) { return ToolTier.ReadOnly; }, 25, 60000);
+
+            string result = d.Dispatch(
+                "{\"agents\":[{\"name\":\"ra\",\"task\":\"task-A\"}," +
+                "{\"name\":\"rb\",\"task\":\"task-B\"},{\"name\":\"rc\",\"task\":\"task-C\"}]}");
+
+            int ia = result.IndexOf("## Agent: ra");
+            int ib = result.IndexOf("## Agent: rb");
+            int ic = result.IndexOf("## Agent: rc");
+            Assert.True(ia >= 0 && ia < ib && ib < ic);     // order preserved
+            Assert.Contains("answer for: task-A", result);
+            Assert.Contains("answer for: task-B", result);
+            Assert.Contains("answer for: task-C", result);
+        }
+
+        [Fact]
+        public void RunsInParallel_OnlyWhenMultipleAndAllReadOnly()
+        {
+            Agent r1 = WriteReadOnlyAgent("r1", "ro");
+            Agent r2 = WriteReadOnlyAgent("r2", "ro");
+            Agent w = WriteAgent("w", "writes", "b"); // default max_tier = write
+
+            Agent[] all = new Agent[] { r1, r2, w };
+            Assert.True(AgentDispatcher.RunsInParallel(all, new System.Collections.Generic.List<int> { 0, 1 }));      // both read-only
+            Assert.False(AgentDispatcher.RunsInParallel(all, new System.Collections.Generic.List<int> { 0, 1, 2 }));  // one writer -> serial
+            Assert.False(AgentDispatcher.RunsInParallel(all, new System.Collections.Generic.List<int> { 0 }));       // single -> serial
+        }
     }
 }
