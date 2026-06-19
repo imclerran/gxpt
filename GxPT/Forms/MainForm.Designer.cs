@@ -29,6 +29,7 @@
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
+            this.components = new System.ComponentModel.Container();
             this.msMain = new System.Windows.Forms.MenuStrip();
             this.miFile = new System.Windows.Forms.ToolStripMenuItem();
             this.miSettings = new System.Windows.Forms.ToolStripMenuItem();
@@ -65,6 +66,7 @@
             this.pnlModelRow = new System.Windows.Forms.Panel();
             this.cmbModel = new System.Windows.Forms.ComboBox();
             this.chkZdrTab = new System.Windows.Forms.CheckBox();
+            this.toolTipZdr = new System.Windows.Forms.ToolTip(this.components);
             this.pnlBottom = new System.Windows.Forms.Panel();
             this.pnlApiKeyBanner = new System.Windows.Forms.Panel();
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
@@ -431,6 +433,9 @@
             this.chkZdrTab.TabIndex = 3;
             this.chkZdrTab.Text = "ZDR";
             this.chkZdrTab.UseVisualStyleBackColor = true;
+            this.toolTipZdr.SetToolTip(this.chkZdrTab, "Zero Data Retention: route this conversation only to providers that don\'t r" +
+                "etain your prompts or responses. Once a message is sent with ZDR on, it stays on" +
+                " for the conversation.");
             // 
             // pnlBottom
             // 
@@ -737,6 +742,7 @@
         private System.Windows.Forms.Panel pnlModelRow;
         private System.Windows.Forms.ComboBox cmbModel;
         private System.Windows.Forms.CheckBox chkZdrTab;
+        private System.Windows.Forms.ToolTip toolTipZdr;
         private System.Windows.Forms.Panel pnlBottom;
         private System.Windows.Forms.Panel pnlApiKeyBanner;
         private System.Windows.Forms.Label lblNoApiKey;
