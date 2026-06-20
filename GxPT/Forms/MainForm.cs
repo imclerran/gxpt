@@ -797,6 +797,7 @@ namespace GxPT
                 // Bottom approval panel. Add the docked siblings, then send the transcript to front.
                 ctx.Page.Controls.Add(strip);
                 AttachApprovalPanel(ctx);
+                AttachAgentActivityPanel(ctx);
                 if (ctx.Transcript != null) ctx.Transcript.BringToFront();
                 strip.SetWorkingDir(ctx.WorkingDir);
                 // Honor a persisted dismissal (only meaningful when no folder is set; setting one
@@ -823,6 +824,20 @@ namespace GxPT
                 // While this tab's prompt awaits the user, pause the status-bar marquee and swap the
                 // Stop button for an "awaiting user..." label (only when this is the active tab).
                 panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
+                ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
+            }
+            catch { }
+        }
+
+        // The per-tab sub-agents activity panel (design sec.14), docked at the bottom like the approval
+        // panel. Shown only while a dispatch_agent fan-out runs; updated via AgentActivityUiBridge.
+        internal void AttachAgentActivityPanel(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null || ctx.Page == null) return;
+            try
+            {
+                AgentActivityPanel panel = new AgentActivityPanel();
+                ctx.AgentActivityPanel = panel;
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
@@ -3046,6 +3061,10 @@ namespace GxPT
                                 RecordUsageAndReconcile(revealConvo, u,
                                     OpenRouterClient.ModelSupportsPromptCaching(model), false);
                             };
+                            // Observability: marshal the fan-out / per-child lifecycle to this tab's
+                            // activity panel (design sec.14). The turn's Stop still cancels children
+                            // (dispatcher.Cancellation = ctx.Cancellation), so no separate group handle yet.
+                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx);
                             orch.AgentDispatcher = dispatcher;
                         }
                     }

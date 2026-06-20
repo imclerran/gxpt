@@ -179,6 +179,9 @@
     <Compile Include="Controls\ToolApprovalPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\AgentActivityPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Controls\StopGenerationItem.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -205,6 +208,7 @@
     <Compile Include="Forms\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\AgentActivityUiBridge.cs" />
     <Compile Include="Forms\MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>

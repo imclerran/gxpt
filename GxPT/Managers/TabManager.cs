@@ -66,6 +66,9 @@ namespace GxPT
             // The per-tab tool-approval panel docked at the bottom of this tab's transcript (set by
             // MainForm). A pending approval shows only on the conversation that requested it.
             public ToolApprovalPanel ApprovalPanel;
+            // The per-tab sub-agents activity panel docked at the bottom (set by MainForm). Shown only
+            // while a dispatch_agent fan-out runs on this tab's conversation.
+            public AgentActivityPanel AgentActivityPanel;
             // The in-flight request's cancellation handle (null when idle). The status bar's Stop
             // button calls Cancel() on it to kill the model request.
             public RequestCancellation Cancellation;
