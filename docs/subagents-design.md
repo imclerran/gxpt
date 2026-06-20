@@ -597,9 +597,17 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
    per-connection mutex, usage aggregation; the **group cancellation** + the
    `Stop N agents` button; and the tier-1 **`AgentActivityPanel`** (glyph + slug +
    status). Observability ships *with* the fan-out — it is not a follow-on (§14 tier 1).
-8. **Transcript UI tiers 2–3** — per-row task/prompt + richer live activity (tier 2),
-   then read-only full child transcript and (optional) per-agent Stop (tier 3). Child
-   tool activity is shown to the user, never fed to the parent (A7).
+8. **Transcript UI tiers 2-3** *(done; per-agent Stop deferred)* — tier 2: each
+   `AgentActivityPanel` row shows its task (hover tooltip) and a live `N tools -
+   <lastTool>` activity line, fed by a per-child forwarding `IToolLoopUi`
+   (`ChildActivityUi`) that replaces the headless `NullToolLoopUi`. Tier 3: each
+   `dispatch_agent` record carries a per-agent **View transcript** link
+   (`AgentTranscriptLinks` custom scheme) opening a read-only popup
+   (`AgentTranscriptViewerForm`) over the child's captured message list
+   (`AgentDispatcher.LastTranscripts` -> session-scoped `AgentTranscriptStore`,
+   keyed by the record id). Child tool activity is shown to the user, never fed to
+   the parent (A7); the viewer is a pure UI read (A3/A7 hold). **Per-agent Stop**
+   (stop one child, not the whole fan-out) remains deferred - group stop covers it.
 9. **Bundled agents + deploy** — ship a starter suite via an `agents/` source folder
    copied next to the exe (`AfterBuild` + setup `.vdproj`), like bundled skills. The
    OpenMono specialist set is a proven shape to seed with: **explore** (read-only
@@ -817,9 +825,9 @@ moves, it just retargets — so no new status-bar real estate is needed.
 
 | Tier | Surface | Phase |
 |------|---------|-------|
-| **1 — must-have** | `AgentActivityPanel` rows (glyph + slug + status) to **see** them + the **`Stop N agents`** button to stop all | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
-| **2 — better** | each row shows the child's **task/prompt** (the `dispatch_agent` `task` string, truncated, click/hover to expand) and a richer live **activity line** | §11 phase 8 |
-| **3 — best, later** | a **View transcript** link per row opening the child's full message list **read-only**; (and, if wanted) **per-agent Stop** | §11 phase 8/later |
+| **1 — must-have** *(shipped)* | `AgentActivityPanel` rows (glyph + slug + status) to **see** them + the **`Stop N agents`** button to stop all | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
+| **2 — better** *(shipped)* | each row shows the child's **task** (hover tooltip) and a live **activity line** (`N tools - <lastTool>`, fed by `ChildActivityUi`) | §11 phase 8 |
+| **3 — best** *(shipped; per-agent Stop deferred)* | a **View transcript** link per agent on the `dispatch_agent` record opening the child's full message list **read-only** (`AgentTranscriptViewerForm`); **per-agent Stop** still deferred | §11 phase 8 |
 
 The task string (tier 2) is free — already in the dispatch args. The full transcript
 (tier 3) is a pure **UI** read of the child's message list and does **not** touch the
