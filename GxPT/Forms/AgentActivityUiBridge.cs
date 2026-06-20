@@ -29,6 +29,7 @@ namespace GxPT
             {
                 AgentActivityPanel p = Panel();
                 if (p != null) p.BeginFanOut(copy, delegate { if (group != null) group.Cancel(); });
+                if (_form != null) _form.NotifyAgentFanOutChanged(_ctx, true);
             });
         }
 
@@ -44,7 +45,12 @@ namespace GxPT
 
         public void OnFanOutEnd()
         {
-            Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.EndFanOut(); });
+            Marshal(delegate
+            {
+                AgentActivityPanel p = Panel();
+                if (p != null) p.EndFanOut();
+                if (_form != null) _form.NotifyAgentFanOutChanged(_ctx, false);
+            });
         }
 
         private AgentActivityPanel Panel()

@@ -888,6 +888,14 @@ namespace GxPT
             catch { }
         }
 
+        // Called by AgentActivityUiBridge (on the UI thread) when a fan-out starts/ends on a tab, so the
+        // status bar's passive "Sub-agents running..." indicator tracks it.
+        internal void NotifyAgentFanOutChanged(TabManager.ChatTabContext ctx, bool active)
+        {
+            if (ctx != null) ctx.AgentsFanOutActive = active;
+            SyncGenerationIndicatorFromActiveTab();
+        }
+
         private void SyncGenerationIndicatorFromActiveTab()
         {
             try
@@ -897,12 +905,15 @@ namespace GxPT
                 // The turn is paused at an approval/continuation gate when the active tab's prompt is
                 // up: pause the marquee and show "awaiting user..." in place of the Stop button.
                 bool awaiting = busy && act.ApprovalPanel != null && act.ApprovalPanel.IsPromptVisible;
-                SetGenerationIndicatorVisible(busy, awaiting);
+                // A dispatch_agent fan-out is running: keep the marquee going but show a passive
+                // "Sub-agents running..." label (cancel them from the panel). Approval takes priority.
+                bool agentsRunning = busy && act.AgentsFanOutActive && !awaiting;
+                SetGenerationIndicatorVisible(busy, awaiting, agentsRunning);
             }
             catch { }
         }
 
-        private void SetGenerationIndicatorVisible(bool busy, bool awaiting)
+        private void SetGenerationIndicatorVisible(bool busy, bool awaiting, bool agentsRunning)
         {
             try
             {
@@ -920,6 +931,7 @@ namespace GxPT
                 if (this.tsiStopGen != null)
                 {
                     this.tsiStopGen.Awaiting = awaiting;
+                    this.tsiStopGen.AgentsRunning = agentsRunning;
                     this.tsiStopGen.Visible = busy;
                 }
                 // The slot's idle face: the active conversation's tool/skill counts. Refresh before
@@ -996,9 +1008,10 @@ namespace GxPT
         // cancel the active tab's request.
         private void tsiStopGen_Click(object sender, EventArgs e)
         {
-            // While the item shows "awaiting user...", there's nothing to stop (the turn is paused at
-            // an approval gate); ignore clicks so it behaves as a passive label.
-            if (this.tsiStopGen != null && this.tsiStopGen.Awaiting) return;
+            // While the item shows a passive label ("awaiting user..." at an approval gate, or
+            // "sub-agents running..." during a fan-out - cancel those from the panel), there's nothing to
+            // stop from here; ignore clicks.
+            if (this.tsiStopGen != null && (this.tsiStopGen.Awaiting || this.tsiStopGen.AgentsRunning)) return;
             try { CancelActiveRequest(_tabManager != null ? _tabManager.GetActiveContext() : null); }
             catch { }
         }
