@@ -260,6 +260,32 @@ namespace GxPT.Tests
             Assert.True(sawUserTask);
         }
 
+        [Theory]
+        [InlineData("abc123", 0)]
+        [InlineData("deadbeefcafe", 7)]
+        public void TranscriptLinks_RoundTrip(string key, int slot)
+        {
+            string url = AgentTranscriptLinks.Build(key, slot);
+            Assert.True(AgentTranscriptLinks.IsTranscriptLink(url));
+            string k; int s;
+            Assert.True(AgentTranscriptLinks.TryParse(url, out k, out s));
+            Assert.Equal(key, k);
+            Assert.Equal(slot, s);
+        }
+
+        [Theory]
+        [InlineData("https://example.com")]
+        [InlineData("gxpt-agent:")]
+        [InlineData("gxpt-agent:keyonly")]
+        [InlineData("gxpt-agent:key:notanumber")]
+        [InlineData("")]
+        [InlineData(null)]
+        public void TranscriptLinks_RejectsNonLinks(string url)
+        {
+            string k; int s;
+            Assert.False(AgentTranscriptLinks.TryParse(url, out k, out s));
+        }
+
         [Fact]
         public void TranscriptStore_RoundTripsByKeyAndIndex()
         {

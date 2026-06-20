@@ -211,6 +211,9 @@ namespace GxPT
         public event Action<int, string> UserMessageEditRequested;
         // Raised when the user clicks the Retry button on a trailing error notice
         public event Action RetryRequested;
+        // Raised when the user clicks an agent "View transcript" link (the custom gxpt-agent: scheme); the
+        // host opens the read-only child transcript viewer instead of launching a browser.
+        public event Action<string> AgentTranscriptLinkClicked;
         // Hover/drag state for code block UI
         private MessageItem _hoverCopyItem;
         private int _hoverCopyCodeIndex = -1;
@@ -2833,6 +2836,14 @@ namespace GxPT
                     string link = HitTestLink(e.Location);
                     if (!string.IsNullOrEmpty(link))
                     {
+                        // Agent "View transcript" links are handled in-app (open the read-only viewer),
+                        // never launched as a URL.
+                        if (AgentTranscriptLinks.IsTranscriptLink(link))
+                        {
+                            Action<string> h = AgentTranscriptLinkClicked;
+                            if (h != null) h(link);
+                            return;
+                        }
                         try
                         {
                             string supermiumPath = @"C:\\Program Files\\Supermium\\chrome.exe";

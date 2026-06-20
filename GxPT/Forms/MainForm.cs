@@ -2666,6 +2666,30 @@ namespace GxPT
         // the turn restarts over the unchanged history — this holds for both the plain stream (the
         // user message is committed before the request) and the tool loop (the orchestrator's partial
         // progress stays in history, same as when the user keeps typing after a failure).
+        // Open the read-only child-transcript viewer for a dispatch_agent "View transcript" link (tier 3).
+        // The link encodes the dispatch record's key + agent slot; resolve it against the session cache. A
+        // miss (cache evicted, or a record reloaded from history after restart) shows a short notice rather
+        // than nothing, so the click is never silently dead.
+        internal void OpenAgentTranscript(string url)
+        {
+            string key; int slot;
+            if (!AgentTranscriptLinks.TryParse(url, out key, out slot)) return;
+            AgentTranscript t = AgentTranscriptStore.Get(key, slot);
+            if (t == null)
+            {
+                MessageBox.Show(this,
+                    "This agent's transcript is no longer available (it is kept only for the current session).",
+                    "Agent transcript", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                using (AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(t))
+                    viewer.ShowDialog(this);
+            }
+            catch { }
+        }
+
         internal void RetryLastTurn(TabManager.ChatTabContext ctx)
         {
             if (ctx == null || ctx.Conversation == null || ctx.Transcript == null) return;
@@ -3046,6 +3070,9 @@ namespace GxPT
                     // and expose the manifest + dispatch_agent. Rebuilt per send, so on-disk edits take
                     // effect on the next turn. No per-agent enablement (design A15); the conversation
                     // override (/toggle-agents here) wins over the global settings.json default.
+                    // Hoisted so onToolResult (below) can snapshot the most recent fan-out's child
+                    // transcripts under the dispatch record's key for the tier-3 viewer.
+                    AgentDispatcher dispatcherForTurn = null;
                     if (AgentEnablement.FeatureEnabled(convo != null ? convo.AgentsEnabled : null))
                     {
                         AgentCatalog agentCatalog =
@@ -3081,6 +3108,7 @@ namespace GxPT
                             dispatcher.GroupCancellation = agentGroup;
                             dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup);
                             orch.AgentDispatcher = dispatcher;
+                            dispatcherForTurn = dispatcher;
                         }
                     }
 
@@ -3136,9 +3164,16 @@ namespace GxPT
                     // view re-derives under the persisted call id).
                     Action<string, string, string, bool> onToolResult = delegate(string name, string argsJson, string resultText, bool isError)
                     {
+                        string recKey = Guid.NewGuid().ToString("N");
+                        // A dispatch_agent record gets per-agent "View transcript" links keyed by recKey;
+                        // cache this fan-out's child transcripts under the same key so the links resolve
+                        // (tier 3). Tool calls are serial, so LastTranscripts is this call's batch.
+                        if (dispatcherForTurn != null && AgentDispatcher.DispatchAgentName == name
+                            && dispatcherForTurn.LastTranscripts != null)
+                            AgentTranscriptStore.Put(recKey, dispatcherForTurn.LastTranscripts);
                         string marker = McpMarkers.IsDenied(resultText)
                             ? McpMarkers.Denied(name)
-                            : EditDiffMarkerOrCall(ctx.Transcript, name, argsJson, Guid.NewGuid().ToString("N"));
+                            : EditDiffMarkerOrCall(ctx.Transcript, name, argsJson, recKey);
                         lock (sbLock)
                         {
                             if (pendingToolSeg != null)
@@ -4079,7 +4114,7 @@ namespace GxPT
                 {
                     var args = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(argsJson) ? "{}" : argsJson);
                     string header, body, language; int added, removed;
-                    if (TryBuildToolRecord(name, args, out header, out body, out language, out added, out removed))
+                    if (TryBuildToolRecord(name, args, key, out header, out body, out language, out added, out removed))
                     {
                         transcript.RegisterToolRecord(key, header, body, language, added, removed);
                         return McpMarkers.EditDiff(key);
@@ -4112,7 +4147,7 @@ namespace GxPT
         // Maps a tool call to a transcript record. An empty body yields a one-line label (no expansion);
         // a non-empty body is a collapsible record highlighted in 'language'. Returns false for tools
         // that should keep the generic marker.
-        private static bool TryBuildToolRecord(string name, Newtonsoft.Json.Linq.JObject args, out string header, out string body, out string language, out int added, out int removed)
+        private static bool TryBuildToolRecord(string name, Newtonsoft.Json.Linq.JObject args, string key, out string header, out string body, out string language, out int added, out int removed)
         {
             header = null; body = string.Empty; language = "text"; added = -1; removed = -1;
 
@@ -4175,10 +4210,12 @@ namespace GxPT
                     Newtonsoft.Json.Linq.JToken arr = args != null ? args["agents"] : null;
                     if (arr == null || arr.Type != Newtonsoft.Json.Linq.JTokenType.Array) return false;
                     int count = 0;
+                    int slot = -1;   // entry slot, aligned with AgentDispatcher.LastTranscripts (counts every object element)
                     System.Text.StringBuilder md = new System.Text.StringBuilder();
                     foreach (Newtonsoft.Json.Linq.JToken t in (Newtonsoft.Json.Linq.JArray)arr)
                     {
                         if (t == null || t.Type != Newtonsoft.Json.Linq.JTokenType.Object) continue;
+                        slot++;
                         Newtonsoft.Json.Linq.JObject ag = (Newtonsoft.Json.Linq.JObject)t;
                         string slug = Str(ag, "name").Trim();
                         string task = Str(ag, "task").Trim();
@@ -4192,6 +4229,11 @@ namespace GxPT
                         // Newline after the slug so the task starts on its own line (single newline =
                         // hard break within the paragraph).
                         if (task.Length > 0) md.Append('\n').Append(task);
+                        // Tier 3: a per-agent "View transcript" link the transcript control intercepts
+                        // (AgentTranscriptLinkScheme) to open the read-only child transcript popup. Keyed
+                        // by the record key + slot so it resolves against AgentTranscriptStore.
+                        if (!string.IsNullOrEmpty(key))
+                            md.Append("\n[View transcript](").Append(AgentTranscriptLinks.Build(key, slot)).Append(')');
                     }
                     if (count == 0) return false;
                     header = "Dispatched " + count + (count == 1 ? " agent" : " agents");

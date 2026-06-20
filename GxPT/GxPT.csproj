@@ -124,6 +124,7 @@
     <Compile Include="Services\Agents\AgentDispatcher.cs" />
     <Compile Include="Services\Agents\AgentTranscript.cs" />
     <Compile Include="Services\Agents\AgentTranscriptStore.cs" />
+    <Compile Include="Services\Agents\AgentTranscriptLinks.cs" />
     <Compile Include="Services\Agents\IAgentActivityUi.cs" />
     <Compile Include="Services\Commands\SlashCommandKind.cs" />
     <Compile Include="Services\Commands\SlashCommandResult.cs" />
@@ -211,6 +212,7 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\AgentActivityUiBridge.cs" />
+    <Compile Include="Forms\AgentTranscriptViewerForm.cs" />
     <Compile Include="Forms\MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>

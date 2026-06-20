@@ -766,6 +766,12 @@ namespace GxPT
                 try { _mainForm.RetryLastTurn(ctx); }
                 catch { }
             };
+            // A dispatch_agent record's "View transcript" link opens the read-only child viewer (tier 3).
+            ctx.Transcript.AgentTranscriptLinkClicked += delegate(string url)
+            {
+                try { _mainForm.OpenAgentTranscript(url); }
+                catch { }
+            };
         }
 
         // Wire a tab's transcript edit-request to populate the input box and enter edit mode.
