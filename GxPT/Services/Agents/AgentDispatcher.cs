@@ -195,9 +195,12 @@ namespace GxPT
             // above are partial. Steer the model to wrap up rather than silently retry: summarize what was
             // gathered and ask how to proceed (the design's tailored stop directive, sec.14).
             if (GroupCancellation != null && GroupCancellation.IsCancelled)
-                sb.Append("\n\n[The user stopped the sub-agents before they finished, so the results above ")
-                  .Append("may be partial or empty. Summarize what was gathered so far and ask the user how ")
-                  .Append("they would like to proceed - do not silently re-dispatch the agents.]");
+                sb.Append("\n\n[The user deliberately stopped the sub-agents, so the results above may be ")
+                  .Append("partial or empty. Do NOT continue the task yourself, do NOT call any more tools, ")
+                  .Append("and do NOT re-dispatch the agents. In your next message, briefly report what (if ")
+                  .Append("anything) the agents gathered above, then ask the user how they would like to ")
+                  .Append("proceed (for example: retry, narrow the scope, or take a different approach), and ")
+                  .Append("wait for their reply.]");
 
             return sb.ToString();
         }
