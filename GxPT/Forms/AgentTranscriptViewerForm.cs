@@ -14,7 +14,7 @@ namespace GxPT
     // only (no designer); hosts a single docked transcript control.
     internal sealed class AgentTranscriptViewerForm : Form, IAgentLiveSink
     {
-        private readonly ChatTranscriptControl _transcript;
+        private ChatTranscriptControl _transcript;   // set in Init() (a ctor helper), so not readonly
         private readonly AgentTranscript _data;     // static mode (null in live mode)
         private readonly AgentLiveStream _stream;   // live mode (null in static mode)
         private bool _liveAssistantOpen;            // is the last live message an open assistant bubble?
