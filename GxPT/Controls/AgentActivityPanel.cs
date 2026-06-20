@@ -26,8 +26,9 @@ namespace GxPT
             this.Dock = DockStyle.Bottom;
             this.Visible = false;
             this.AutoSize = false;
+            this.BorderStyle = BorderStyle.FixedSingle;   // defined edge, like ToolApprovalPanel
             this.Height = 24;
-            this.Padding = new Padding(8, 4, 8, 4);
+            this.Padding = new Padding(8);
 
             _label = new Label();
             _label.Dock = DockStyle.Fill;
@@ -86,9 +87,12 @@ namespace GxPT
             }
             _label.Text = sb.ToString();
 
-            // Header line + one line per agent, bounded so a big fan-out doesn't take the whole pane.
+            // Size to the header line + one line per agent, measured from the label's real font height so
+            // nothing clips, plus the border (2px) and a line of headroom; bounded so a big fan-out can't
+            // swallow the whole pane.
+            int lineH = _label.Font != null && _label.Font.Height > 0 ? _label.Font.Height : 16;
             int lines = 1 + _slugs.Length;
-            this.Height = Math.Min(10 + lines * 16, 160);
+            this.Height = Math.Min(2 + this.Padding.Vertical + (lines + 1) * lineH, 240);
         }
     }
 }
