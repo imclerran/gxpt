@@ -4175,23 +4175,23 @@ namespace GxPT
                     Newtonsoft.Json.Linq.JToken arr = args != null ? args["agents"] : null;
                     if (arr == null || arr.Type != Newtonsoft.Json.Linq.JTokenType.Array) return false;
                     int count = 0;
-                    // Headerless 2-column Markdown table: bold slug on the left, raw task on the right.
-                    // (GitHub tables require a header + separator row, so the first row is left empty.)
-                    System.Text.StringBuilder rows = new System.Text.StringBuilder();
+                    System.Text.StringBuilder md = new System.Text.StringBuilder();
                     foreach (Newtonsoft.Json.Linq.JToken t in (Newtonsoft.Json.Linq.JArray)arr)
                     {
                         if (t == null || t.Type != Newtonsoft.Json.Linq.JTokenType.Object) continue;
                         Newtonsoft.Json.Linq.JObject ag = (Newtonsoft.Json.Linq.JObject)t;
-                        string slug = TableCell(Str(ag, "name"));
-                        string task = TableCell(Str(ag, "task"));
+                        string slug = Str(ag, "name").Trim();
+                        string task = Str(ag, "task").Trim();
                         if (slug.Length == 0 && task.Length == 0) continue;
                         count++;
-                        rows.Append("| **").Append(slug.Length > 0 ? slug : "(agent)").Append("** | ")
-                            .Append(task).Append(" |\n");
+                        // Blank line between agents so each is its own paragraph: bold slug, then the
+                        // task with its own newlines preserved (the parser keeps single newlines within
+                        // a paragraph as hard breaks).
+                        if (md.Length > 0) md.Append("\n\n");
+                        md.Append("**").Append(slug.Length > 0 ? slug : "(agent)").Append(":**");
+                        if (task.Length > 0) md.Append(' ').Append(task);
                     }
                     if (count == 0) return false;
-                    System.Text.StringBuilder md = new System.Text.StringBuilder();
-                    md.Append("|  |  |\n| --- | --- |\n").Append(rows);
                     header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
                     body = md.ToString(); language = "markdown"; return true;
                 }
@@ -4467,14 +4467,6 @@ namespace GxPT
         {
             try { var t = args[name]; return t == null ? string.Empty : ((string)t ?? string.Empty); }
             catch { return string.Empty; }
-        }
-        // Flattens a string into a single Markdown table cell: newlines become spaces and pipes are
-        // swapped for '/' (the simple table parser splits on every '|' and has no escape support).
-        private static string TableCell(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return string.Empty;
-            s = s.Replace("\r", " ").Replace("\n", " ").Replace("|", "/");
-            return s.Trim();
         }
         private static bool Bool(Newtonsoft.Json.Linq.JObject args, string name)
         {
