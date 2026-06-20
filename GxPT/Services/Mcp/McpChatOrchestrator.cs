@@ -290,6 +290,10 @@ namespace GxPT
             // The cap is a budget rather than a fixed loop bound so the user can grant another batch
             // when it's reached (ContinuationDecider) instead of dead-ending the turn.
             int budget = _maxIterations;
+            // Set after a dispatch_agent the user stopped: the next model call is forced to tool_choice
+            // "none" so the model must produce a text answer (a summary + "how should I proceed?") instead
+            // of charging ahead with more tool calls. Reset each iteration once consumed.
+            bool forceTextThisCall = false;
             for (int iter = 0; ; iter++)
             {
                 // Stop requested between iterations (e.g. while the previous iteration's tools ran):
@@ -389,7 +393,11 @@ namespace GxPT
 
                 bool errored;
                 string errMessage;
-                ToolCallAssembler asm = StreamOnce(requestMessages, tools, null, ui, out errored, out errMessage);
+                // After a user-stopped fan-out, force a text-only answer (the dispatch result carries the
+                // "summarize and ask" directive); otherwise normal auto tool choice.
+                string toolChoice = forceTextThisCall ? "none" : null;
+                forceTextThisCall = false;
+                ToolCallAssembler asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
                 if (errored)
                 {
                     _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
@@ -404,7 +412,7 @@ namespace GxPT
                 if (!asm.ProducedToolCalls && IsEmptyText(asm.Text))
                 {
                     _log.Log("mcp", "[turn " + turnId + "] empty response (no tool calls, no text); retrying once");
-                    asm = StreamOnce(requestMessages, tools, null, ui, out errored, out errMessage);
+                    asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
                     if (errored)
                     {
                         _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
@@ -463,6 +471,14 @@ namespace GxPT
                     ChatMessage toolMsg = new ChatMessage("tool", result);
                     toolMsg.ToolCallId = call.Id;
                     history.Add(toolMsg);
+
+                    // If the user stopped this dispatch_agent fan-out, force the next model call to text
+                    // only so it wraps up (summary + ask) per the directive in the tool result, rather than
+                    // launching into more tool calls.
+                    if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name)
+                        && AgentDispatcher.GroupCancellation != null
+                        && AgentDispatcher.GroupCancellation.IsCancelled)
+                        forceTextThisCall = true;
                 }
                 // Loop: re-call the model with the tool results in context.
             }
