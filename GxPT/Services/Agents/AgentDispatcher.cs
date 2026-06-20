@@ -19,8 +19,9 @@ namespace GxPT
     {
         public const string DispatchAgentName = "dispatch_agent";
 
-        // A sane bound on one batch, so a single tool call can't fan out unboundedly.
-        private const int MaxAgentsPerCall = 8;
+        // A sane bound on one batch, so a single tool call can't fan out unboundedly. internal so the
+        // activity panel can size its safety ceiling to the same maximum.
+        internal const int MaxAgentsPerCall = 8;
 
         // Max children running at once in a read-only fan-out (design: bounded concurrency). Tunable.
         private const int MaxParallelAgents = 3;

@@ -72,8 +72,14 @@ namespace GxPT
 
         private void RecalcHeight()
         {
+            // Flexible: header line + one row per agent. The ceiling is sized to the dispatcher's batch
+            // maximum (1 + MaxAgentsPerCall rows) at the current font, so the realistic worst case always
+            // fits without clipping; it stays only as a defensive bound (the dispatcher caps the batch, so
+            // the panel never actually exceeds it).
+            int rowH = LineH() + 2;
             int lines = (_slugs != null) ? 1 + _slugs.Length : 1;
-            this.Height = Math.Min(Pad * 2 + lines * (LineH() + 2), 240);
+            int ceiling = Pad * 2 + (1 + AgentDispatcher.MaxAgentsPerCall) * rowH;
+            this.Height = Math.Min(Pad * 2 + lines * rowH, ceiling);
         }
 
         private Font BoldFont()
