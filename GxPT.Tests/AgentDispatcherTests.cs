@@ -202,12 +202,15 @@ namespace GxPT.Tests
         {
             private readonly object _gate = new object();
             public int FanOutStarts, FanOutEnds, Starts, Finishes, Cancellations, LastFanOutCount;
+            public int Activities, LastFanOutTaskCount;
 
-            public void OnFanOutStart(System.Collections.Generic.IList<string> slugs)
-            { lock (_gate) { FanOutStarts++; LastFanOutCount = slugs.Count; } }
+            public void OnFanOutStart(System.Collections.Generic.IList<string> slugs,
+                                      System.Collections.Generic.IList<string> tasks)
+            { lock (_gate) { FanOutStarts++; LastFanOutCount = slugs.Count; LastFanOutTaskCount = (tasks != null ? tasks.Count : 0); } }
             public void OnAgentStart(int index, string slug, string task) { lock (_gate) { Starts++; } }
             public void OnAgentFinished(int index, string slug, bool cancelled)
             { lock (_gate) { Finishes++; if (cancelled) Cancellations++; } }
+            public void OnAgentActivity(int index, string lastTool, int toolCount) { lock (_gate) { Activities++; } }
             public void OnFanOutEnd() { lock (_gate) { FanOutEnds++; } }
         }
 
@@ -227,8 +230,71 @@ namespace GxPT.Tests
             Assert.Equal(1, ui.FanOutStarts);
             Assert.Equal(1, ui.FanOutEnds);
             Assert.Equal(2, ui.LastFanOutCount);
+            Assert.Equal(2, ui.LastFanOutTaskCount);   // tier 2: tasks travel with the slugs
             Assert.Equal(2, ui.Starts);
             Assert.Equal(2, ui.Finishes);
+        }
+
+        [Fact]
+        public void Dispatch_CapturesPerSlotChildTranscripts()
+        {
+            Agent a = WriteReadOnlyAgent("ra", "A");
+            Agent b = WriteReadOnlyAgent("rb", "B");
+            var d = new AgentDispatcher(new System.Collections.Generic.List<Agent> { a, b },
+                new TaskEchoStreamer(), null, null, "m", null, null,
+                delegate(string n) { return ToolTier.ReadOnly; }, 25, 60000);
+
+            d.Dispatch("{\"agents\":[{\"name\":\"ra\",\"task\":\"t1\"},{\"name\":\"rb\",\"task\":\"t2\"}]}");
+
+            AgentTranscript[] ts = d.LastTranscripts;
+            Assert.NotNull(ts);
+            Assert.Equal(2, ts.Length);
+            Assert.NotNull(ts[0]);
+            Assert.Equal("ra", ts[0].Slug);
+            Assert.Equal("t1", ts[0].Task);
+            // The child's message list carries at least the user task and the assistant answer.
+            Assert.NotNull(ts[0].Messages);
+            bool sawUserTask = false;
+            foreach (ChatMessage m in ts[0].Messages)
+                if (m != null && m.Role == "user" && m.Content == "t1") sawUserTask = true;
+            Assert.True(sawUserTask);
+        }
+
+        [Fact]
+        public void TranscriptStore_RoundTripsByKeyAndIndex()
+        {
+            ChatMessage msg = new ChatMessage("assistant", "hi");
+            AgentTranscript[] arr = new AgentTranscript[]
+            {
+                new AgentTranscript("ra", "t0", new System.Collections.Generic.List<ChatMessage> { msg }),
+                null
+            };
+            string key = "store-test-" + System.Guid.NewGuid().ToString("N");
+            AgentTranscriptStore.Put(key, arr);
+
+            Assert.Same(arr[0], AgentTranscriptStore.Get(key, 0));
+            Assert.Null(AgentTranscriptStore.Get(key, 1));        // null slot
+            Assert.Null(AgentTranscriptStore.Get(key, 5));        // out of range
+            Assert.Null(AgentTranscriptStore.Get("no-such-key", 0));
+        }
+
+        [Fact]
+        public void Dispatch_UnknownSlot_HasNullTranscript()
+        {
+            Agent a = WriteReadOnlyAgent("ra", "A");
+            var d = new AgentDispatcher(new System.Collections.Generic.List<Agent> { a },
+                new TaskEchoStreamer(), null, null, "m", null, null,
+                delegate(string n) { return ToolTier.ReadOnly; }, 25, 60000);
+
+            // slot 0 = unknown agent (no child), slot 1 = real agent
+            d.Dispatch("{\"agents\":[{\"name\":\"ghost\",\"task\":\"t0\"},{\"name\":\"ra\",\"task\":\"t1\"}]}");
+
+            AgentTranscript[] ts = d.LastTranscripts;
+            Assert.NotNull(ts);
+            Assert.Equal(2, ts.Length);
+            Assert.Null(ts[0]);             // unknown slot ran no child
+            Assert.NotNull(ts[1]);
+            Assert.Equal("ra", ts[1].Slug);
         }
 
         [Fact]

@@ -20,15 +20,16 @@ namespace GxPT
             _group = group;
         }
 
-        public void OnFanOutStart(IList<string> slugs)
+        public void OnFanOutStart(IList<string> slugs, IList<string> tasks)
         {
-            // Copy the list: it is the dispatcher's and may change; the UI thread reads it later.
-            List<string> copy = slugs != null ? new List<string>(slugs) : new List<string>();
+            // Copy the lists: they are the dispatcher's and may change; the UI thread reads them later.
+            List<string> slugCopy = slugs != null ? new List<string>(slugs) : new List<string>();
+            List<string> taskCopy = tasks != null ? new List<string>(tasks) : new List<string>();
             RequestCancellation group = _group;
             Marshal(delegate
             {
                 AgentActivityPanel p = Panel();
-                if (p != null) p.BeginFanOut(copy, delegate { if (group != null) group.Cancel(); });
+                if (p != null) p.BeginFanOut(slugCopy, taskCopy, delegate { if (group != null) group.Cancel(); });
                 if (_form != null) _form.NotifyAgentFanOutChanged(_ctx, true);
             });
         }
@@ -36,6 +37,13 @@ namespace GxPT
         public void OnAgentStart(int index, string slug, string task)
         {
             Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.SetRunning(index); });
+        }
+
+        public void OnAgentActivity(int index, string lastTool, int toolCount)
+        {
+            string tool = lastTool;
+            int count = toolCount;
+            Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.SetActivity(index, tool, count); });
         }
 
         public void OnAgentFinished(int index, string slug, bool cancelled)

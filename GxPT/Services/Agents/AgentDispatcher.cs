@@ -46,6 +46,11 @@ namespace GxPT
         // so the host can show the activity panel and relabel the Stop button. Null => headless.
         public IAgentActivityUi ActivityUi { get; set; }
 
+        // The per-slot child transcripts from the most recent Dispatch (tier 3). Set at the end of each
+        // fan-out; the host snapshots it under the dispatch record's key for the read-only viewer. Indexed
+        // by entry slot (aligned with the record body); a slot is null if that agent did not run a child.
+        public AgentTranscript[] LastTranscripts { get; private set; }
+
         // Optional group cancellation: when set, children use THIS handle instead of the parent turn's
         // (Cancellation), so a "Stop N agents" click can cancel the fan-out without ending the turn. Null
         // => children fall back to Cancellation (parent Stop cancels them, the phase-4 behavior).
@@ -138,6 +143,10 @@ namespace GxPT
             Agent[] agents = new Agent[n];
             string[] tasks = new string[n];
             string[] results = new string[n];
+            // Per-slot child transcripts (tier 3): slot i is null until/unless that agent runs a child.
+            // Exposed via LastTranscripts so the host can cache them under the dispatch record's key and
+            // open a read-only viewer. Indexed by slot (entry order), aligned with the record body's rows.
+            AgentTranscript[] transcripts = new AgentTranscript[n];
             List<int> runnable = new List<int>();
             for (int i = 0; i < n; i++)
             {
@@ -157,8 +166,13 @@ namespace GxPT
             if (ui != null && runnable.Count > 0)
             {
                 List<string> slugs = new List<string>(runnable.Count);
-                for (int k = 0; k < runnable.Count; k++) slugs.Add(agents[runnable[k]].Slug);
-                ui.OnFanOutStart(slugs);
+                List<string> taskList = new List<string>(runnable.Count);
+                for (int k = 0; k < runnable.Count; k++)
+                {
+                    slugs.Add(agents[runnable[k]].Slug);
+                    taskList.Add(tasks[runnable[k]]);
+                }
+                ui.OnFanOutStart(slugs, taskList);
             }
             try
             {
@@ -167,16 +181,17 @@ namespace GxPT
                 // rule). Concurrent children safely share the MCP connections (the transport is multiplexed:
                 // atomic request ids + serialized writes) and the streamer (per-call), so no extra locking.
                 if (RunsInParallel(agents, runnable))
-                    RunParallel(agents, tasks, runnable, results);
+                    RunParallel(agents, tasks, runnable, results, transcripts);
                 else
                     for (int k = 0; k < runnable.Count; k++)
                     {
                         int i = runnable[k];
-                        results[i] = RunChildReported(i, agents[i], tasks[i]);
+                        results[i] = RunChildReported(k, i, agents[i], tasks[i], transcripts);
                     }
             }
             finally
             {
+                LastTranscripts = transcripts;
                 if (ui != null && runnable.Count > 0) ui.OnFanOutEnd();
             }
 
@@ -222,7 +237,8 @@ namespace GxPT
         // Runs the runnable slots concurrently in waves of at most MaxParallelAgents, each child writing
         // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
         // is valid here; no lock is held across the join, so the fan-out cannot deadlock.
-        private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results)
+        private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results,
+                                 AgentTranscript[] transcripts)
         {
             int pos = 0;
             while (pos < runnable.Count)
@@ -231,14 +247,15 @@ namespace GxPT
                 System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[groupSize];
                 for (int g = 0; g < groupSize; g++)
                 {
-                    int slot = runnable[pos + g];
+                    int row = pos + g;          // panel row index (position among runnable)
+                    int slot = runnable[row];   // entry slot (position in the full agents/tasks arrays)
                     Agent agent = agents[slot];
                     string task = tasks[slot];
                     System.Threading.ManualResetEvent done = new System.Threading.ManualResetEvent(false);
                     dones[g] = done;
                     System.Threading.ThreadPool.QueueUserWorkItem(delegate
                     {
-                        try { results[slot] = RunChildReported(slot, agent, task); }
+                        try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
                         catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
                         finally { done.Set(); }
                     });
@@ -251,20 +268,34 @@ namespace GxPT
 
         // Wraps RunChild with the activity-UI start/finished hooks (called from both the serial and the
         // parallel paths). Safe to call concurrently: a host implementation marshals to the UI thread.
-        private string RunChildReported(int index, Agent agent, string task)
+        // `row` is the panel-row index (position among runnable, used for all UI callbacks); `slot` is the
+        // entry index (used for the result/transcript arrays). A per-child forwarding UI reports the
+        // child's tool calls as the row's live activity line (tier 2); the run's full message list is
+        // captured into transcripts[slot] for the tier-3 viewer (even on error - the partial history).
+        private string RunChildReported(int row, int slot, Agent agent, string task,
+                                        AgentTranscript[] transcripts)
         {
             IAgentActivityUi ui = ActivityUi;
-            if (ui != null) ui.OnAgentStart(index, agent.Slug, task);
-            try { return RunChild(agent, task); }
+            if (ui != null) ui.OnAgentStart(row, agent.Slug, task);
+            IToolLoopUi childUi = ui != null ? (IToolLoopUi)new ChildActivityUi(ui, row) : NullToolLoopUi.Instance;
+            try
+            {
+                IList<ChatMessage> history;
+                string answer = RunChild(agent, task, childUi, out history);
+                if (transcripts != null) transcripts[slot] = new AgentTranscript(agent.Slug, task, history);
+                return answer;
+            }
             finally
             {
                 bool cancelled = GroupCancellation != null && GroupCancellation.IsCancelled;
-                if (ui != null) ui.OnAgentFinished(index, agent.Slug, cancelled);
+                if (ui != null) ui.OnAgentFinished(row, agent.Slug, cancelled);
             }
         }
 
-        // Builds and runs one child orchestrator to completion, returning its final answer.
-        private string RunChild(Agent agent, string task)
+        // Builds and runs one child orchestrator to completion, returning its final answer. `history` is set
+        // (before the run) to the child's message list so the caller gets the full transcript even if the
+        // turn throws. `childUi` receives the child's tool activity (forwarded to the row's activity line).
+        private string RunChild(Agent agent, string task, IToolLoopUi childUi, out IList<ChatMessage> history)
         {
             string model = !string.IsNullOrEmpty(agent.Model) ? agent.Model : _parentModel;
             int maxIter = agent.MaxTurns > 0 ? agent.MaxTurns : _defaultMaxIterations;
@@ -287,22 +318,23 @@ namespace GxPT
                 if (hidden.Count > 0) child.HiddenToolNames = hidden;
             }
 
-            List<ChatMessage> history = new List<ChatMessage>();
+            List<ChatMessage> msgs = new List<ChatMessage>();
+            history = msgs;                                      // assigned up front so a throw still hands back the partial transcript
             string body = ReadBody(agent);                       // fresh read, so SKILL/AGENT edits apply
             if (!string.IsNullOrEmpty(body))
-                history.Add(new ChatMessage("system", body));    // the agent's persona, after the standing head
-            history.Add(new ChatMessage("user", task));
+                msgs.Add(new ChatMessage("system", body));       // the agent's persona, after the standing head
+            msgs.Add(new ChatMessage("user", task));
 
             try
             {
-                child.RunTurn(history, NullToolLoopUi.Instance);
+                child.RunTurn(msgs, childUi != null ? childUi : NullToolLoopUi.Instance);
             }
             catch (Exception ex)
             {
                 _log.Log("agents", "child '" + agent.Slug + "' threw: " + ex.Message);
                 return "[agent error: " + ex.Message + "]";
             }
-            return ExtractFinalAnswer(history);
+            return ExtractFinalAnswer(msgs);
         }
 
         // The child's final answer is the last assistant message its turn appended to history. Only the
@@ -368,13 +400,34 @@ namespace GxPT
             return (t != null && t.Type == JTokenType.String) ? (string)t : null;
         }
 
-        // A no-op transcript UI: a child's live activity is not surfaced to the parent model (A7); rich
-        // per-child UI is the phase-8 observability work. The answer is read from history, not the UI.
+        // A no-op transcript UI: used when there is no observability host (headless / tests). The answer is
+        // read from history, not the UI.
         private sealed class NullToolLoopUi : IToolLoopUi
         {
             public static readonly NullToolLoopUi Instance = new NullToolLoopUi();
             public void AppendTextDelta(string text) { }
             public void OnToolCall(string functionName, string argumentsJson) { }
+            public void OnToolResult(string functionName, string resultText, bool isError) { }
+            public void OnError(string message) { }
+            public void Complete() { }
+        }
+
+        // Forwards a child's tool calls to the activity UI as the row's live activity line (tier 2): each
+        // call bumps the count and reports the latest tool name. Text deltas / results are dropped - the
+        // child's content never reaches the parent model (A7); only this lightweight count is shown to the
+        // user. One instance per running child, so _count is single-threaded (no lock needed).
+        private sealed class ChildActivityUi : IToolLoopUi
+        {
+            private readonly IAgentActivityUi _ui;
+            private readonly int _row;
+            private int _count;
+            public ChildActivityUi(IAgentActivityUi ui, int row) { _ui = ui; _row = row; }
+            public void AppendTextDelta(string text) { }
+            public void OnToolCall(string functionName, string argumentsJson)
+            {
+                _count++;
+                if (_ui != null) _ui.OnAgentActivity(_row, functionName, _count);
+            }
             public void OnToolResult(string functionName, string resultText, bool isError) { }
             public void OnError(string message) { }
             public void Complete() { }
