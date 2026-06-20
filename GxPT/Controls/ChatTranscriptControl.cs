@@ -1830,16 +1830,16 @@ namespace GxPT
                     y += headerH;
 
                     // Expanded body. A Markdown record (e.g. dispatch_agent) reuses the normal block
-                    // renderer so **bold**/*italic* show as formatting; everything else is the
+                    // renderer so bold/tables/etc. render as formatting; everything else is the
                     // chromeless highlighted code body below.
                     if (hasBody && !collapsed && data.BodyIsMarkdown)
                     {
                         y += EditDiffBodyGap;
                         List<Block> bodyBlocks = MarkdownParser.ParseMarkdown(data.Body);
                         int bodyH = MeasureMarkdownBlocks(bodyBlocks, maxWidth).Height;
-                        // owner == null: the body's inline text is display-only (no copy/hit tracking),
-                        // matching the highlighted-code path which is also not part of message copy.
-                        DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, null);
+                        // Pass the owner so tables (TableScroll state) and copy work; the body's blocks
+                        // carry no EditDiff sentinels, so there's no re-entrancy.
+                        DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, owner);
                         y += bodyH + EditDiffBodyPad;
                     }
                     // Expanded: chromeless highlighted body, clipped to width (with horizontal scroll
