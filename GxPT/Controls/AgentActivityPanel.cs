@@ -148,7 +148,7 @@ namespace GxPT
             // Stop button, right-aligned in the header row.
             if (_onStop != null)
             {
-                string btnText = _stopping ? "Stopping..." : "Stop";
+                string btnText = _stopping ? "Stopping..." : "Stop agents";
                 int btnW = TextRenderer.MeasureText(g, btnText, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width + 16;
                 int btnX = this.ClientRectangle.Width - Pad - btnW - 1;
                 if (btnX < Pad) btnX = Pad;

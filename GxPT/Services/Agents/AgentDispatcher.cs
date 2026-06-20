@@ -190,6 +190,15 @@ namespace GxPT
             if (truncated)
                 sb.Append("\n\n[Note: only the first ").Append(MaxAgentsPerCall)
                   .Append(" agents in this call were dispatched.]");
+
+            // If the user stopped the fan-out (panel "Stop agents" trips GroupCancellation), the sections
+            // above are partial. Steer the model to wrap up rather than silently retry: summarize what was
+            // gathered and ask how to proceed (the design's tailored stop directive, sec.14).
+            if (GroupCancellation != null && GroupCancellation.IsCancelled)
+                sb.Append("\n\n[The user stopped the sub-agents before they finished, so the results above ")
+                  .Append("may be partial or empty. Summarize what was gathered so far and ask the user how ")
+                  .Append("they would like to proceed - do not silently re-dispatch the agents.]");
+
             return sb.ToString();
         }
 

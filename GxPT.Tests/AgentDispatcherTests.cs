@@ -242,5 +242,35 @@ namespace GxPT.Tests
             Assert.Equal(0, ui.FanOutStarts);   // nothing runnable -> no fan-out announced
             Assert.Equal(0, ui.FanOutEnds);
         }
+
+        // ---- user-stop wrap-up directive ----
+
+        [Fact]
+        public void Dispatch_WhenGroupCancelled_AppendsWrapUpDirective()
+        {
+            Agent a = WriteAgent("w", "writes", "b");
+            var group = new RequestCancellation();
+            group.Cancel();   // simulate the user having clicked "Stop agents" (children bail immediately)
+            AgentDispatcher d = Dispatcher(new ScriptedStreamer(), a);
+            d.GroupCancellation = group;
+
+            string result = d.Dispatch("{\"agents\":[{\"name\":\"w\",\"task\":\"t\"}]}");
+
+            Assert.Contains("stopped the sub-agents", result);
+            Assert.Contains("how they would like to proceed", result);
+        }
+
+        [Fact]
+        public void Dispatch_NotCancelled_NoWrapUpDirective()
+        {
+            Agent a = WriteAgent("w", "writes", "b");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("all done"));
+            AgentDispatcher d = Dispatcher(streamer, a);   // GroupCancellation null
+
+            string result = d.Dispatch("{\"agents\":[{\"name\":\"w\",\"task\":\"t\"}]}");
+
+            Assert.DoesNotContain("stopped the sub-agents", result);
+        }
     }
 }
