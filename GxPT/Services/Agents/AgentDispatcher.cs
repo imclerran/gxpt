@@ -256,7 +256,11 @@ namespace GxPT
             IAgentActivityUi ui = ActivityUi;
             if (ui != null) ui.OnAgentStart(index, agent.Slug, task);
             try { return RunChild(agent, task); }
-            finally { if (ui != null) ui.OnAgentFinished(index, agent.Slug); }
+            finally
+            {
+                bool cancelled = GroupCancellation != null && GroupCancellation.IsCancelled;
+                if (ui != null) ui.OnAgentFinished(index, agent.Slug, cancelled);
+            }
         }
 
         // Builds and runs one child orchestrator to completion, returning its final answer.

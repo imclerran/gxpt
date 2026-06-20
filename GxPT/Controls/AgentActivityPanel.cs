@@ -16,6 +16,7 @@ namespace GxPT
         private const int StateQueued = 0;
         private const int StateRunning = 1;
         private const int StateDone = 2;
+        private const int StateCancelled = 3;
         private const int Pad = 8;
         private const int RowIndent = 14;
 
@@ -66,6 +67,7 @@ namespace GxPT
 
         public void SetRunning(int index) { SetState(index, StateRunning); }
         public void SetDone(int index) { SetState(index, StateDone); }
+        public void SetCancelled(int index) { SetState(index, StateCancelled); }
 
         public void EndFanOut()
         {
@@ -135,14 +137,18 @@ namespace GxPT
             Color cDone = dark ? Color.FromArgb(126, 204, 126) : Color.FromArgb(34, 139, 34);
             Color cRunning = tc.Link;
             Color cQueued = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(120, 120, 120);
+            Color cCancelled = dark ? Color.FromArgb(240, 120, 120) : Color.FromArgb(192, 0, 0);
 
-            int done = 0, running = 0;
+            int done = 0, running = 0, cancelled = 0;
             for (int i = 0; i < _state.Length; i++)
             {
                 if (_state[i] == StateDone) done++;
                 else if (_state[i] == StateRunning) running++;
+                else if (_state[i] == StateCancelled) cancelled++;
             }
-            string header = "Sub-agents: " + running + " running, " + done + " of " + _slugs.Length + " done";
+            string header = "Sub-agents: " + running + " running, " + done + " done";
+            if (cancelled > 0) header += ", " + cancelled + " cancelled";
+            header += " (" + _slugs.Length + " total)";
             TextRenderer.DrawText(g, header, BoldFont(), new Point(Pad, y), tc.UiForeground, TextFormatFlags.NoPadding);
 
             // Stop button, right-aligned in the header row.
@@ -174,6 +180,7 @@ namespace GxPT
                 string tag; Color tagColor;
                 if (_state[i] == StateDone) { tag = "[done]"; tagColor = cDone; }
                 else if (_state[i] == StateRunning) { tag = "[running]"; tagColor = cRunning; }
+                else if (_state[i] == StateCancelled) { tag = "[cancelled]"; tagColor = cCancelled; }
                 else { tag = "[queued]"; tagColor = cQueued; }
                 TextRenderer.DrawText(g, tag, this.Font, new Point(rowX + slugW + 8, y), tagColor, TextFormatFlags.NoPadding);
                 y += lineH;

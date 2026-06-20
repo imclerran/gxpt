@@ -201,12 +201,13 @@ namespace GxPT.Tests
         private sealed class FakeActivityUi : IAgentActivityUi
         {
             private readonly object _gate = new object();
-            public int FanOutStarts, FanOutEnds, Starts, Finishes, LastFanOutCount;
+            public int FanOutStarts, FanOutEnds, Starts, Finishes, Cancellations, LastFanOutCount;
 
             public void OnFanOutStart(System.Collections.Generic.IList<string> slugs)
             { lock (_gate) { FanOutStarts++; LastFanOutCount = slugs.Count; } }
             public void OnAgentStart(int index, string slug, string task) { lock (_gate) { Starts++; } }
-            public void OnAgentFinished(int index, string slug) { lock (_gate) { Finishes++; } }
+            public void OnAgentFinished(int index, string slug, bool cancelled)
+            { lock (_gate) { Finishes++; if (cancelled) Cancellations++; } }
             public void OnFanOutEnd() { lock (_gate) { FanOutEnds++; } }
         }
 
@@ -241,6 +242,23 @@ namespace GxPT.Tests
 
             Assert.Equal(0, ui.FanOutStarts);   // nothing runnable -> no fan-out announced
             Assert.Equal(0, ui.FanOutEnds);
+        }
+
+        [Fact]
+        public void ActivityUi_ReportsCancelledFinish_WhenGroupCancelled()
+        {
+            Agent a = WriteAgent("w", "writes", "b");
+            var group = new RequestCancellation();
+            group.Cancel();   // user stopped: the child bails and its finish is reported as cancelled
+            var ui = new FakeActivityUi();
+            AgentDispatcher d = Dispatcher(new ScriptedStreamer(), a);
+            d.GroupCancellation = group;
+            d.ActivityUi = ui;
+
+            d.Dispatch("{\"agents\":[{\"name\":\"w\",\"task\":\"t\"}]}");
+
+            Assert.Equal(1, ui.Finishes);
+            Assert.Equal(1, ui.Cancellations);
         }
 
         // ---- user-stop wrap-up directive ----

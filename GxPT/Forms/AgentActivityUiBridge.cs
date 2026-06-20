@@ -38,9 +38,13 @@ namespace GxPT
             Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.SetRunning(index); });
         }
 
-        public void OnAgentFinished(int index, string slug)
+        public void OnAgentFinished(int index, string slug, bool cancelled)
         {
-            Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.SetDone(index); });
+            Marshal(delegate
+            {
+                AgentActivityPanel p = Panel();
+                if (p != null) { if (cancelled) p.SetCancelled(index); else p.SetDone(index); }
+            });
         }
 
         public void OnFanOutEnd()

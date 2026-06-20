@@ -14,10 +14,11 @@ namespace GxPT
         // and relabels Stop. Always paired with exactly one OnFanOutEnd.
         void OnFanOutStart(IList<string> slugs);
 
-        // One child began / finished (index is its slot in the dispatch order). Under a parallel read-only
-        // fan-out these can interleave across children; the index identifies which row to update.
+        // One child began / finished (index is its slot in the dispatch order). cancelled is true when the
+        // fan-out was stopped by the user before this child completed (its result is partial/empty). Under
+        // a parallel read-only fan-out these can interleave across children; the index identifies the row.
         void OnAgentStart(int index, string slug, string task);
-        void OnAgentFinished(int index, string slug);
+        void OnAgentFinished(int index, string slug, bool cancelled);
 
         // The fan-out is complete; the host hides the panel and reverts the Stop button.
         void OnFanOutEnd();
