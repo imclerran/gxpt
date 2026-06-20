@@ -4189,7 +4189,9 @@ namespace GxPT
                         // a paragraph as hard breaks).
                         if (md.Length > 0) md.Append("\n\n");
                         md.Append("**").Append(slug.Length > 0 ? slug : "(agent)").Append(":**");
-                        if (task.Length > 0) md.Append(' ').Append(task);
+                        // Newline after the slug so the task starts on its own line (single newline =
+                        // hard break within the paragraph).
+                        if (task.Length > 0) md.Append('\n').Append(task);
                     }
                     if (count == 0) return false;
                     header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
