@@ -462,12 +462,12 @@ namespace GxPT
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
-                    if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson);
+                    if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson, call.Id);
 
                     bool isError;
                     string result = ExecuteCall(call, turnId, out isError);
 
-                    if (ui != null) ui.OnToolResult(call.Name, result, isError);
+                    if (ui != null) ui.OnToolResult(call.Name, result, isError, call.Id);
                     ChatMessage toolMsg = new ChatMessage("tool", result);
                     toolMsg.ToolCallId = call.Id;
                     history.Add(toolMsg);

@@ -124,6 +124,7 @@
     <Compile Include="Services\Agents\AgentDispatcher.cs" />
     <Compile Include="Services\Agents\AgentTranscript.cs" />
     <Compile Include="Services\Agents\AgentTranscriptStore.cs" />
+    <Compile Include="Services\Agents\AgentTranscriptPersistence.cs" />
     <Compile Include="Services\Agents\AgentTranscriptLinks.cs" />
     <Compile Include="Services\Agents\IAgentActivityUi.cs" />
     <Compile Include="Services\Commands\SlashCommandKind.cs" />

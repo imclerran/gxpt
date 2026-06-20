@@ -305,6 +305,36 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void TranscriptPersistence_SaveLoadDelete_RoundTrips()
+        {
+            string conv = "conv-" + System.Guid.NewGuid().ToString("N");
+            string rec = "rec1";
+            var msgs = new System.Collections.Generic.List<ChatMessage>
+            {
+                new ChatMessage("system", "persona"),
+                new ChatMessage("user", "do it"),
+                new ChatMessage("assistant", "ok"),
+                new ChatMessage("tool", "result"),
+            };
+            AgentTranscript[] arr = new AgentTranscript[] { new AgentTranscript("ra", "do it", msgs), null };
+            try
+            {
+                AgentTranscriptPersistence.Save(conv, rec, arr);
+                var map = AgentTranscriptPersistence.LoadAll(conv);
+                Assert.True(map.ContainsKey(rec));
+                AgentTranscript[] back = map[rec];
+                Assert.Equal(2, back.Length);
+                Assert.NotNull(back[0]);
+                Assert.Equal("ra", back[0].Slug);
+                Assert.Equal("do it", back[0].Task);
+                Assert.Equal(1, back[0].ToolCallCount);     // one tool-role message
+                Assert.Null(back[1]);                       // null slot preserved
+            }
+            finally { AgentTranscriptPersistence.DeleteConversation(conv); }
+            Assert.False(AgentTranscriptPersistence.LoadAll(conv).ContainsKey(rec));
+        }
+
+        [Fact]
         public void Dispatch_UnknownSlot_HasNullTranscript()
         {
             Agent a = WriteReadOnlyAgent("ra", "A");

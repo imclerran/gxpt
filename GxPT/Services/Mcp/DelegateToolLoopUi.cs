@@ -54,15 +54,15 @@ namespace GxPT
     internal sealed class DelegateToolLoopUi : IToolLoopUi
     {
         private readonly Action<string> _appendText;
-        private readonly Action<string> _onToolCall;                         // (functionName) -> show placeholder
-        private readonly Action<string, string, string, bool> _onToolResult; // (fn, argsJson, resultText, isError) -> replace
+        private readonly Action<string> _onToolCall;                                 // (functionName) -> show placeholder
+        private readonly Action<string, string, string, bool, string> _onToolResult; // (fn, argsJson, resultText, isError, callId) -> replace
         private readonly Action _complete;
         private readonly Action<string> _error;
 
         private string _pendingArgs; // arguments of the in-flight call, awaiting its result
 
         public DelegateToolLoopUi(Action<string> appendText, Action<string> onToolCall,
-                                  Action<string, string, string, bool> onToolResult, Action complete, Action<string> error)
+                                  Action<string, string, string, bool, string> onToolResult, Action complete, Action<string> error)
         {
             _appendText = appendText;
             _onToolCall = onToolCall;
@@ -76,16 +76,16 @@ namespace GxPT
             if (!string.IsNullOrEmpty(text) && _appendText != null) _appendText(text);
         }
 
-        public void OnToolCall(string functionName, string argumentsJson)
+        public void OnToolCall(string functionName, string argumentsJson, string callId)
         {
             // Stash args for the result; show the placeholder now. Calls are serial, so one slot fits.
             _pendingArgs = argumentsJson;
             if (_onToolCall != null) _onToolCall(functionName);
         }
 
-        public void OnToolResult(string functionName, string resultText, bool isError)
+        public void OnToolResult(string functionName, string resultText, bool isError, string callId)
         {
-            if (_onToolResult != null) _onToolResult(functionName, _pendingArgs, resultText, isError);
+            if (_onToolResult != null) _onToolResult(functionName, _pendingArgs, resultText, isError, callId);
             _pendingArgs = null;
         }
 

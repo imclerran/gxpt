@@ -20,5 +20,22 @@ namespace GxPT
             Task = task;
             Messages = messages;
         }
+
+        // How many tools the child ran: each executed tool appends one "tool"-role message to the child's
+        // history, so counting them gives the tool-call count shown on the dispatch record.
+        public int ToolCallCount
+        {
+            get
+            {
+                int n = 0;
+                if (Messages != null)
+                    for (int i = 0; i < Messages.Count; i++)
+                    {
+                        ChatMessage m = Messages[i];
+                        if (m != null && m.Role == "tool") n++;
+                    }
+                return n;
+            }
+        }
     }
 }

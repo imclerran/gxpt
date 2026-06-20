@@ -2666,6 +2666,11 @@ namespace GxPT
         // the turn restarts over the unchanged history — this holds for both the plain stream (the
         // user message is committed before the request) and the tool loop (the orchestrator's partial
         // progress stays in history, same as when the user keeps typing after a failure).
+        private static string ConvId(TabManager.ChatTabContext ctx)
+        {
+            return (ctx != null && ctx.Conversation != null) ? ctx.Conversation.Id : null;
+        }
+
         // Open the read-only child-transcript viewer for a dispatch_agent "View transcript" link (tier 3).
         // The link encodes the dispatch record's key + agent slot; resolve it against the session cache. A
         // miss (cache evicted, or a record reloaded from history after restart) shows a short notice rather
@@ -3160,17 +3165,22 @@ namespace GxPT
                     };
                     // argsJson is threaded through for files__edit etc., which render a collapsible
                     // record instead of the generic "using" marker; register the record (it has its own
-                    // lock) before taking sbLock. Live keys are per-call GUIDs (ephemeral — the reloaded
-                    // view re-derives under the persisted call id).
-                    Action<string, string, string, bool> onToolResult = delegate(string name, string argsJson, string resultText, bool isError)
+                    // lock) before taking sbLock. The record key is the model's call id, so the live and
+                    // reloaded views share one identity (and persisted agent transcripts resolve on reload).
+                    Action<string, string, string, bool, string> onToolResult = delegate(string name, string argsJson, string resultText, bool isError, string callId)
                     {
-                        string recKey = Guid.NewGuid().ToString("N");
+                        string recKey = !string.IsNullOrEmpty(callId) ? callId : Guid.NewGuid().ToString("N");
                         // A dispatch_agent record gets per-agent "View transcript" links keyed by recKey;
-                        // cache this fan-out's child transcripts under the same key so the links resolve
-                        // (tier 3). Tool calls are serial, so LastTranscripts is this call's batch.
+                        // cache + persist this fan-out's child transcripts under the same key so the links
+                        // resolve now and after reload. Tool calls are serial, so LastTranscripts is this
+                        // call's batch.
                         if (dispatcherForTurn != null && AgentDispatcher.DispatchAgentName == name
                             && dispatcherForTurn.LastTranscripts != null)
+                        {
                             AgentTranscriptStore.Put(recKey, dispatcherForTurn.LastTranscripts);
+                            try { AgentTranscriptPersistence.Save(ConvId(ctx), recKey, dispatcherForTurn.LastTranscripts); }
+                            catch { }
+                        }
                         string marker = McpMarkers.IsDenied(resultText)
                             ? McpMarkers.Denied(name)
                             : EditDiffMarkerOrCall(ctx.Transcript, name, argsJson, recKey);
@@ -4221,19 +4231,22 @@ namespace GxPT
                         string task = Str(ag, "task").Trim();
                         if (slug.Length == 0 && task.Length == 0) continue;
                         count++;
-                        // Blank line between agents so each is its own paragraph: bold slug, then the
-                        // task with its own newlines preserved (the parser keeps single newlines within
-                        // a paragraph as hard breaks).
+                        // Blank line between agents so each is its own paragraph. Bold slug, then the
+                        // child's tool-call count (from its transcript) on its own line, then the
+                        // "View transcript" link. The count/link only show when a transcript exists
+                        // (live: just cached; reloaded: re-seeded from disk) - so an unknown agent that
+                        // ran no child has neither.
                         if (md.Length > 0) md.Append("\n\n");
                         md.Append("**").Append(slug.Length > 0 ? slug : "(agent)").Append(":**");
-                        // Newline after the slug so the task starts on its own line (single newline =
-                        // hard break within the paragraph).
-                        if (task.Length > 0) md.Append('\n').Append(task);
-                        // Tier 3: a per-agent "View transcript" link the transcript control intercepts
-                        // (AgentTranscriptLinkScheme) to open the read-only child transcript popup. Keyed
-                        // by the record key + slot so it resolves against AgentTranscriptStore.
-                        if (!string.IsNullOrEmpty(key))
+                        AgentTranscript tr = !string.IsNullOrEmpty(key) ? AgentTranscriptStore.Get(key, slot) : null;
+                        if (tr != null)
+                        {
+                            int tc = tr.ToolCallCount;
+                            md.Append('\n').Append(tc).Append(tc == 1 ? " tool call" : " tool calls");
+                            // Tier 3: a per-agent "View transcript" link the transcript control intercepts
+                            // (AgentTranscriptLinks scheme) to open the read-only child transcript popup.
                             md.Append("\n[View transcript](").Append(AgentTranscriptLinks.Build(key, slot)).Append(')');
+                        }
                     }
                     if (count == 0) return false;
                     header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
@@ -4742,6 +4755,18 @@ namespace GxPT
                 ctx.Transcript.ClearMessages();
                 if (_themeManager != null) _themeManager.ApplyFontSetting(ctx.Transcript);
                 try { ctx.Transcript.RefreshTheme(); }
+                catch { }
+
+                // Re-seed this conversation's persisted sub-agent transcripts into the in-memory store (keyed
+                // by the dispatch record id = tool call id), so the rebuilt records show the tool-call count
+                // and their "View transcript" links resolve after a restart.
+                try
+                {
+                    System.Collections.Generic.Dictionary<string, AgentTranscript[]> persisted =
+                        AgentTranscriptPersistence.LoadAll(convo.Id);
+                    foreach (System.Collections.Generic.KeyValuePair<string, AgentTranscript[]> kv in persisted)
+                        AgentTranscriptStore.Put(kv.Key, kv.Value);
+                }
                 catch { }
 
                 // Snapshot messages to process. System and tool-result messages are not shown. A

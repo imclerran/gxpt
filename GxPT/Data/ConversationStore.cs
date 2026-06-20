@@ -335,6 +335,8 @@ namespace GxPT
                     File.Delete(path);
             }
             catch { }
+            // Sub-agent transcripts persist alongside the conversation; remove them with it.
+            try { AgentTranscriptPersistence.DeleteConversation(id); } catch { }
         }
 
         public static int DeleteAll()
@@ -355,12 +357,16 @@ namespace GxPT
                 }
             }
             catch { }
+            try { AgentTranscriptPersistence.DeleteAll(); } catch { }
             return count;
         }
 
         public static void DeletePath(string path)
         {
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }
+            catch { }
+            // The conversation file is "<id>.json"; remove that conversation's sub-agent transcripts too.
+            try { AgentTranscriptPersistence.DeleteConversation(Path.GetFileNameWithoutExtension(path)); }
             catch { }
         }
 

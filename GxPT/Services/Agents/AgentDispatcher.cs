@@ -406,8 +406,8 @@ namespace GxPT
         {
             public static readonly NullToolLoopUi Instance = new NullToolLoopUi();
             public void AppendTextDelta(string text) { }
-            public void OnToolCall(string functionName, string argumentsJson) { }
-            public void OnToolResult(string functionName, string resultText, bool isError) { }
+            public void OnToolCall(string functionName, string argumentsJson, string callId) { }
+            public void OnToolResult(string functionName, string resultText, bool isError, string callId) { }
             public void OnError(string message) { }
             public void Complete() { }
         }
@@ -423,12 +423,12 @@ namespace GxPT
             private int _count;
             public ChildActivityUi(IAgentActivityUi ui, int row) { _ui = ui; _row = row; }
             public void AppendTextDelta(string text) { }
-            public void OnToolCall(string functionName, string argumentsJson)
+            public void OnToolCall(string functionName, string argumentsJson, string callId)
             {
                 _count++;
                 if (_ui != null) _ui.OnAgentActivity(_row, functionName, _count);
             }
-            public void OnToolResult(string functionName, string resultText, bool isError) { }
+            public void OnToolResult(string functionName, string resultText, bool isError, string callId) { }
             public void OnError(string message) { }
             public void Complete() { }
         }
