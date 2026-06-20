@@ -4184,13 +4184,15 @@ namespace GxPT
                         string task = Str(ag, "task");
                         if (slug.Length == 0 && task.Length == 0) continue;
                         count++;
-                        if (lines.Length > 0) lines.Append('\n');
-                        lines.Append("- ").Append(slug.Length > 0 ? slug : "(agent)");
-                        if (task.Length > 0) lines.Append(": ").Append(task);
+                        // Blank line between entries so each agent is its own Markdown paragraph
+                        // (one per line); slug in bold, task in italics.
+                        if (lines.Length > 0) lines.Append("\n\n");
+                        lines.Append("**").Append(slug.Length > 0 ? slug : "(agent)").Append(":**");
+                        if (task.Length > 0) lines.Append(" *").Append(task).Append('*');
                     }
                     if (count == 0) return false;
                     header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
-                    body = lines.ToString(); language = "text"; return true;
+                    body = lines.ToString(); language = "markdown"; return true;
                 }
                 case "web__search":
                 {
