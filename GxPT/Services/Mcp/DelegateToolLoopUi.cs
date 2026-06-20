@@ -51,18 +51,22 @@ namespace GxPT
     // that placeholder once the outcome is known, so the transcript reflects what actually happened
     // (applied record / denied / errored) rather than the unapproved request. Arguments are stashed at
     // call time since OnToolResult doesn't carry them.
+    // (fn, argsJson, resultText, isError, callId) -> replace the placeholder with the outcome. A named
+    // delegate, not Action<...>: .NET 3.5's Action only goes up to four type arguments.
+    internal delegate void ToolResultCallback(string functionName, string argsJson, string resultText, bool isError, string callId);
+
     internal sealed class DelegateToolLoopUi : IToolLoopUi
     {
         private readonly Action<string> _appendText;
-        private readonly Action<string> _onToolCall;                                 // (functionName) -> show placeholder
-        private readonly Action<string, string, string, bool, string> _onToolResult; // (fn, argsJson, resultText, isError, callId) -> replace
+        private readonly Action<string> _onToolCall;        // (functionName) -> show placeholder
+        private readonly ToolResultCallback _onToolResult;  // (fn, argsJson, resultText, isError, callId) -> replace
         private readonly Action _complete;
         private readonly Action<string> _error;
 
         private string _pendingArgs; // arguments of the in-flight call, awaiting its result
 
         public DelegateToolLoopUi(Action<string> appendText, Action<string> onToolCall,
-                                  Action<string, string, string, bool, string> onToolResult, Action complete, Action<string> error)
+                                  ToolResultCallback onToolResult, Action complete, Action<string> error)
         {
             _appendText = appendText;
             _onToolCall = onToolCall;

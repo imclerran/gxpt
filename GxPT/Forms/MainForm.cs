@@ -3167,7 +3167,7 @@ namespace GxPT
                     // record instead of the generic "using" marker; register the record (it has its own
                     // lock) before taking sbLock. The record key is the model's call id, so the live and
                     // reloaded views share one identity (and persisted agent transcripts resolve on reload).
-                    Action<string, string, string, bool, string> onToolResult = delegate(string name, string argsJson, string resultText, bool isError, string callId)
+                    ToolResultCallback onToolResult = delegate(string name, string argsJson, string resultText, bool isError, string callId)
                     {
                         string recKey = !string.IsNullOrEmpty(callId) ? callId : Guid.NewGuid().ToString("N");
                         // A dispatch_agent record gets per-agent "View transcript" links keyed by recKey;
