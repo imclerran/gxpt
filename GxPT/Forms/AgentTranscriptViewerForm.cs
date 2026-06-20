@@ -1,25 +1,39 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
 namespace GxPT
 {
-    // A transient, read-only popup that renders one child agent's full transcript (design sec.14, tier 3).
-    // Opened from a dispatch_agent record's "View transcript" link. Pure UI: it shows the child's own
-    // message list to the user; nothing here feeds back into any model (the context firewall, A3/A7, holds).
-    // Reuses ChatTranscriptControl for themed Markdown/code rendering; the control auto-themes from settings
-    // in its constructor, so the popup matches the active light/dark theme at open time. Code-only (no
-    // designer) - it hosts a single docked transcript control.
-    internal sealed class AgentTranscriptViewerForm : Form
+    // A popup that renders one child agent's transcript (design sec.14, tier 3). Two modes:
+    //  - static: a finished AgentTranscript (from a dispatch record's "View transcript" link), shown read-only.
+    //  - live: an AgentLiveStream for a running child (the activity panel's per-row "View transcript"); the
+    //    viewer attaches, replays what already happened, then streams the rest - the same rendering the main
+    //    chat uses (text deltas into an assistant bubble, tool calls/results as their own rows).
+    // Pure UI: the child's activity is shown to the user, never fed back to any model (the context firewall,
+    // A3/A7, holds). Reuses ChatTranscriptControl, which auto-themes from settings in its constructor. Code-
+    // only (no designer); hosts a single docked transcript control.
+    internal sealed class AgentTranscriptViewerForm : Form, IAgentLiveSink
     {
         private readonly ChatTranscriptControl _transcript;
-        private readonly AgentTranscript _data;
+        private readonly AgentTranscript _data;     // static mode (null in live mode)
+        private readonly AgentLiveStream _stream;   // live mode (null in static mode)
+        private bool _liveAssistantOpen;            // is the last live message an open assistant bubble?
 
         public AgentTranscriptViewerForm(AgentTranscript transcript)
         {
             _data = transcript;
-            this.Text = BuildTitle(transcript);
+            Init(BuildTitle(transcript != null ? transcript.Slug : null));
+        }
+
+        public AgentTranscriptViewerForm(AgentLiveStream stream)
+        {
+            _stream = stream;
+            Init(BuildTitle(stream != null ? stream.Slug : null) + " (live)");
+        }
+
+        private void Init(string title)
+        {
+            this.Text = title;
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.Sizable;
             this.MinimizeBox = false;
@@ -36,21 +50,72 @@ namespace GxPT
             ApplyFontSetting();
         }
 
-        // Populate once the handle exists - the transcript control skips layout until it has a window, so
-        // adding messages in the constructor would render nothing.
+        // Populate once the handle exists - the transcript control skips layout until it has a window.
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            _transcript.BeginBatchUpdates();
-            try { Populate(_data); }
-            finally { _transcript.EndBatchUpdates(false); }
-            _transcript.ScrollToTop();
+            if (_stream != null)
+            {
+                // Show the task first (the streamed events are the model's output only, not the seed
+                // persona/task), then attach: replay what already happened, then stream the rest.
+                if (!string.IsNullOrEmpty(_stream.Task))
+                    _transcript.AddMessage(MessageRole.User, _stream.Task);
+                _stream.Attach(this);
+            }
+            else
+            {
+                _transcript.BeginBatchUpdates();
+                try { Populate(_data); }
+                finally { _transcript.EndBatchUpdates(false); }
+                _transcript.ScrollToTop();
+            }
         }
 
-        private static string BuildTitle(AgentTranscript t)
+        protected override void OnFormClosed(FormClosedEventArgs e)
         {
-            string slug = (t != null && !string.IsNullOrEmpty(t.Slug)) ? t.Slug : "agent";
-            return "Agent transcript - " + slug;
+            if (_stream != null) _stream.Detach(this);
+            base.OnFormClosed(e);
+        }
+
+        // ---------- IAgentLiveSink (called from a worker thread or, during replay, this one) ----------
+        public void OnText(string delta)
+        {
+            if (string.IsNullOrEmpty(delta)) return;
+            Ui(delegate
+            {
+                if (_liveAssistantOpen) _transcript.AppendToLastMessage(delta);
+                else { _transcript.AddMessage(MessageRole.Assistant, delta); _liveAssistantOpen = true; }
+            });
+        }
+
+        public void OnToolCall(string functionName, string callId)
+        {
+            string fn = !string.IsNullOrEmpty(functionName) ? functionName : "(tool)";
+            Ui(delegate { _liveAssistantOpen = false; _transcript.AddMessage(MessageRole.Tool, "Called `" + fn + "`"); });
+        }
+
+        public void OnToolResult(string functionName, string resultText, bool isError)
+        {
+            string res = resultText ?? string.Empty;
+            Ui(delegate { _liveAssistantOpen = false; _transcript.AddMessage(MessageRole.Tool, res); });
+        }
+
+        public void OnComplete()
+        {
+            Ui(delegate { _liveAssistantOpen = false; });
+        }
+
+        // Marshal an action onto the UI thread (sink callbacks may arrive on the child's worker thread; even
+        // the replay is deferred so nothing renders under the stream's lock).
+        private void Ui(MethodInvoker a)
+        {
+            try { if (this.IsHandleCreated && !this.IsDisposed) this.BeginInvoke(a); }
+            catch { }
+        }
+
+        private static string BuildTitle(string slug)
+        {
+            return "Agent transcript - " + (!string.IsNullOrEmpty(slug) ? slug : "agent");
         }
 
         private void ApplyFontSetting()
@@ -65,9 +130,8 @@ namespace GxPT
             catch { }
         }
 
-        // Renders the child's message list. The leading system message is the agent's persona; the first
-        // user message is the task; assistant/tool turns follow. Assistant tool calls are shown as a compact
-        // Tool-role note (name + JSON args) so the run reads in order.
+        // Renders a finished message list. Leading system message is the persona; the first user message is
+        // the task; assistant/tool turns follow. Assistant tool calls are shown as a compact Tool-role note.
         private void Populate(AgentTranscript t)
         {
             if (t == null || t.Messages == null) { _transcript.AddMessage(MessageRole.System, "(transcript unavailable)"); return; }

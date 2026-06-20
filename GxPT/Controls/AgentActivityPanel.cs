@@ -32,6 +32,13 @@ namespace GxPT
         private ToolTip _tip;
         private int _hoverRow = -1;
 
+        // Per-row "View transcript" link (tier 3 "watch live"): _onViewTranscript(row) opens the streaming
+        // viewer; _viewRects[i] is the row's link hit-rect (recomputed each paint); _hoverView is the
+        // row whose link is hovered (-1 = none).
+        private Action<int> _onViewTranscript;
+        private Rectangle[] _viewRects;
+        private int _hoverView = -1;
+
         // The "Stop" button: an owner-drawn region in the header that cancels the fan-out (trips the
         // dispatcher's GroupCancellation via _onStop). _stopRect is recomputed each paint and hit-tested
         // by the mouse handlers; _stopping latches after a click so the label reads "Stopping..." and
@@ -56,7 +63,7 @@ namespace GxPT
 
         // Start showing a fan-out of the given agents (in dispatch order), all queued. onStop (may be null)
         // is invoked when the user clicks the panel's Stop button.
-        public void BeginFanOut(IList<string> slugs, IList<string> tasks, Action onStop)
+        public void BeginFanOut(IList<string> slugs, IList<string> tasks, Action onStop, Action<int> onViewTranscript)
         {
             int n = slugs != null ? slugs.Count : 0;
             _slugs = new string[n];
@@ -64,6 +71,7 @@ namespace GxPT
             _tasks = new string[n];
             _lastTool = new string[n];
             _toolCount = new int[n];
+            _viewRects = new Rectangle[n];
             for (int i = 0; i < n; i++)
             {
                 _slugs[i] = slugs[i];
@@ -71,9 +79,11 @@ namespace GxPT
                 _tasks[i] = (tasks != null && i < tasks.Count) ? tasks[i] : null;
             }
             _onStop = onStop;
+            _onViewTranscript = onViewTranscript;
             _stopping = false;
             _stopHover = false;
             _hoverRow = -1;
+            _hoverView = -1;
             // Match the theme background up front so there's no white flash before the first paint.
             try { this.BackColor = ThemeService.GetColors(IsDark()).AssistantBubbleBack; }
             catch { }
@@ -103,10 +113,13 @@ namespace GxPT
             _tasks = null;
             _lastTool = null;
             _toolCount = null;
+            _viewRects = null;
             _onStop = null;
+            _onViewTranscript = null;
             _stopping = false;
             _stopHover = false;
             _hoverRow = -1;
+            _hoverView = -1;
             if (_tip != null) _tip.SetToolTip(this, string.Empty);
             this.Cursor = Cursors.Default;
         }
@@ -223,6 +236,22 @@ namespace GxPT
                     int tagW = TextRenderer.MeasureText(g, tag, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
                     TextRenderer.DrawText(g, activity, this.Font, new Point(tagX + tagW + 8, y), cQueued, TextFormatFlags.NoPadding);
                 }
+
+                // Per-row "View transcript" link (tier 3 "watch live"), right-aligned. Shown once the child
+                // has started (a queued row has no stream yet). Underlined-ish via the theme link color;
+                // its rect is hit-tested by the mouse handlers.
+                if (_onViewTranscript != null && _state[i] != StateQueued)
+                {
+                    string vt = "View transcript";
+                    int vtW = TextRenderer.MeasureText(g, vt, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                    int vtX = this.ClientRectangle.Width - Pad - vtW - 1;
+                    if (vtX < tagX) vtX = tagX;
+                    Rectangle vr = new Rectangle(vtX, y, vtW, LineH());
+                    if (_viewRects != null && i < _viewRects.Length) _viewRects[i] = vr;
+                    Color vc = (_hoverView == i) ? tc.UiForeground : tc.Link;
+                    TextRenderer.DrawText(g, vt, this.Font, new Point(vtX, y), vc, TextFormatFlags.NoPadding);
+                }
+                else if (_viewRects != null && i < _viewRects.Length) _viewRects[i] = Rectangle.Empty;
                 y += lineH;
             }
         }
@@ -256,21 +285,32 @@ namespace GxPT
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool over = OverStop(e.Location);
-            if (over != _stopHover)
-            {
-                _stopHover = over;
-                this.Cursor = over ? Cursors.Hand : Cursors.Default;
-                Invalidate(_stopRect);
-            }
-            // Retarget the task tooltip as the hovered row changes (no row, or over Stop -> clear).
-            int row = over ? -1 : RowAt(e.Location);
+            bool overStop = OverStop(e.Location);
+            if (overStop != _stopHover) { _stopHover = overStop; Invalidate(_stopRect); }
+
+            int vrow = overStop ? -1 : ViewRowAt(e.Location);
+            if (vrow != _hoverView) { _hoverView = vrow; Invalidate(); }
+
+            this.Cursor = (overStop || vrow >= 0) ? Cursors.Hand : Cursors.Default;
+
+            // Retarget the task tooltip as the hovered row changes (over Stop -> clear; over a row, incl.
+            // its View link, shows that row's task).
+            int row = overStop ? -1 : RowAt(e.Location);
             if (row != _hoverRow)
             {
                 _hoverRow = row;
                 string task = (row >= 0 && _tasks != null && row < _tasks.Length) ? _tasks[row] : null;
                 EnsureTip().SetToolTip(this, string.IsNullOrEmpty(task) ? string.Empty : task);
             }
+        }
+
+        // The row whose "View transcript" link contains the point, or -1.
+        private int ViewRowAt(Point p)
+        {
+            if (_onViewTranscript == null || _viewRects == null) return -1;
+            for (int i = 0; i < _viewRects.Length; i++)
+                if (_viewRects[i].Width > 0 && _viewRects[i].Contains(p)) return i;
+            return -1;
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -282,6 +322,7 @@ namespace GxPT
                 this.Cursor = Cursors.Default;
                 Invalidate(_stopRect);
             }
+            if (_hoverView != -1) { _hoverView = -1; Invalidate(); }
             if (_hoverRow != -1)
             {
                 _hoverRow = -1;
@@ -317,7 +358,8 @@ namespace GxPT
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (e.Button == MouseButtons.Left && OverStop(e.Location))
+            if (e.Button != MouseButtons.Left) return;
+            if (OverStop(e.Location))
             {
                 Action onStop = _onStop;
                 _stopping = true;          // latch: label -> "Stopping...", further clicks ignored
@@ -325,7 +367,10 @@ namespace GxPT
                 this.Cursor = Cursors.Default;
                 Invalidate();
                 if (onStop != null) onStop();
+                return;
             }
+            int vrow = ViewRowAt(e.Location);
+            if (vrow >= 0 && _onViewTranscript != null) _onViewTranscript(vrow);
         }
 
         private static bool IsDark()

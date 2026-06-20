@@ -51,6 +51,23 @@ namespace GxPT
         // by entry slot (aligned with the record body); a slot is null if that agent did not run a child.
         public AgentTranscript[] LastTranscripts { get; private set; }
 
+        // Per-row live broadcasters for the in-flight fan-out (tier 3 "watch live"). Created per child,
+        // dropped when the fan-out ends. Guarded by _liveLock: children register on worker threads while the
+        // UI thread looks one up to open the streaming viewer.
+        private readonly object _liveLock = new object();
+        private Dictionary<int, AgentLiveStream> _liveStreams;
+
+        // The live stream for a panel row, or null if the fan-out ended or that row isn't running.
+        public AgentLiveStream GetLiveStream(int row)
+        {
+            lock (_liveLock)
+            {
+                AgentLiveStream s;
+                if (_liveStreams != null && _liveStreams.TryGetValue(row, out s)) return s;
+                return null;
+            }
+        }
+
         // Optional group cancellation: when set, children use THIS handle instead of the parent turn's
         // (Cancellation), so a "Stop N agents" click can cancel the fan-out without ending the turn. Null
         // => children fall back to Cancellation (parent Stop cancels them, the phase-4 behavior).
@@ -174,6 +191,9 @@ namespace GxPT
                 }
                 ui.OnFanOutStart(slugs, taskList);
             }
+            // Fresh live-stream table for this fan-out (tier 3 "watch live"); the panel looks streams up by
+            // row while the children run, and it is dropped when the fan-out ends.
+            lock (_liveLock) { _liveStreams = new Dictionary<int, AgentLiveStream>(); }
             try
             {
                 // Read-only batches run concurrently (the win is overlapping LLM streams); a batch with any
@@ -192,6 +212,7 @@ namespace GxPT
             finally
             {
                 LastTranscripts = transcripts;
+                lock (_liveLock) { _liveStreams = null; }   // streams are only live during the fan-out
                 if (ui != null && runnable.Count > 0) ui.OnFanOutEnd();
             }
 
@@ -277,7 +298,17 @@ namespace GxPT
         {
             IAgentActivityUi ui = ActivityUi;
             if (ui != null) ui.OnAgentStart(row, agent.Slug, task);
-            IToolLoopUi childUi = ui != null ? (IToolLoopUi)new ChildActivityUi(ui, row) : NullToolLoopUi.Instance;
+            IToolLoopUi childUi;
+            if (ui != null)
+            {
+                // The live broadcaster doubles as the child's tool-loop UI: it feeds the panel's count line
+                // and records events for a viewer that attaches mid-run. Registered by row so the panel's
+                // "View transcript" can find it.
+                AgentLiveStream stream = new AgentLiveStream(ui, row, agent.Slug, task);
+                lock (_liveLock) { if (_liveStreams != null) _liveStreams[row] = stream; }
+                childUi = stream;
+            }
+            else childUi = NullToolLoopUi.Instance;
             try
             {
                 IList<ChatMessage> history;
@@ -407,27 +438,6 @@ namespace GxPT
             public static readonly NullToolLoopUi Instance = new NullToolLoopUi();
             public void AppendTextDelta(string text) { }
             public void OnToolCall(string functionName, string argumentsJson, string callId) { }
-            public void OnToolResult(string functionName, string resultText, bool isError, string callId) { }
-            public void OnError(string message) { }
-            public void Complete() { }
-        }
-
-        // Forwards a child's tool calls to the activity UI as the row's live activity line (tier 2): each
-        // call bumps the count and reports the latest tool name. Text deltas / results are dropped - the
-        // child's content never reaches the parent model (A7); only this lightweight count is shown to the
-        // user. One instance per running child, so _count is single-threaded (no lock needed).
-        private sealed class ChildActivityUi : IToolLoopUi
-        {
-            private readonly IAgentActivityUi _ui;
-            private readonly int _row;
-            private int _count;
-            public ChildActivityUi(IAgentActivityUi ui, int row) { _ui = ui; _row = row; }
-            public void AppendTextDelta(string text) { }
-            public void OnToolCall(string functionName, string argumentsJson, string callId)
-            {
-                _count++;
-                if (_ui != null) _ui.OnAgentActivity(_row, functionName, _count);
-            }
             public void OnToolResult(string functionName, string resultText, bool isError, string callId) { }
             public void OnError(string message) { }
             public void Complete() { }

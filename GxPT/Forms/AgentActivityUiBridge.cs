@@ -12,12 +12,15 @@ namespace GxPT
         private readonly MainForm _form;
         private readonly TabManager.ChatTabContext _ctx;
         private readonly RequestCancellation _group;   // tripped by the panel's Stop button (may be null)
+        private readonly AgentDispatcher _dispatcher;  // source of per-row live streams (tier 3 watch-live)
 
-        public AgentActivityUiBridge(MainForm form, TabManager.ChatTabContext ctx, RequestCancellation group)
+        public AgentActivityUiBridge(MainForm form, TabManager.ChatTabContext ctx, RequestCancellation group,
+                                     AgentDispatcher dispatcher)
         {
             _form = form;
             _ctx = ctx;
             _group = group;
+            _dispatcher = dispatcher;
         }
 
         public void OnFanOutStart(IList<string> slugs, IList<string> tasks)
@@ -26,10 +29,19 @@ namespace GxPT
             List<string> slugCopy = slugs != null ? new List<string>(slugs) : new List<string>();
             List<string> taskCopy = tasks != null ? new List<string>(tasks) : new List<string>();
             RequestCancellation group = _group;
+            AgentDispatcher dispatcher = _dispatcher;
             Marshal(delegate
             {
                 AgentActivityPanel p = Panel();
-                if (p != null) p.BeginFanOut(slugCopy, taskCopy, delegate { if (group != null) group.Cancel(); });
+                if (p != null)
+                    p.BeginFanOut(slugCopy, taskCopy,
+                        delegate { if (group != null) group.Cancel(); },
+                        delegate(int row)
+                        {
+                            // On the UI thread (panel click): open the streaming viewer for this row's child.
+                            if (_form != null && dispatcher != null)
+                                _form.OpenAgentLiveTranscript(dispatcher.GetLiveStream(row));
+                        });
                 if (_form != null) _form.NotifyAgentFanOutChanged(_ctx, true);
             });
         }

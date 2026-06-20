@@ -2671,6 +2671,26 @@ namespace GxPT
             return (ctx != null && ctx.Conversation != null) ? ctx.Conversation.Id : null;
         }
 
+        // Open the live, streaming viewer for a running child agent (the panel's per-row "View transcript",
+        // tier 3 "watch live"). Modeless, so the user can keep watching while the fan-out continues (and
+        // still hit "Stop agents"). A null stream means the child already finished and its stream was
+        // dropped - fall back to a short notice.
+        internal void OpenAgentLiveTranscript(AgentLiveStream stream)
+        {
+            if (stream == null)
+            {
+                MessageBox.Show(this, "That agent has finished. Open its transcript from the dispatch record below.",
+                    "Agent transcript", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(stream);
+                viewer.Show(this);
+            }
+            catch { }
+        }
+
         // Open the read-only child-transcript viewer for a dispatch_agent "View transcript" link (tier 3).
         // The link encodes the dispatch record's key + agent slot; resolve it against the session cache. A
         // miss (cache evicted, or a record reloaded from history after restart) shows a short notice rather
@@ -3111,7 +3131,7 @@ namespace GxPT
                             // without ending the turn - the parent loop resumes with the partial results.
                             RequestCancellation agentGroup = new RequestCancellation();
                             dispatcher.GroupCancellation = agentGroup;
-                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup);
+                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup, dispatcher);
                             orch.AgentDispatcher = dispatcher;
                             dispatcherForTurn = dispatcher;
                         }
@@ -4242,7 +4262,8 @@ namespace GxPT
                         if (tr != null)
                         {
                             int tc = tr.ToolCallCount;
-                            md.Append('\n').Append(tc).Append(tc == 1 ? " tool call" : " tool calls");
+                            // Count on the same line as the slug; the link drops to the next line.
+                            md.Append(' ').Append(tc).Append(tc == 1 ? " tool call" : " tool calls");
                             // Tier 3: a per-agent "View transcript" link the transcript control intercepts
                             // (AgentTranscriptLinks scheme) to open the read-only child transcript popup.
                             md.Append("\n[View transcript](").Append(AgentTranscriptLinks.Build(key, slot)).Append(')');
