@@ -698,6 +698,10 @@ namespace GxPT
                 {
                     try { if (kv.Value.Transcript != null) kv.Value.Transcript.RefreshTheme(); }
                     catch { }
+                    // The agent activity panel is owner-drawn and reads the theme in OnPaint, so a theme
+                    // toggle while it is visible needs an explicit repaint (it ignores BackColor/ForeColor).
+                    try { if (kv.Value.AgentActivityPanel != null) kv.Value.AgentActivityPanel.Invalidate(); }
+                    catch { }
                 }
             }
             catch { }
