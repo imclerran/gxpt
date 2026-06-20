@@ -11,18 +11,25 @@ namespace GxPT
     {
         private readonly MainForm _form;
         private readonly TabManager.ChatTabContext _ctx;
+        private readonly RequestCancellation _group;   // tripped by the panel's Stop button (may be null)
 
-        public AgentActivityUiBridge(MainForm form, TabManager.ChatTabContext ctx)
+        public AgentActivityUiBridge(MainForm form, TabManager.ChatTabContext ctx, RequestCancellation group)
         {
             _form = form;
             _ctx = ctx;
+            _group = group;
         }
 
         public void OnFanOutStart(IList<string> slugs)
         {
             // Copy the list: it is the dispatcher's and may change; the UI thread reads it later.
             List<string> copy = slugs != null ? new List<string>(slugs) : new List<string>();
-            Marshal(delegate { AgentActivityPanel p = Panel(); if (p != null) p.BeginFanOut(copy); });
+            RequestCancellation group = _group;
+            Marshal(delegate
+            {
+                AgentActivityPanel p = Panel();
+                if (p != null) p.BeginFanOut(copy, delegate { if (group != null) group.Cancel(); });
+            });
         }
 
         public void OnAgentStart(int index, string slug, string task)

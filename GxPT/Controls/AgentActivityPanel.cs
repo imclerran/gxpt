@@ -23,6 +23,15 @@ namespace GxPT
         private int[] _state;
         private Font _boldFont;
 
+        // The "Stop" button: an owner-drawn region in the header that cancels the fan-out (trips the
+        // dispatcher's GroupCancellation via _onStop). _stopRect is recomputed each paint and hit-tested
+        // by the mouse handlers; _stopping latches after a click so the label reads "Stopping..." and
+        // further clicks are ignored until the fan-out ends.
+        private Action _onStop;
+        private Rectangle _stopRect;
+        private bool _stopHover;
+        private bool _stopping;
+
         public AgentActivityPanel()
         {
             this.Dock = DockStyle.Bottom;
@@ -36,13 +45,17 @@ namespace GxPT
                 | ControlStyles.UserPaint, true);
         }
 
-        // Start showing a fan-out of the given agents (in dispatch order), all queued.
-        public void BeginFanOut(IList<string> slugs)
+        // Start showing a fan-out of the given agents (in dispatch order), all queued. onStop (may be null)
+        // is invoked when the user clicks the panel's Stop button.
+        public void BeginFanOut(IList<string> slugs, Action onStop)
         {
             int n = slugs != null ? slugs.Count : 0;
             _slugs = new string[n];
             _state = new int[n];
             for (int i = 0; i < n; i++) { _slugs[i] = slugs[i]; _state[i] = StateQueued; }
+            _onStop = onStop;
+            _stopping = false;
+            _stopHover = false;
             // Match the theme background up front so there's no white flash before the first paint.
             try { this.BackColor = ThemeService.GetColors(IsDark()).AssistantBubbleBack; }
             catch { }
@@ -59,6 +72,10 @@ namespace GxPT
             this.Visible = false;
             _slugs = null;
             _state = null;
+            _onStop = null;
+            _stopping = false;
+            _stopHover = false;
+            this.Cursor = Cursors.Default;
         }
 
         private void SetState(int index, int state)
@@ -110,10 +127,14 @@ namespace GxPT
             using (Pen pen = new Pen(tc.AssistantBubbleBorder))
                 g.DrawRectangle(pen, border);
 
-            if (_slugs == null || _slugs.Length == 0) return;
+            if (_slugs == null || _slugs.Length == 0) { _stopRect = Rectangle.Empty; return; }
 
             int lineH = LineH() + 2;
             int y = Pad;
+
+            Color cDone = dark ? Color.FromArgb(126, 204, 126) : Color.FromArgb(34, 139, 34);
+            Color cRunning = tc.Link;
+            Color cQueued = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(120, 120, 120);
 
             int done = 0, running = 0;
             for (int i = 0; i < _state.Length; i++)
@@ -123,11 +144,26 @@ namespace GxPT
             }
             string header = "Sub-agents: " + running + " running, " + done + " of " + _slugs.Length + " done";
             TextRenderer.DrawText(g, header, BoldFont(), new Point(Pad, y), tc.UiForeground, TextFormatFlags.NoPadding);
-            y += lineH;
 
-            Color cDone = dark ? Color.FromArgb(126, 204, 126) : Color.FromArgb(34, 139, 34);
-            Color cRunning = tc.Link;
-            Color cQueued = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(120, 120, 120);
+            // Stop button, right-aligned in the header row.
+            if (_onStop != null)
+            {
+                string btnText = _stopping ? "Stopping..." : "Stop";
+                int btnW = TextRenderer.MeasureText(g, btnText, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width + 16;
+                int btnX = this.ClientRectangle.Width - Pad - btnW - 1;
+                if (btnX < Pad) btnX = Pad;
+                _stopRect = new Rectangle(btnX, y, btnW, lineH);
+
+                Color face = (_stopHover && !_stopping) ? tc.CopyHover : tc.CodeBack;
+                using (SolidBrush bb = new SolidBrush(face)) g.FillRectangle(bb, _stopRect);
+                Rectangle br = _stopRect; br.Width -= 1; br.Height -= 1;
+                using (Pen bp = new Pen(tc.AssistantBubbleBorder)) g.DrawRectangle(bp, br);
+                TextRenderer.DrawText(g, btnText, this.Font, _stopRect, _stopping ? cQueued : tc.UiForeground,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+            else _stopRect = Rectangle.Empty;
+
+            y += lineH;
 
             for (int i = 0; i < _slugs.Length; i++)
             {
@@ -141,6 +177,48 @@ namespace GxPT
                 else { tag = "[queued]"; tagColor = cQueued; }
                 TextRenderer.DrawText(g, tag, this.Font, new Point(rowX + slugW + 8, y), tagColor, TextFormatFlags.NoPadding);
                 y += lineH;
+            }
+        }
+
+        private bool OverStop(Point p)
+        {
+            return _onStop != null && !_stopping && _stopRect.Width > 0 && _stopRect.Contains(p);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            bool over = OverStop(e.Location);
+            if (over != _stopHover)
+            {
+                _stopHover = over;
+                this.Cursor = over ? Cursors.Hand : Cursors.Default;
+                Invalidate(_stopRect);
+            }
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if (_stopHover)
+            {
+                _stopHover = false;
+                this.Cursor = Cursors.Default;
+                Invalidate(_stopRect);
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left && OverStop(e.Location))
+            {
+                Action onStop = _onStop;
+                _stopping = true;          // latch: label -> "Stopping...", further clicks ignored
+                _stopHover = false;
+                this.Cursor = Cursors.Default;
+                Invalidate();
+                if (onStop != null) onStop();
             }
         }
 

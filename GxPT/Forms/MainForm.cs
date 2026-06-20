@@ -3061,10 +3061,12 @@ namespace GxPT
                                 RecordUsageAndReconcile(revealConvo, u,
                                     OpenRouterClient.ModelSupportsPromptCaching(model), false);
                             };
-                            // Observability: marshal the fan-out / per-child lifecycle to this tab's
-                            // activity panel (design sec.14). The turn's Stop still cancels children
-                            // (dispatcher.Cancellation = ctx.Cancellation), so no separate group handle yet.
-                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx);
+                            // Observability + group cancel (design sec.14): a dedicated handle the panel's
+                            // Stop button trips, so it cancels the agents (children watch GroupCancellation)
+                            // without ending the turn - the parent loop resumes with the partial results.
+                            RequestCancellation agentGroup = new RequestCancellation();
+                            dispatcher.GroupCancellation = agentGroup;
+                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup);
                             orch.AgentDispatcher = dispatcher;
                         }
                     }
