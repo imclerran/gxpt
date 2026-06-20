@@ -1,51 +1,54 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
 
 namespace GxPT
 {
     // A native panel docked at the bottom of the chat area that shows the sub-agents running during a
-    // dispatch_agent fan-out (design sec.14). Transient: shown on BeginFanOut, updated per child, hidden
-    // on EndFanOut. Display-only - a child's activity is shown to the user here, never fed to the model
-    // (A7). All public methods must be called on the UI thread; the dispatcher's IAgentActivityUi callbacks
-    // are marshaled there by the host (AgentActivityUiBridge). Kept deliberately simple (one multi-line
-    // label) - the live tool-by-tool detail is a later enhancement.
+    // dispatch_agent fan-out (design sec.14). Transient: shown on BeginFanOut, updated per child, hidden on
+    // EndFanOut. Owner-drawn so it matches the active dark/light theme (ThemeService) and colors each
+    // agent's status. Display-only - a child's activity is shown to the user here, never fed to the model
+    // (A7). All public methods must be called on the UI thread (the dispatcher's callbacks are marshaled
+    // there by AgentActivityUiBridge).
     internal sealed class AgentActivityPanel : Panel
     {
         private const int StateQueued = 0;
         private const int StateRunning = 1;
         private const int StateDone = 2;
+        private const int Pad = 8;
+        private const int RowIndent = 14;
 
-        private readonly Label _label;
         private string[] _slugs;
         private int[] _state;
+        private Font _boldFont;
 
         public AgentActivityPanel()
         {
             this.Dock = DockStyle.Bottom;
             this.Visible = false;
             this.AutoSize = false;
-            this.BorderStyle = BorderStyle.FixedSingle;   // defined edge, like ToolApprovalPanel
             this.Height = 24;
-            this.Padding = new Padding(8);
-
-            _label = new Label();
-            _label.Dock = DockStyle.Fill;
-            _label.AutoSize = false;
-            _label.TextAlign = ContentAlignment.TopLeft;
-            this.Controls.Add(_label);
+            // Owner-draw, flicker-free: we fill + border + text ourselves so the panel tracks the theme.
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.ResizeRedraw
+                | ControlStyles.UserPaint, true);
         }
 
         // Start showing a fan-out of the given agents (in dispatch order), all queued.
-        public void BeginFanOut(System.Collections.Generic.IList<string> slugs)
+        public void BeginFanOut(IList<string> slugs)
         {
             int n = slugs != null ? slugs.Count : 0;
             _slugs = new string[n];
             _state = new int[n];
             for (int i = 0; i < n; i++) { _slugs[i] = slugs[i]; _state[i] = StateQueued; }
-            Render();
+            // Match the theme background up front so there's no white flash before the first paint.
+            try { this.BackColor = ThemeService.GetColors(IsDark()).AssistantBubbleBack; }
+            catch { }
+            RecalcHeight();
             this.Visible = n > 0;
+            Invalidate();
         }
 
         public void SetRunning(int index) { SetState(index, StateRunning); }
@@ -62,12 +65,49 @@ namespace GxPT
         {
             if (_state == null || index < 0 || index >= _state.Length) return;
             _state[index] = state;
-            Render();
+            Invalidate();
         }
 
-        private void Render()
+        private int LineH() { return this.Font.Height > 0 ? this.Font.Height : 16; }
+
+        private void RecalcHeight()
         {
-            if (_slugs == null || _slugs.Length == 0) { _label.Text = string.Empty; return; }
+            int lines = (_slugs != null) ? 1 + _slugs.Length : 1;
+            this.Height = Math.Min(Pad * 2 + lines * (LineH() + 2), 240);
+        }
+
+        private Font BoldFont()
+        {
+            if (_boldFont == null)
+                _boldFont = new Font(this.Font, FontStyle.Bold);
+            return _boldFont;
+        }
+
+        protected override void OnFontChanged(EventArgs e)
+        {
+            base.OnFontChanged(e);
+            if (_boldFont != null) { _boldFont.Dispose(); _boldFont = null; }
+            RecalcHeight();
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            bool dark = IsDark();
+            ThemeColors tc = ThemeService.GetColors(dark);
+            Graphics g = e.Graphics;
+
+            using (SolidBrush bg = new SolidBrush(tc.AssistantBubbleBack))
+                g.FillRectangle(bg, this.ClientRectangle);
+            Rectangle border = this.ClientRectangle;
+            border.Width -= 1; border.Height -= 1;
+            using (Pen pen = new Pen(tc.AssistantBubbleBorder))
+                g.DrawRectangle(pen, border);
+
+            if (_slugs == null || _slugs.Length == 0) return;
+
+            int lineH = LineH() + 2;
+            int y = Pad;
 
             int done = 0, running = 0;
             for (int i = 0; i < _state.Length; i++)
@@ -75,24 +115,43 @@ namespace GxPT
                 if (_state[i] == StateDone) done++;
                 else if (_state[i] == StateRunning) running++;
             }
+            string header = "Sub-agents: " + running + " running, " + done + " of " + _slugs.Length + " done";
+            TextRenderer.DrawText(g, header, BoldFont(), new Point(Pad, y), tc.UiForeground, TextFormatFlags.NoPadding);
+            y += lineH;
 
-            StringBuilder sb = new StringBuilder();
-            sb.Append("Sub-agents: ").Append(running).Append(" running, ")
-              .Append(done).Append(" of ").Append(_slugs.Length).Append(" done");
+            Color cDone = dark ? Color.FromArgb(126, 204, 126) : Color.FromArgb(34, 139, 34);
+            Color cRunning = tc.Link;
+            Color cQueued = dark ? Color.FromArgb(150, 150, 150) : Color.FromArgb(120, 120, 120);
+
             for (int i = 0; i < _slugs.Length; i++)
             {
-                string tag = _state[i] == StateDone ? "[done]"
-                    : (_state[i] == StateRunning ? "[running]" : "[queued]");
-                sb.Append("\r\n   ").Append(_slugs[i]).Append("  ").Append(tag);
-            }
-            _label.Text = sb.ToString();
+                int rowX = Pad + RowIndent;
+                TextRenderer.DrawText(g, _slugs[i], this.Font, new Point(rowX, y), tc.UiForeground, TextFormatFlags.NoPadding);
+                int slugW = TextRenderer.MeasureText(g, _slugs[i], this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
 
-            // Size to the header line + one line per agent, measured from the label's real font height so
-            // nothing clips, plus the border (2px) and a line of headroom; bounded so a big fan-out can't
-            // swallow the whole pane.
-            int lineH = _label.Font != null && _label.Font.Height > 0 ? _label.Font.Height : 16;
-            int lines = 1 + _slugs.Length;
-            this.Height = Math.Min(2 + this.Padding.Vertical + (lines + 1) * lineH, 240);
+                string tag; Color tagColor;
+                if (_state[i] == StateDone) { tag = "[done]"; tagColor = cDone; }
+                else if (_state[i] == StateRunning) { tag = "[running]"; tagColor = cRunning; }
+                else { tag = "[queued]"; tagColor = cQueued; }
+                TextRenderer.DrawText(g, tag, this.Font, new Point(rowX + slugW + 8, y), tagColor, TextFormatFlags.NoPadding);
+                y += lineH;
+            }
+        }
+
+        private static bool IsDark()
+        {
+            try
+            {
+                string th = AppSettings.GetString("theme");
+                return !string.IsNullOrEmpty(th) && th.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _boldFont != null) { _boldFont.Dispose(); _boldFont = null; }
+            base.Dispose(disposing);
         }
     }
 }
