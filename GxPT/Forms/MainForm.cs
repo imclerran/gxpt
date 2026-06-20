@@ -4170,6 +4170,28 @@ namespace GxPT
                     string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
                     header = "Ran a command"; body = cmd; language = "batch"; return true;
                 }
+                case "dispatch_agent":
+                {
+                    Newtonsoft.Json.Linq.JToken arr = args != null ? args["agents"] : null;
+                    if (arr == null || arr.Type != Newtonsoft.Json.Linq.JTokenType.Array) return false;
+                    int count = 0;
+                    System.Text.StringBuilder lines = new System.Text.StringBuilder();
+                    foreach (Newtonsoft.Json.Linq.JToken t in (Newtonsoft.Json.Linq.JArray)arr)
+                    {
+                        if (t == null || t.Type != Newtonsoft.Json.Linq.JTokenType.Object) continue;
+                        Newtonsoft.Json.Linq.JObject ag = (Newtonsoft.Json.Linq.JObject)t;
+                        string slug = Str(ag, "name");
+                        string task = Str(ag, "task");
+                        if (slug.Length == 0 && task.Length == 0) continue;
+                        count++;
+                        if (lines.Length > 0) lines.Append('\n');
+                        lines.Append("- ").Append(slug.Length > 0 ? slug : "(agent)");
+                        if (task.Length > 0) lines.Append(": ").Append(task);
+                    }
+                    if (count == 0) return false;
+                    header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
+                    body = lines.ToString(); language = "text"; return true;
+                }
                 case "web__search":
                 {
                     string query = Str(args, "query"); if (query.Trim().Length == 0) return false;
