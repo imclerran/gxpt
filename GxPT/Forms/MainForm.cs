@@ -5484,6 +5484,20 @@ namespace GxPT
         {
             try
             {
+                // The status strip is a single, fixed-height row by design (its item fonts are never
+                // rescaled). Left to AutoSize, its Table layout recomputes height from whatever width it
+                // is queried with during a layout pass; the re-entrant layout produced by collapsing the
+                // history sidebar while the input box is expanded can measure it at a too-small width,
+                // wrap the items onto a second row, and leave the strip permanently taller - overlapping
+                // the Send button, model selector, and ZDR checkbox. Pin the height (keeping the current,
+                // already DPI-scaled one-row value) so the strip can never grow.
+                if (this.ssMain != null)
+                {
+                    int oneRowHeight = this.ssMain.Height;
+                    this.ssMain.AutoSize = false;
+                    this.ssMain.Height = oneRowHeight;
+                }
+
                 bool visible = AppSettings.GetBool("statusbar_visible", true);
                 if (this.ssMain != null) this.ssMain.Visible = visible;
                 if (this.miStatusBar != null) this.miStatusBar.Checked = visible;
