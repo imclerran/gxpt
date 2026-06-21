@@ -21,6 +21,12 @@ namespace GxPT
         // In-memory working copy (unsaved until Save/CTRL+S)
         private SettingsData _working = new SettingsData();
 
+        // Free-form settings.json keys that SettingsData does not model (e.g. "agents_enabled", written by
+        // AppSettings via the /toggle-agents command). Captured on load and on JSON edits, then merged back
+        // into the JSON view and the saved file so the typed editor never silently drops them. Without this,
+        // saving Settings would wipe such keys (which is exactly how globally-enabled agents would turn off).
+        private Dictionary<string, object> _extraKeys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
         // Guard to prevent event loops during programmatic sync
         private bool _isSyncing = false;
 
@@ -188,6 +194,8 @@ namespace GxPT
                 {
                     _working = BuildDefaultSettings();
                 }
+                // Remember any keys SettingsData doesn't model so they aren't dropped on save.
+                _extraKeys = ComputeExtraKeys(raw);
 
                 _isSyncing = true;
                 try
@@ -326,7 +334,7 @@ namespace GxPT
                 if (!TryValidateMcpJson(out mcpJsonText)) return false;
                 CaptureMcpControlsToWorking(_working);
 
-                var json = Serialize(_working);
+                var json = MergeExtraKeys(Serialize(_working));
                 File.WriteAllText(_settingsFile, json, Encoding.UTF8);
                 WriteMcpJson(mcpJsonText);
 
@@ -486,9 +494,55 @@ namespace GxPT
             return ser.Serialize(settings);
         }
 
+        // The settings.json keys SettingsData models (its property names are the JSON keys 1:1).
+        private static HashSet<string> KnownSettingKeys()
+        {
+            HashSet<string> known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (System.Reflection.PropertyInfo p in typeof(SettingsData).GetProperties())
+                known.Add(p.Name);
+            return known;
+        }
+
+        // The free-form keys in a raw settings.json that SettingsData does not model (so they'd otherwise be
+        // lost on a typed round-trip). Returns an empty map on any parse error.
+        private static Dictionary<string, object> ComputeExtraKeys(string rawJson)
+        {
+            Dictionary<string, object> extra = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var ser = new JavaScriptSerializer();
+                Dictionary<string, object> dict = ser.Deserialize<Dictionary<string, object>>(rawJson ?? string.Empty);
+                if (dict != null)
+                {
+                    HashSet<string> known = KnownSettingKeys();
+                    foreach (KeyValuePair<string, object> kv in dict)
+                        if (!known.Contains(kv.Key)) extra[kv.Key] = kv.Value;
+                }
+            }
+            catch { }
+            return extra;
+        }
+
+        // Overlay the captured free-form keys onto a typed-settings JSON string so they survive the round-trip
+        // (typed keys win; extras fill in). Used for both the JSON view and the saved file.
+        private string MergeExtraKeys(string typedJson)
+        {
+            if (_extraKeys == null || _extraKeys.Count == 0) return typedJson;
+            try
+            {
+                var ser = new JavaScriptSerializer();
+                Dictionary<string, object> dict = ser.Deserialize<Dictionary<string, object>>(typedJson ?? string.Empty)
+                    ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (KeyValuePair<string, object> kv in _extraKeys)
+                    if (!dict.ContainsKey(kv.Key)) dict[kv.Key] = kv.Value;
+                return ser.Serialize(dict);
+            }
+            catch { return typedJson; }
+        }
+
         private void UpdateJsonEditorFromSettings(SettingsData settings)
         {
-            var json = Serialize(settings);
+            var json = MergeExtraKeys(Serialize(settings));
             this.rtbJson.Text = PrettyPrintJson(json);
             // Do not trigger highlight here; only on TextChanged
         }
@@ -500,6 +554,8 @@ namespace GxPT
                 var ser = new JavaScriptSerializer();
                 settings = ser.Deserialize<SettingsData>(this.rtbJson.Text ?? string.Empty) ?? new SettingsData();
                 PostProcess(settings);
+                // Re-capture free-form keys from the edited JSON so edits to them (e.g. agents_enabled) persist.
+                _extraKeys = ComputeExtraKeys(this.rtbJson.Text);
                 error = string.Empty;
                 return true;
             }
