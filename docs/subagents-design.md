@@ -597,11 +597,11 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
 7. **Concurrent fan-out + must-have observability** — batch `dispatch_agent`,
    read-concurrent/write-serial execution on bounded `ThreadPool` work items,
    per-connection mutex, usage aggregation; the **group cancellation** + the
-   `Stop N agents` button; and the tier-1 **`AgentActivityPanel`** (glyph + slug +
-   status). Observability ships *with* the fan-out — it is not a follow-on (§14 tier 1).
+   `Stop N agents` button; and the tier-1 **`AgentActivityPanel`** (status + slug +
+   model). Observability ships *with* the fan-out — it is not a follow-on (§14 tier 1).
 8. **Transcript UI tiers 2-3** *(done; per-agent Stop deferred)* — tier 2: each
-   `AgentActivityPanel` row shows its task (hover tooltip) and a live `N tools -
-   <lastTool>` activity line, fed by a per-child forwarding `IToolLoopUi`
+   `AgentActivityPanel` row reads `[status] slug (model): N tools - <lastTool>`,
+   with its task on a hover tooltip and the live activity line fed by a per-child forwarding `IToolLoopUi`
    (`ChildActivityUi`) that replaces the headless `NullToolLoopUi`. Tier 3: each
    `dispatch_agent` record carries a per-agent **View transcript** link
    (`AgentTranscriptLinks` custom scheme) opening a read-only popup
@@ -827,7 +827,7 @@ moves, it just retargets — so no new status-bar real estate is needed.
 
 | Tier | Surface | Phase |
 |------|---------|-------|
-| **1 — must-have** *(shipped)* | `AgentActivityPanel` rows (glyph + slug + status) to **see** them + the **`Stop N agents`** button to stop all | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
+| **1 — must-have** *(shipped)* | `AgentActivityPanel` rows (`[status] slug (model)`) to **see** them + the **`Stop N agents`** button to stop all | with the **concurrent fan-out** (§11 phase 7) — observability is not optional for an unattended feature |
 | **2 — better** *(shipped)* | each row shows the child's **task** (hover tooltip) and a live **activity line** (`N tools - <lastTool>`, fed by `ChildActivityUi`) | §11 phase 8 |
 | **3 — best** *(shipped; per-agent Stop deferred)* | a **View transcript** link per agent on the `dispatch_agent` record opening the child's full message list **read-only** (`AgentTranscriptViewerForm`); **per-agent Stop** still deferred | §11 phase 8 |
 
