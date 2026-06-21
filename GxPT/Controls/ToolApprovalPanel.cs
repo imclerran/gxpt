@@ -490,7 +490,9 @@ namespace GxPT
             // button's heavier border).
             AddButton("Deny", ApprovalChoice.Deny, tier == ToolTier.Destructive);
             AddRememberButtons(req);
-            AddButton("Allow once", ApprovalChoice.AllowOnce, false);
+            // Write tier defaults to "Allow once" (the cautious default for the riskier Destructive tier
+            // is Deny, handled above).
+            AddButton("Allow once", ApprovalChoice.AllowOnce, tier == ToolTier.Write);
             SetButtonTabOrder();
 
             // Color the panel + the freshly built buttons for the active theme before measuring, so the
