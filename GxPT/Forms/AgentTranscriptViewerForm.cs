@@ -57,8 +57,11 @@ namespace GxPT
             base.OnLoad(e);
             if (_stream != null)
             {
-                // Show the task first (the streamed events are the model's output only, not the seed
-                // persona/task), then attach: replay what already happened, then stream the rest.
+                // Seed the persona + task first (the streamed events are the model's output only, not the
+                // seed system/user messages), then attach: replay what already happened, then stream the
+                // rest. Matches the static viewer, which shows the agent's system prompt unlike the main chat.
+                if (!string.IsNullOrEmpty(_stream.Persona))
+                    _transcript.AddMessage(MessageRole.System, _stream.Persona);
                 if (!string.IsNullOrEmpty(_stream.Task))
                     _transcript.AddMessage(MessageRole.User, _stream.Task);
                 _stream.Attach(this);

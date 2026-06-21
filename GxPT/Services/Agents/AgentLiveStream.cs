@@ -15,22 +15,25 @@ namespace GxPT
         private readonly int _row;
         private readonly string _slug;
         private readonly string _task;
+        private readonly string _persona;              // the agent's system prompt (shown by the live viewer)
 
         private readonly object _lock = new object();
         private readonly List<Evt> _events = new List<Evt>();
         private IAgentLiveSink _sink;                   // the attached viewer, if any (v1: one at a time)
         private int _count;
 
-        public AgentLiveStream(IAgentActivityUi activity, int row, string slug, string task)
+        public AgentLiveStream(IAgentActivityUi activity, int row, string slug, string task, string persona)
         {
             _activity = activity;
             _row = row;
             _slug = slug;
             _task = task;
+            _persona = persona;
         }
 
         public string Slug { get { return _slug; } }
         public string Task { get { return _task; } }
+        public string Persona { get { return _persona; } }
 
         // ---------- IToolLoopUi (driven by the child orchestrator) ----------
         public void AppendTextDelta(string text)

@@ -303,8 +303,10 @@ namespace GxPT
             {
                 // The live broadcaster doubles as the child's tool-loop UI: it feeds the panel's count line
                 // and records events for a viewer that attaches mid-run. Registered by row so the panel's
-                // "View transcript" can find it.
-                AgentLiveStream stream = new AgentLiveStream(ui, row, agent.Slug, task);
+                // "View transcript" can find it. The persona (system prompt) is passed so the live viewer can
+                // show it up front, the same way the static viewer does (RunChild reads it again for the
+                // child's actual system message - both are the agent body, read at the same moment).
+                AgentLiveStream stream = new AgentLiveStream(ui, row, agent.Slug, task, ReadBody(agent));
                 lock (_liveLock) { if (_liveStreams != null) _liveStreams[row] = stream; }
                 childUi = stream;
             }
