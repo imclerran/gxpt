@@ -1008,19 +1008,21 @@ namespace GxPT
                         IList<string> aNames = (_mcpRegistry != null)
                             ? _mcpRegistry.NamesForWorkdir(workdir) : (IList<string>)new List<string>();
                         Func<string, ToolTier> agentTierOf = AgentTierOf();
-                        List<string> enabledLines = new List<string>();
+                        // Three buckets: full use (all tools available), degraded (usable but missing some),
+                        // disabled (no tools available). The status-bar count is full + degraded (all usable).
+                        List<string> fullLines = new List<string>();
+                        List<string> degradedLines = new List<string>();
                         List<string> disabledLines = new List<string>();
                         for (int i = 0; i < acat.Agents.Count; i++)
                         {
                             Agent a = acat.Agents[i];
-                            // Tools the agent wants that aren't available here. For an enabled agent this is a
-                            // partial gap ("degraded"); for a disabled one it's all of them.
                             List<string> need = AgentAvailability.MissingTools(a, aNames);
                             string missing = need.Count > 0 ? " (missing " + string.Join(", ", need.ToArray()) + ")" : "";
                             if (AgentAvailability.IsAvailable(a, aNames, agentTierOf))
                             {
                                 agentCount++;
-                                enabledLines.Add("  " + a.Slug + missing);
+                                if (need.Count > 0) degradedLines.Add("  " + a.Slug + missing);
+                                else fullLines.Add("  " + a.Slug);
                             }
                             else
                             {
@@ -1028,16 +1030,9 @@ namespace GxPT
                             }
                         }
                         System.Text.StringBuilder tip = new System.Text.StringBuilder();
-                        tip.Append("Enabled (").Append(agentCount.ToString(inv)).Append("):");
-                        if (enabledLines.Count > 0)
-                            for (int i = 0; i < enabledLines.Count; i++) tip.Append("\r\n").Append(enabledLines[i]);
-                        else
-                            tip.Append(" none");
-                        if (disabledLines.Count > 0)
-                        {
-                            tip.Append("\r\n\r\nDisabled - required tools not available:");
-                            for (int i = 0; i < disabledLines.Count; i++) tip.Append("\r\n").Append(disabledLines[i]);
-                        }
+                        AppendAgentSection(tip, "Full use", fullLines);
+                        AppendAgentSection(tip, "Degraded", degradedLines);
+                        AppendAgentSection(tip, "Disabled", disabledLines);
                         agentTip = tip.ToString();
                     }
                 }
@@ -1063,6 +1058,16 @@ namespace GxPT
                 return p.TierOf;
             }
             catch { return null; }
+        }
+
+        // Appends a "<header> (N):" section + its indented lines to the agents tooltip; skips empty sections,
+        // and separates non-first sections with a blank line.
+        private static void AppendAgentSection(System.Text.StringBuilder sb, string header, List<string> lines)
+        {
+            if (sb == null || lines == null || lines.Count == 0) return;
+            if (sb.Length > 0) sb.Append("\r\n\r\n");
+            sb.Append(header).Append(" (").Append(lines.Count).Append("):");
+            for (int i = 0; i < lines.Count; i++) sb.Append("\r\n").Append(lines[i]);
         }
 
         // The tool registry changed (a server connected, refreshed its tools, or went away) on a
