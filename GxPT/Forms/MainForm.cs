@@ -1008,26 +1008,31 @@ namespace GxPT
                         IList<string> aNames = (_mcpRegistry != null)
                             ? _mcpRegistry.NamesForWorkdir(workdir) : (IList<string>)new List<string>();
                         Func<string, ToolTier> agentTierOf = AgentTierOf();
-                        List<string> enabledNames = new List<string>();
+                        List<string> enabledLines = new List<string>();
                         List<string> disabledLines = new List<string>();
                         for (int i = 0; i < acat.Agents.Count; i++)
                         {
                             Agent a = acat.Agents[i];
+                            // Tools the agent wants that aren't available here. For an enabled agent this is a
+                            // partial gap ("degraded"); for a disabled one it's all of them.
+                            List<string> need = AgentAvailability.MissingTools(a, aNames);
+                            string missing = need.Count > 0 ? " (missing " + string.Join(", ", need.ToArray()) + ")" : "";
                             if (AgentAvailability.IsAvailable(a, aNames, agentTierOf))
                             {
-                                enabledNames.Add(a.Slug);
                                 agentCount++;
+                                enabledLines.Add("  " + a.Slug + missing);
                             }
                             else
                             {
-                                List<string> need = AgentAvailability.MissingTools(a, aNames);
-                                disabledLines.Add("  " + a.Slug + (need.Count > 0
-                                    ? " - needs " + string.Join(", ", need.ToArray()) : " - (no available tools)"));
+                                disabledLines.Add("  " + a.Slug + (need.Count > 0 ? missing : " (no available tools)"));
                             }
                         }
                         System.Text.StringBuilder tip = new System.Text.StringBuilder();
-                        tip.Append("Enabled (").Append(enabledNames.Count.ToString(inv)).Append("): ");
-                        tip.Append(enabledNames.Count > 0 ? string.Join(", ", enabledNames.ToArray()) : "none");
+                        tip.Append("Enabled (").Append(agentCount.ToString(inv)).Append("):");
+                        if (enabledLines.Count > 0)
+                            for (int i = 0; i < enabledLines.Count; i++) tip.Append("\r\n").Append(enabledLines[i]);
+                        else
+                            tip.Append(" none");
                         if (disabledLines.Count > 0)
                         {
                             tip.Append("\r\n\r\nDisabled - required tools not available:");
