@@ -206,6 +206,17 @@ namespace GxPT
             catch { }
         }
 
+        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Deny->Allow).
+        // The strip flows RightToLeft, so a button's visual left-to-right position is the reverse of its
+        // index in the Controls collection; assign TabIndex to follow the visual order.
+        private void SetButtonTabOrder()
+        {
+            if (_buttons == null) return;
+            int n = _buttons.Controls.Count;
+            for (int i = 0; i < n; i++)
+                _buttons.Controls[i].TabIndex = n - 1 - i;
+        }
+
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
         // user's decision. Builds the scope-appropriate buttons per approval spec §4.
         public void ShowFor(ApprovalRequest req, Action<ApprovalChoice> choiceCallback)
@@ -481,6 +492,7 @@ namespace GxPT
             AddButton("Deny", ApprovalChoice.Deny, false);
             AddRememberButtons(req);
             AddButton("Allow once", ApprovalChoice.AllowOnce, false);
+            SetButtonTabOrder();
 
             // Color the panel + the freshly built buttons for the active theme before measuring, so the
             // button metrics used by LayoutToContent reflect their themed style.
@@ -523,6 +535,7 @@ namespace GxPT
             // Added first => rightmost in the RightToLeft flow.
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
+            SetButtonTabOrder();
 
             ApplyTheme();
 
