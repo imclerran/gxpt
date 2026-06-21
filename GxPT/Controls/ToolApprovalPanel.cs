@@ -185,32 +185,25 @@ namespace GxPT
             catch { }
         }
 
-        // Dark mode: a flat button tinted from the theme (the native themed button ignores BackColor).
-        // Light mode: restore the native system look.
+        // Flat, theme-tinted buttons in both light and dark mode so the two themes match (a native
+        // visual-styles button ignores BackColor, so flat is the only way to tint it consistently).
+        // The Deny button is called out with a red (firebrick) border and text.
         private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
         {
-            if (dark)
+            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
+            Color red = TierColor(ToolTier.Destructive, dark);
+
+            b.FlatStyle = FlatStyle.Flat;
+            b.UseVisualStyleBackColor = false;
+            b.BackColor = tc.CodeBack;
+            b.ForeColor = isDeny ? red : tc.UiForeground;
+            try
             {
-                b.FlatStyle = FlatStyle.Flat;
-                b.UseVisualStyleBackColor = false;
-                b.BackColor = tc.CodeBack;
-                b.ForeColor = tc.UiForeground;
-                try
-                {
-                    b.FlatAppearance.BorderColor = tc.AssistantBubbleBorder;
-                    b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
-                    b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
-                }
-                catch { }
+                b.FlatAppearance.BorderColor = isDeny ? red : tc.AssistantBubbleBorder;
+                b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
+                b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
             }
-            else
-            {
-                // Restore the default themed (visual-styles) button look used in light mode.
-                b.FlatStyle = FlatStyle.Standard;
-                b.UseVisualStyleBackColor = true;
-                b.BackColor = SystemColors.Control;
-                b.ForeColor = SystemColors.ControlText;
-            }
+            catch { }
         }
 
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
