@@ -1503,21 +1503,23 @@ namespace GxPT
                 string caBundle = System.IO.Path.Combine(baseDir, "Lib\\curl-ca-bundle.crt");
 
                 var opts = new McpConfig.BuiltInOptions();
-                opts.WebEnabled = AppSettings.GetBool("mcp_web_enabled", false);
-                opts.FilesEnabled = AppSettings.GetBool("mcp_files_enabled", false);
+                // Defaults come from the schema (SettingsSchema) via the parameterless GetBool, so the
+                // launch decision can't disagree with the seeded settings.json.
+                opts.WebEnabled = AppSettings.GetBool("mcp_web_enabled");
+                opts.FilesEnabled = AppSettings.GetBool("mcp_files_enabled");
                 // Git defaults ON when git is installed and OFF when it isn't, and is force-disabled
                 // when git is missing regardless of the stored setting — so we never launch a git
                 // server whose tools could only return "git not found".
-                opts.GitEnabled = GitProbe.IsInstalled() && AppSettings.GetBool("mcp_git_enabled", true);
-                opts.CommandEnabled = AppSettings.GetBool("mcp_command_enabled", false);
+                opts.GitEnabled = GitProbe.IsInstalled() && AppSettings.GetBool("mcp_git_enabled");
+                opts.CommandEnabled = AppSettings.GetBool("mcp_command_enabled");
                 // MSBuild defaults ON when at least one MSBuild engine is found, OFF when none is, and is
                 // force-disabled when none is present regardless of the stored setting — so we never launch
                 // an MSBuild server whose tools would be an empty set.
-                opts.MsBuildEnabled = MsBuildProbe.IsInstalled() && AppSettings.GetBool("mcp_msbuild_enabled", true);
+                opts.MsBuildEnabled = MsBuildProbe.IsInstalled() && AppSettings.GetBool("mcp_msbuild_enabled");
                 // Memory is a feature toggle (off by default); its soft index cap is user-configurable
                 // (design sec.3/sec.6). Both the server launch and the system-prompt injection read this one
                 // setting, so they can never desync.
-                opts.MemoryEnabled = AppSettings.GetBool("mcp_memory_enabled", false);
+                opts.MemoryEnabled = AppSettings.GetBool("mcp_memory_enabled");
                 int memMaxLines = (int)AppSettings.GetDouble("mcp_memory_max_lines", 40);
                 opts.MemoryMaxLines = memMaxLines > 0 ? memMaxLines : 40;
                 // The Skills MCP server (authoring + execution tools) follows skill enablement: it runs
@@ -1541,7 +1543,7 @@ namespace GxPT
 
                 var specs = new List<McpServerSpec>(McpConfig.BuiltInSpecs(opts));
                 specs.Add(McpConfig.GitHubSpec(
-                    AppSettings.GetBool("mcp_github_enabled", false),
+                    AppSettings.GetBool("mcp_github_enabled"),
                     AppSettings.GetString("mcp_github_pat")));
 
                 // Custom servers from mcp.json (GitHub is configured above, not here).
@@ -3163,7 +3165,7 @@ namespace GxPT
 
                     // Inject the workspace's persistent memory index (rebuilt from .gxpt/memory.md each
                     // request) only when memory is enabled and this conversation has a workspace.
-                    if (AppSettings.GetBool("mcp_memory_enabled", false) && !string.IsNullOrEmpty(ctx.WorkingDir))
+                    if (AppSettings.GetBool("mcp_memory_enabled") && !string.IsNullOrEmpty(ctx.WorkingDir))
                     {
                         string memWorkdir = ctx.WorkingDir;
                         orch.MemorySystemMessageProvider = delegate { return MemoryInjection.Build(memWorkdir); };
@@ -5521,7 +5523,7 @@ namespace GxPT
                     this.ssMain.Height = oneRowHeight;
                 }
 
-                bool visible = AppSettings.GetBool("statusbar_visible", true);
+                bool visible = AppSettings.GetBool("statusbar_visible");
                 if (this.ssMain != null) this.ssMain.Visible = visible;
                 if (this.miStatusBar != null) this.miStatusBar.Checked = visible;
                 ApplyThemeToStatusBar();

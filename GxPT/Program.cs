@@ -15,6 +15,21 @@ namespace GxPT
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            // Settings defaults live in one place (SettingsSchema). Point its font-size default at the
+            // live chat control's font (computed once, outside AppSettings' lock), then seed any absent
+            // keys into settings.json so the file is complete before any component reads it (issue #164).
+            try
+            {
+                double chatFont = 9.0;
+                try { chatFont = SettingsForm.GetChatDefaultFontSize(); }
+                catch { }
+                SettingsSchema.DefaultFontSizeProvider = delegate { return chatFont; };
+            }
+            catch { }
+            try { AppSettings.EnsureSeeded(); }
+            catch { }
+
             // Install global hover-to-scroll router (keeps focus where it is)
             try { HoverWheelRouter.Install(); }
             catch { }

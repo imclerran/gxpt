@@ -21,12 +21,6 @@ namespace GxPT
         // In-memory working copy (unsaved until Save/CTRL+S)
         private SettingsData _working = new SettingsData();
 
-        // Free-form settings.json keys that SettingsData does not model (e.g. "agents_enabled", written by
-        // AppSettings via the /toggle-agents command). Captured on load and on JSON edits, then merged back
-        // into the JSON view and the saved file so the typed editor never silently drops them. Without this,
-        // saving Settings would wipe such keys (which is exactly how globally-enabled agents would turn off).
-        private Dictionary<string, object> _extraKeys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-
         // Guard to prevent event loops during programmatic sync
         private bool _isSyncing = false;
 
@@ -194,8 +188,6 @@ namespace GxPT
                 {
                     _working = BuildDefaultSettings();
                 }
-                // Remember any keys SettingsData doesn't model so they aren't dropped on save.
-                _extraKeys = ComputeExtraKeys(raw);
 
                 _isSyncing = true;
                 try
@@ -222,58 +214,12 @@ namespace GxPT
                 Directory.CreateDirectory(_settingsDir);
             }
 
-            if (!File.Exists(_settingsFile))
-            {
-                var defaultJson = BuildDefaultJson();
-                File.WriteAllText(_settingsFile, defaultJson, Encoding.UTF8);
-            }
+            // One seed path (issue #164): AppSettings fills every absent key from the schema and creates
+            // the file if needed, so the file we read below is always complete - no per-form default JSON.
+            AppSettings.EnsureSeeded();
         }
 
-        private static string BuildDefaultJson()
-        {
-            // defaults: empty key, sensible model list, default model, and font size from chat's default
-            float defaultFontSize = GetChatDefaultFontSize();
-            int defaultTranscriptW = 1000;
-            int defaultMessagePercent = 90;
-            var sb = new StringBuilder();
-            sb.AppendLine("{");
-            sb.AppendLine("  \"openrouter_api_key\": \"\",");
-            // Models come from the shared default catalog (ModelDefaults) so this seed, the strongly
-            // typed defaults, and the combo's fresh-install fallback can't drift apart.
-            sb.AppendLine("  \"models\": [");
-            for (int i = 0; i < ModelDefaults.Models.Length; i++)
-            {
-                bool last = (i == ModelDefaults.Models.Length - 1);
-                sb.AppendLine("    \"" + ModelDefaults.Models[i] + "\"" + (last ? "" : ","));
-            }
-            sb.AppendLine("  ],");
-            sb.AppendLine("  \"default_model\": \"" + ModelDefaults.DefaultModel + "\",");
-            // Seed the acknowledged-recommendations fingerprint so a fresh install (which already ships
-            // with the current catalog) doesn't immediately show the "updated models" banner.
-            sb.AppendLine("  \"recommended_hash_seen\": \"" + ModelDefaults.RecommendedHash() + "\",");
-            sb.AppendLine("  \"theme\": \"light\",");
-            // Default UI color theme
-            sb.AppendLine("  \"color_theme\": \"blue\",");
-            sb.AppendLine("  \"font_size\": " + defaultFontSize.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",");
-            sb.AppendLine("  \"transcript_max_width\": " + defaultTranscriptW + ",");
-            // Store percent (50-100) under legacy key name
-            sb.AppendLine("  \"message_max_width\": " + defaultMessagePercent + ",");
-            sb.AppendLine("  \"enable_logging\": false,")
-            ;
-            // Default zero data retention off (new conversations may use any provider).
-            sb.AppendLine("  \"provider_zdr\": false,");
-            // First-party MCP servers enabled by default where no credential is required
-            // (files/command; they connect once a working folder is set).
-            sb.AppendLine("  \"mcp_files_enabled\": true,");
-            // Persistent project memory: off by default; soft index cap (lines) configurable.
-            sb.AppendLine("  \"mcp_memory_enabled\": false,");
-            sb.AppendLine("  \"mcp_memory_max_lines\": 40,");
-            sb.AppendLine("  \"mcp_command_enabled\": true");
-            sb.AppendLine("}");
-            return sb.ToString();
-        }
-
-        private static float GetChatDefaultFontSize()
+        internal static float GetChatDefaultFontSize()
         {
             try
             {
@@ -286,30 +232,20 @@ namespace GxPT
             catch { return 9f; }
         }
 
-        // Strongly-typed default object (mirrors BuildDefaultJson)
+        // Strongly-typed default object, derived from the one schema (SettingsSchema) so it can't drift
+        // from the seeded file. Used only as the in-memory fallback when settings.json fails to parse.
         private static SettingsData BuildDefaultSettings()
         {
-            return new SettingsData
+            SettingsData s = null;
+            try
             {
-                openrouter_api_key = "",
-                models = ModelDefaults.ModelList(),
-                default_model = ModelDefaults.DefaultModel,
-                recommended_hash_seen = ModelDefaults.RecommendedHash(),
-                enable_logging = false,
-                font_size = GetChatDefaultFontSize(),
-                theme = "light",
-                color_theme = "blue",
-                transcript_max_width = 1000,
-                // Percent (50-100) under legacy key name
-                message_max_width = 90,
-                provider_zdr = false,
-                // First-party MCP servers enabled by default where no credential is required.
-                mcp_files_enabled = true,
-                mcp_command_enabled = true,
-                // Persistent project memory: off by default; soft index cap (lines).
-                mcp_memory_enabled = false,
-                mcp_memory_max_lines = 40
-            };
+                var ser = new JavaScriptSerializer();
+                s = ser.Deserialize<SettingsData>(ser.Serialize(SettingsSchema.BuildDefaults()));
+            }
+            catch { }
+            if (s == null) s = new SettingsData();
+            PostProcess(s);
+            return s;
         }
 
         private bool SaveSettingsOnly()
@@ -334,7 +270,7 @@ namespace GxPT
                 if (!TryValidateMcpJson(out mcpJsonText)) return false;
                 CaptureMcpControlsToWorking(_working);
 
-                var json = MergeExtraKeys(Serialize(_working));
+                var json = Serialize(_working);
                 File.WriteAllText(_settingsFile, json, Encoding.UTF8);
                 WriteMcpJson(mcpJsonText);
 
@@ -494,55 +430,11 @@ namespace GxPT
             return ser.Serialize(settings);
         }
 
-        // The settings.json keys SettingsData models (its property names are the JSON keys 1:1).
-        private static HashSet<string> KnownSettingKeys()
-        {
-            HashSet<string> known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (System.Reflection.PropertyInfo p in typeof(SettingsData).GetProperties())
-                known.Add(p.Name);
-            return known;
-        }
-
-        // The free-form keys in a raw settings.json that SettingsData does not model (so they'd otherwise be
-        // lost on a typed round-trip). Returns an empty map on any parse error.
-        private static Dictionary<string, object> ComputeExtraKeys(string rawJson)
-        {
-            Dictionary<string, object> extra = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                var ser = new JavaScriptSerializer();
-                Dictionary<string, object> dict = ser.Deserialize<Dictionary<string, object>>(rawJson ?? string.Empty);
-                if (dict != null)
-                {
-                    HashSet<string> known = KnownSettingKeys();
-                    foreach (KeyValuePair<string, object> kv in dict)
-                        if (!known.Contains(kv.Key)) extra[kv.Key] = kv.Value;
-                }
-            }
-            catch { }
-            return extra;
-        }
-
-        // Overlay the captured free-form keys onto a typed-settings JSON string so they survive the round-trip
-        // (typed keys win; extras fill in). Used for both the JSON view and the saved file.
-        private string MergeExtraKeys(string typedJson)
-        {
-            if (_extraKeys == null || _extraKeys.Count == 0) return typedJson;
-            try
-            {
-                var ser = new JavaScriptSerializer();
-                Dictionary<string, object> dict = ser.Deserialize<Dictionary<string, object>>(typedJson ?? string.Empty)
-                    ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, object> kv in _extraKeys)
-                    if (!dict.ContainsKey(kv.Key)) dict[kv.Key] = kv.Value;
-                return ser.Serialize(dict);
-            }
-            catch { return typedJson; }
-        }
-
         private void UpdateJsonEditorFromSettings(SettingsData settings)
         {
-            var json = MergeExtraKeys(Serialize(settings));
+            // SettingsData now models every global key, so the typed projection IS the file - no
+            // free-form merge needed (issue #164).
+            var json = Serialize(settings);
             this.rtbJson.Text = PrettyPrintJson(json);
             // Do not trigger highlight here; only on TextChanged
         }
@@ -554,8 +446,6 @@ namespace GxPT
                 var ser = new JavaScriptSerializer();
                 settings = ser.Deserialize<SettingsData>(this.rtbJson.Text ?? string.Empty) ?? new SettingsData();
                 PostProcess(settings);
-                // Re-capture free-form keys from the edited JSON so edits to them (e.g. agents_enabled) persist.
-                _extraKeys = ComputeExtraKeys(this.rtbJson.Text);
                 error = string.Empty;
                 return true;
             }
@@ -1456,20 +1346,17 @@ namespace GxPT
             if (s == null) return;
             this.chkMcpWeb.Checked = s.mcp_web_enabled;
             this.chkMcpFiles.Checked = s.mcp_files_enabled;
-            // Git defaults ON when git is installed and the user hasn't chosen otherwise; OFF (and
-            // disabled below) when git isn't on PATH.
-            this.chkMcpGit.Checked = GitProbe.IsInstalled() && AppSettings.GetBool("mcp_git_enabled", true);
+            // Git/MSBuild read straight from the typed model now that the file is always seeded complete
+            // (so an absent key can't read as false); still force-OFF below when the tool isn't installed.
+            this.chkMcpGit.Checked = GitProbe.IsInstalled() && s.mcp_git_enabled;
             this.chkMcpCommand.Checked = s.mcp_command_enabled;
             this.chkMcpCommandScratch.Checked = s.mcp_command_scratch_enabled;
-            // MSBuild, like Git, defaults ON when a build engine is found and the user hasn't chosen
-            // otherwise; OFF (and disabled below) when no MSBuild is present.
-            this.chkMcpMsBuild.Checked = MsBuildProbe.IsInstalled() && AppSettings.GetBool("mcp_msbuild_enabled", true);
+            this.chkMcpMsBuild.Checked = MsBuildProbe.IsInstalled() && s.mcp_msbuild_enabled;
             this.chkMcpGithub.Checked = s.mcp_github_enabled;
             this.txtWebSearchKey.Text = s.mcp_websearch_key != null ? s.mcp_websearch_key : string.Empty;
             this.txtGithubPat.Text = s.mcp_github_pat != null ? s.mcp_github_pat : string.Empty;
-            // Sub-agents: a free-form settings.json key (written by /toggle-agents), so read it via GetBool
-            // with the feature default - just like git/msbuild - so an absent key shows as on, not off.
-            this.chkAgents.Checked = AppSettings.GetBool(AgentEnablement.GlobalSettingKey, AgentEnablement.GlobalDefault);
+            // Sub-agents now lives in the typed model (agents_enabled) like every other toggle.
+            this.chkAgents.Checked = s.agents_enabled;
             UpdateMcpEnableStates();
         }
 
@@ -1487,10 +1374,8 @@ namespace GxPT
             target.mcp_github_enabled = this.chkMcpGithub.Checked;
             target.mcp_websearch_key = this.txtWebSearchKey.Text != null ? this.txtWebSearchKey.Text.Trim() : string.Empty;
             target.mcp_github_pat = this.txtGithubPat.Text != null ? this.txtGithubPat.Text.Trim() : string.Empty;
-            // Sub-agents lives in settings.json as a free-form key, so persist it through the merge map
-            // (SettingsData doesn't model it). Captured here so Save writes the checkbox state.
-            if (_extraKeys == null) _extraKeys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            _extraKeys[AgentEnablement.GlobalSettingKey] = this.chkAgents.Checked;
+            // Sub-agents is a typed key now; Save writes the checkbox state through SettingsData.
+            target.agents_enabled = this.chkAgents.Checked;
         }
 
         // A web-search / GitHub toggle is only enableable when its key/PAT looks plausibly valid;
@@ -1597,6 +1482,12 @@ namespace GxPT
             // "updated recommended models" banner relies on. Not surfaced in the visual editor.
             public string recommended_hash_seen { get; set; }
             public bool enable_logging { get; set; }
+            // Show/hide the bottom status bar (toggled from the main window; modeled here so saving the
+            // settings form preserves it instead of dropping it).
+            public bool statusbar_visible { get; set; }
+            // Global sub-agents feature default (also written by /toggle-agents). Modeled here so it
+            // round-trips through the form like any other toggle.
+            public bool agents_enabled { get; set; }
             public double font_size { get; set; }
             public string theme { get; set; }
             public string color_theme { get; set; }

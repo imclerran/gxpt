@@ -29,8 +29,8 @@ namespace GxPT
         {
             try
             {
-                return AppSettings.GetBool("mcp_command_enabled", false)
-                    && AppSettings.GetBool("mcp_command_scratch_enabled", false);
+                return AppSettings.GetBool("mcp_command_enabled")
+                    && AppSettings.GetBool("mcp_command_scratch_enabled");
             }
             catch { return false; }
         }
