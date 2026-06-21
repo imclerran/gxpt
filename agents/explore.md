@@ -4,6 +4,7 @@ description: Read-only code explorer. Dispatch it to locate and summarize how so
 tools: [files__read, files__list, files__search, git__status, git__diff, git__log, web__search, web__extract]
 max_tier: readonly
 autonomy: auto-readonly
+model: deepseek/deepseek-v4-flash
 max_turns: 25
 ---
 You are a code-exploration specialist working inside the user's workspace.

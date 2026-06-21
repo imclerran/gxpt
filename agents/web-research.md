@@ -4,6 +4,7 @@ description: Read-only web researcher. Dispatch it to research a topic on the in
 tools: [web__search, web__extract, web__get]
 max_tier: readonly
 autonomy: auto-readonly
+model: deepseek/deepseek-v4-flash
 max_turns: 25
 ---
 You are a web-research specialist.
