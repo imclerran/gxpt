@@ -485,11 +485,10 @@ namespace GxPT
             }
 
             _buttons.Controls.Clear();
-            // Deny is always present (added first => rightmost in RightToLeft flow). It is not auto-
-            // focused: a focused FlatStyle.Flat button draws a heavier border, which made the red Deny
-            // button's border look thicker than the others. Leaving it unfocused keeps every button's
-            // border the same 1px (no action is auto-selected, so this doesn't weaken the safe default).
-            AddButton("Deny", ApprovalChoice.Deny, false);
+            // Deny is always present (added first => rightmost in RightToLeft flow). Auto-focused on the
+            // Destructive tier so the keyboard default is the safe choice (it shows the focused flat
+            // button's heavier border).
+            AddButton("Deny", ApprovalChoice.Deny, tier == ToolTier.Destructive);
             AddRememberButtons(req);
             AddButton("Allow once", ApprovalChoice.AllowOnce, false);
             SetButtonTabOrder();
