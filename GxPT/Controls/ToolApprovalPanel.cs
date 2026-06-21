@@ -56,6 +56,11 @@ namespace GxPT
         // semantic) when the theme switches live. The continuation prompt reuses the Write color.
         private ToolTier _currentTier = ToolTier.Write;
 
+        // The button to focus once the panel is shown (the tier's default action). Focus is deferred to
+        // after Visible = true: focusing while the panel is still hidden does nothing, so GotFocus never
+        // fires and the initial blue focus border was missing until the user tabbed.
+        private Button _defaultButton;
+
         public ToolApprovalPanel()
         {
             this.Dock = DockStyle.Bottom;
@@ -512,6 +517,7 @@ namespace GxPT
             }
 
             _buttons.Controls.Clear();
+            _defaultButton = null;
             // Deny is always present (added first => rightmost in RightToLeft flow). Auto-focused on the
             // Destructive tier so the keyboard default is the safe choice (it shows the focused flat
             // button's heavier border).
@@ -538,6 +544,29 @@ namespace GxPT
             // bottom edge and its right-docked scrollbar). BringToFront would cause exactly that.
             this.SendToBack();
             SetPromptVisible(true);
+            FocusDefaultButton();
+        }
+
+        // Focus the tier's default button now that the panel is visible (focusing earlier is a no-op).
+        // Real focus fires GotFocus, which paints the blue focus border; deferring to BeginInvoke lets
+        // the just-shown panel settle so the focus reliably takes.
+        private void FocusDefaultButton()
+        {
+            Button b = _defaultButton;
+            if (b == null) return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    try { if (b.IsHandleCreated && b.Visible) b.Focus(); }
+                    catch { }
+                });
+            }
+            catch
+            {
+                try { b.Focus(); }
+                catch { }
+            }
         }
 
         // Iteration-cap confirmation, reusing this docked panel so it reads like the tool-approval
@@ -560,6 +589,7 @@ namespace GxPT
             _preview.Visible = true;
 
             _buttons.Controls.Clear();
+            _defaultButton = null;
             // Added first => rightmost in the RightToLeft flow.
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
@@ -573,6 +603,7 @@ namespace GxPT
             this.Visible = true;
             this.SendToBack();
             SetPromptVisible(true);
+            FocusDefaultButton();
         }
 
         public void HidePanel()
@@ -795,7 +826,7 @@ namespace GxPT
                 try { _toolTip.SetToolTip(b, tooltip); }
                 catch { }
             }
-            if (defaultFocus) { try { b.Select(); } catch { } }
+            if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
         private void AddContinuationButton(string text, bool cont, bool defaultFocus)
@@ -813,7 +844,7 @@ namespace GxPT
             b.GotFocus += OnButtonFocusChanged;
             b.LostFocus += OnButtonFocusChanged;
             _buttons.Controls.Add(b);
-            if (defaultFocus) { try { b.Select(); } catch { } }
+            if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
         // Reads a workspace-relative file for diff context. Mirrors the files sandbox: relative paths
