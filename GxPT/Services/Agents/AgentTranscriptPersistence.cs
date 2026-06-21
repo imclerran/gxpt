@@ -36,6 +36,13 @@ namespace GxPT
             return string.IsNullOrEmpty(id) ? null : Path.Combine(Root(), id);
         }
 
+        // Public path accessors so import/export can bundle and restore transcripts alongside
+        // conversations. RootDir is the store root (%AppData%/GxPT/AgentTranscripts); ConvDirPath is
+        // the per-conversation folder. Both return null when the input is empty.
+        public static string RootDir() { return Root(); }
+
+        public static string ConvDirPath(string convId) { return ConvDir(convId); }
+
         // Persist one dispatch call's transcripts (slot-indexed; null slots are kept as null placeholders so
         // the on-reload slot indices line up with the record body).
         public static void Save(string convId, string recKey, AgentTranscript[] transcripts)

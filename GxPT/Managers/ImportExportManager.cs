@@ -110,7 +110,7 @@ namespace GxPT
                 if (sfd.ShowDialog(owner) != DialogResult.OK) return false;
                 try
                 {
-                    ImportExportService.ExportSingle(info.Path, sfd.FileName);
+                    ImportExportService.ExportSingle(info.Path, sfd.FileName, info.Id);
                     try { MessageBox.Show(owner, "Export completed.", "Export Conversation", MessageBoxButtons.OK, MessageBoxIcon.Information); }
                     catch { }
                     return true;
