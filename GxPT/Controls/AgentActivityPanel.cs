@@ -232,12 +232,18 @@ namespace GxPT
                 TextRenderer.DrawText(g, tag, this.Font, new Point(rowX, y), tagColor, TextFormatFlags.NoPadding);
                 int tagW = TextRenderer.MeasureText(g, tag, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
 
-                // Agent slug, optionally followed by its model in parentheses.
+                // Agent slug, optionally followed by its model in parentheses (model drawn muted, the same
+                // grey as the activity line).
                 int x = rowX + tagW + 8;
+                TextRenderer.DrawText(g, _slugs[i], this.Font, new Point(x, y), tc.UiForeground, TextFormatFlags.NoPadding);
+                int labelW = TextRenderer.MeasureText(g, _slugs[i], this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
                 string model = ShortModel(i);
-                string label = string.IsNullOrEmpty(model) ? _slugs[i] : _slugs[i] + " (" + model + ")";
-                TextRenderer.DrawText(g, label, this.Font, new Point(x, y), tc.UiForeground, TextFormatFlags.NoPadding);
-                int labelW = TextRenderer.MeasureText(g, label, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                if (!string.IsNullOrEmpty(model))
+                {
+                    string modelText = " (" + model + ")";
+                    TextRenderer.DrawText(g, modelText, this.Font, new Point(x + labelW, y), cQueued, TextFormatFlags.NoPadding);
+                    labelW += TextRenderer.MeasureText(g, modelText, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                }
 
                 // Live activity line (tier 2): tool count, plus the latest tool while the child runs.
                 string activity = BuildActivity(i);
