@@ -22,6 +22,7 @@ namespace GxPT
 
         private string[] _slugs;
         private int[] _state;
+        private string[] _models;       // tier 2: per-row resolved model slug, shown inline (author stripped)
         private string[] _tasks;        // tier 2: per-row task, shown as a hover tooltip
         private string[] _lastTool;     // tier 2: most recent tool the child called (null until first call)
         private int[] _toolCount;       // tier 2: how many tool calls the child has made
@@ -63,11 +64,12 @@ namespace GxPT
 
         // Start showing a fan-out of the given agents (in dispatch order), all queued. onStop (may be null)
         // is invoked when the user clicks the panel's Stop button.
-        public void BeginFanOut(IList<string> slugs, IList<string> tasks, Action onStop, Action<int> onViewTranscript)
+        public void BeginFanOut(IList<string> slugs, IList<string> tasks, IList<string> models, Action onStop, Action<int> onViewTranscript)
         {
             int n = slugs != null ? slugs.Count : 0;
             _slugs = new string[n];
             _state = new int[n];
+            _models = new string[n];
             _tasks = new string[n];
             _lastTool = new string[n];
             _toolCount = new int[n];
@@ -76,6 +78,7 @@ namespace GxPT
             {
                 _slugs[i] = slugs[i];
                 _state[i] = StateQueued;
+                _models[i] = (models != null && i < models.Count) ? models[i] : null;
                 _tasks[i] = (tasks != null && i < tasks.Count) ? tasks[i] : null;
             }
             _onStop = onStop;
@@ -110,6 +113,7 @@ namespace GxPT
             this.Visible = false;
             _slugs = null;
             _state = null;
+            _models = null;
             _tasks = null;
             _lastTool = null;
             _toolCount = null;
@@ -218,23 +222,37 @@ namespace GxPT
             for (int i = 0; i < _slugs.Length; i++)
             {
                 int rowX = Pad + RowIndent;
-                TextRenderer.DrawText(g, _slugs[i], this.Font, new Point(rowX, y), tc.UiForeground, TextFormatFlags.NoPadding);
-                int slugW = TextRenderer.MeasureText(g, _slugs[i], this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
 
+                // Status tag first: "[status] agent-slug (model-name): X tools - last_tool".
                 string tag; Color tagColor;
                 if (_state[i] == StateDone) { tag = "[done]"; tagColor = cDone; }
                 else if (_state[i] == StateRunning) { tag = "[running]"; tagColor = cRunning; }
                 else if (_state[i] == StateCancelled) { tag = "[cancelled]"; tagColor = cCancelled; }
                 else { tag = "[queued]"; tagColor = cQueued; }
-                int tagX = rowX + slugW + 8;
-                TextRenderer.DrawText(g, tag, this.Font, new Point(tagX, y), tagColor, TextFormatFlags.NoPadding);
+                TextRenderer.DrawText(g, tag, this.Font, new Point(rowX, y), tagColor, TextFormatFlags.NoPadding);
+                int tagW = TextRenderer.MeasureText(g, tag, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+
+                // Agent slug, optionally followed by its model in parentheses (model drawn muted, the same
+                // grey as the activity line).
+                int x = rowX + tagW + 8;
+                TextRenderer.DrawText(g, _slugs[i], this.Font, new Point(x, y), tc.UiForeground, TextFormatFlags.NoPadding);
+                int labelW = TextRenderer.MeasureText(g, _slugs[i], this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                string model = ShortModel(i);
+                if (!string.IsNullOrEmpty(model))
+                {
+                    string modelText = " (" + model + ")";
+                    TextRenderer.DrawText(g, modelText, this.Font, new Point(x + labelW, y), cQueued, TextFormatFlags.NoPadding);
+                    labelW += TextRenderer.MeasureText(g, modelText, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                }
 
                 // Live activity line (tier 2): tool count, plus the latest tool while the child runs.
                 string activity = BuildActivity(i);
                 if (activity.Length > 0)
                 {
-                    int tagW = TextRenderer.MeasureText(g, tag, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
-                    TextRenderer.DrawText(g, activity, this.Font, new Point(tagX + tagW + 8, y), cQueued, TextFormatFlags.NoPadding);
+                    string sep = ": ";
+                    int sepW = TextRenderer.MeasureText(g, sep, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                    TextRenderer.DrawText(g, sep, this.Font, new Point(x + labelW, y), tc.UiForeground, TextFormatFlags.NoPadding);
+                    TextRenderer.DrawText(g, activity, this.Font, new Point(x + labelW + sepW, y), cQueued, TextFormatFlags.NoPadding);
                 }
 
                 // Per-row "View transcript" link (tier 3 "watch live"), right-aligned. Shown once the child
@@ -245,7 +263,7 @@ namespace GxPT
                     string vt = "View transcript";
                     int vtW = TextRenderer.MeasureText(g, vt, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
                     int vtX = this.ClientRectangle.Width - Pad - vtW - 1;
-                    if (vtX < tagX) vtX = tagX;
+                    if (vtX < x) vtX = x;
                     Rectangle vr = new Rectangle(vtX, y, vtW, LineH());
                     if (_viewRects != null && i < _viewRects.Length) _viewRects[i] = vr;
                     Color vc = (_hoverView == i) ? tc.UiForeground : tc.Link;
@@ -267,6 +285,17 @@ namespace GxPT
             if (_state[i] == StateRunning && _lastTool != null && !string.IsNullOrEmpty(_lastTool[i]))
                 s += " - " + ShortTool(_lastTool[i]);
             return s;
+        }
+
+        // The model name without its author prefix (e.g. "anthropic/claude-opus-4.8" -> "claude-opus-4.8"),
+        // so the row stays short. Empty when no model is known for the row.
+        private string ShortModel(int i)
+        {
+            if (_models == null || i < 0 || i >= _models.Length) return string.Empty;
+            string m = _models[i];
+            if (string.IsNullOrEmpty(m)) return string.Empty;
+            int idx = m.IndexOf('/');
+            return idx >= 0 && idx + 1 < m.Length ? m.Substring(idx + 1) : m;
         }
 
         // The unqualified tool name (drop the "server__" prefix) so the activity line stays short.

@@ -202,11 +202,22 @@ namespace GxPT.Tests
         {
             private readonly object _gate = new object();
             public int FanOutStarts, FanOutEnds, Starts, Finishes, Cancellations, LastFanOutCount;
-            public int Activities, LastFanOutTaskCount;
+            public int Activities, LastFanOutTaskCount, LastFanOutModelCount;
+            public string LastFanOutFirstModel;
 
             public void OnFanOutStart(System.Collections.Generic.IList<string> slugs,
-                                      System.Collections.Generic.IList<string> tasks)
-            { lock (_gate) { FanOutStarts++; LastFanOutCount = slugs.Count; LastFanOutTaskCount = (tasks != null ? tasks.Count : 0); } }
+                                      System.Collections.Generic.IList<string> tasks,
+                                      System.Collections.Generic.IList<string> models)
+            {
+                lock (_gate)
+                {
+                    FanOutStarts++;
+                    LastFanOutCount = slugs.Count;
+                    LastFanOutTaskCount = (tasks != null ? tasks.Count : 0);
+                    LastFanOutModelCount = (models != null ? models.Count : 0);
+                    LastFanOutFirstModel = (models != null && models.Count > 0) ? models[0] : null;
+                }
+            }
             public void OnAgentStart(int index, string slug, string task) { lock (_gate) { Starts++; } }
             public void OnAgentFinished(int index, string slug, bool cancelled)
             { lock (_gate) { Finishes++; if (cancelled) Cancellations++; } }
@@ -231,6 +242,8 @@ namespace GxPT.Tests
             Assert.Equal(1, ui.FanOutEnds);
             Assert.Equal(2, ui.LastFanOutCount);
             Assert.Equal(2, ui.LastFanOutTaskCount);   // tier 2: tasks travel with the slugs
+            Assert.Equal(2, ui.LastFanOutModelCount);  // tier 2: resolved models travel with the slugs
+            Assert.Equal("m", ui.LastFanOutFirstModel); // agents have no model override -> parent model
             Assert.Equal(2, ui.Starts);
             Assert.Equal(2, ui.Finishes);
         }

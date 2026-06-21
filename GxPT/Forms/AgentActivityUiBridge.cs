@@ -23,18 +23,19 @@ namespace GxPT
             _dispatcher = dispatcher;
         }
 
-        public void OnFanOutStart(IList<string> slugs, IList<string> tasks)
+        public void OnFanOutStart(IList<string> slugs, IList<string> tasks, IList<string> models)
         {
             // Copy the lists: they are the dispatcher's and may change; the UI thread reads them later.
             List<string> slugCopy = slugs != null ? new List<string>(slugs) : new List<string>();
             List<string> taskCopy = tasks != null ? new List<string>(tasks) : new List<string>();
+            List<string> modelCopy = models != null ? new List<string>(models) : new List<string>();
             RequestCancellation group = _group;
             AgentDispatcher dispatcher = _dispatcher;
             Marshal(delegate
             {
                 AgentActivityPanel p = Panel();
                 if (p != null)
-                    p.BeginFanOut(slugCopy, taskCopy,
+                    p.BeginFanOut(slugCopy, taskCopy, modelCopy,
                         delegate { if (group != null) group.Cancel(); },
                         delegate(int row)
                         {

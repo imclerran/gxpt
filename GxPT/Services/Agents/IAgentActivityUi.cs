@@ -11,9 +11,11 @@ namespace GxPT
     internal interface IAgentActivityUi
     {
         // A fan-out is beginning with `slugs.Count` agents (in dispatch order); `tasks[i]` is the task
-        // string handed to `slugs[i]` (parallel lists, same length), shown per-row (tier 2, truncated /
-        // hover-to-expand). The host shows the panel and relabels Stop. Always paired with one OnFanOutEnd.
-        void OnFanOutStart(IList<string> slugs, IList<string> tasks);
+        // string handed to `slugs[i]` and `models[i]` is the resolved model slug it runs on (parallel
+        // lists, same length). The task is shown per-row (tier 2, truncated / hover-to-expand) and the
+        // model is shown inline on the row. The host shows the panel and relabels Stop. Always paired with
+        // one OnFanOutEnd.
+        void OnFanOutStart(IList<string> slugs, IList<string> tasks, IList<string> models);
 
         // One child began / finished (index is its slot in the dispatch order). cancelled is true when the
         // fan-out was stopped by the user before this child completed (its result is partial/empty). Under

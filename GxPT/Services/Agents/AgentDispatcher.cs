@@ -184,12 +184,15 @@ namespace GxPT
             {
                 List<string> slugs = new List<string>(runnable.Count);
                 List<string> taskList = new List<string>(runnable.Count);
+                List<string> modelList = new List<string>(runnable.Count);
                 for (int k = 0; k < runnable.Count; k++)
                 {
-                    slugs.Add(agents[runnable[k]].Slug);
+                    Agent a = agents[runnable[k]];
+                    slugs.Add(a.Slug);
                     taskList.Add(tasks[runnable[k]]);
+                    modelList.Add(!string.IsNullOrEmpty(a.Model) ? a.Model : _parentModel);
                 }
-                ui.OnFanOutStart(slugs, taskList);
+                ui.OnFanOutStart(slugs, taskList, modelList);
             }
             // Fresh live-stream table for this fan-out (tier 3 "watch live"); the panel looks streams up by
             // row while the children run, and it is dropped when the fan-out ends.
