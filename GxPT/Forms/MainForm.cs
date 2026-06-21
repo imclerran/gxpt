@@ -942,6 +942,8 @@ namespace GxPT
                 if (this.tslToolsValue != null) this.tslToolsValue.Visible = !busy;
                 if (this.tslSkills != null) this.tslSkills.Visible = !busy;
                 if (this.tslSkillsValue != null) this.tslSkillsValue.Visible = !busy;
+                if (this.tslAgents != null) this.tslAgents.Visible = !busy;
+                if (this.tslAgentsValue != null) this.tslAgentsValue.Visible = !busy;
             }
             catch { }
         }
