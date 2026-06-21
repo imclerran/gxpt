@@ -1367,9 +1367,10 @@ namespace GxPT
             target.mcp_files_enabled = this.chkMcpFiles.Checked;
             target.mcp_git_enabled = this.chkMcpGit.Checked;
             target.mcp_command_enabled = this.chkMcpCommand.Checked;
-            // Only meaningful when the command server itself is on; force-off otherwise so a stale
-            // setting can't enable scratch behavior for a disabled command server.
-            target.mcp_command_scratch_enabled = this.chkMcpCommand.Checked && this.chkMcpCommandScratch.Checked;
+            // Persist the scratch choice as-is, independent of the command server toggle, so disabling
+            // (then re-enabling) the command server doesn't wipe it. The runtime gates scratch behavior
+            // on the command server being on (ScratchWorkspace.IsEnabled), so this can't take effect alone.
+            target.mcp_command_scratch_enabled = this.chkMcpCommandScratch.Checked;
             target.mcp_msbuild_enabled = this.chkMcpMsBuild.Checked;
             target.mcp_github_enabled = this.chkMcpGithub.Checked;
             target.mcp_websearch_key = this.txtWebSearchKey.Text != null ? this.txtWebSearchKey.Text.Trim() : string.Empty;
@@ -1414,11 +1415,12 @@ namespace GxPT
             }
             catch { }
 
-            // The scratch-dir option only applies to the command server, so it's enableable only while
-            // the command server itself is on; unchecked-and-disabled otherwise.
-            bool commandOn = this.chkMcpCommand.Checked;
-            this.chkMcpCommandScratch.Enabled = commandOn;
-            if (!commandOn) this.chkMcpCommandScratch.Checked = false;
+            // The scratch-dir option only applies to the command server, so the control is enableable
+            // only while the command server itself is on. Its checked state is left untouched when the
+            // command server is off (the value is preserved, just greyed out), so re-enabling the command
+            // server brings back the user's prior choice. The runtime (ScratchWorkspace.IsEnabled) gates
+            // on the command server too, so a preserved-on scratch setting can't take effect on its own.
+            this.chkMcpCommandScratch.Enabled = this.chkMcpCommand.Checked;
         }
 
         // Tavily keys look like "tvly-dev-XXXXXXXX" (or "tvly-XXXXXXXX"). Lenient prefix + length check.
