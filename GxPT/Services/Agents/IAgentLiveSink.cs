@@ -8,7 +8,7 @@ namespace GxPT
     internal interface IAgentLiveSink
     {
         void OnText(string delta);
-        void OnToolCall(string functionName, string callId);
+        void OnToolCall(string functionName, string argumentsJson, string callId);
         void OnToolResult(string functionName, string resultText, bool isError);
         void OnComplete();
     }

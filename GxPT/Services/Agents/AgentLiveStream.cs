@@ -48,9 +48,9 @@ namespace GxPT
             lock (_lock)
             {
                 _count++;
-                _events.Add(Evt.Call(functionName, callId));
+                _events.Add(Evt.Call(functionName, argumentsJson, callId));
                 if (_activity != null) _activity.OnAgentActivity(_row, functionName, _count);
-                if (_sink != null) _sink.OnToolCall(functionName, callId);
+                if (_sink != null) _sink.OnToolCall(functionName, argumentsJson, callId);
             }
         }
 
@@ -98,11 +98,12 @@ namespace GxPT
             private const int TText = 0, TCall = 1, TResult = 2, TDone = 3;
             private int _t;
             private string _a;      // text delta / function name
-            private string _b;      // call id / result text
+            private string _b;      // args (call) / result text
+            private string _c;      // call id (call)
             private bool _err;
 
             public static Evt Text(string s) { Evt e = new Evt(); e._t = TText; e._a = s; return e; }
-            public static Evt Call(string fn, string id) { Evt e = new Evt(); e._t = TCall; e._a = fn; e._b = id; return e; }
+            public static Evt Call(string fn, string args, string id) { Evt e = new Evt(); e._t = TCall; e._a = fn; e._b = args; e._c = id; return e; }
             public static Evt Result(string fn, string res, bool err) { Evt e = new Evt(); e._t = TResult; e._a = fn; e._b = res; e._err = err; return e; }
             public static Evt Done() { Evt e = new Evt(); e._t = TDone; return e; }
 
@@ -111,7 +112,7 @@ namespace GxPT
                 switch (_t)
                 {
                     case TText: s.OnText(_a); break;
-                    case TCall: s.OnToolCall(_a, _b); break;
+                    case TCall: s.OnToolCall(_a, _b, _c); break;
                     case TResult: s.OnToolResult(_a, _b, _err); break;
                     case TDone: s.OnComplete(); break;
                 }

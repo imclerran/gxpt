@@ -17,7 +17,8 @@ namespace GxPT
         private ChatTranscriptControl _transcript;   // set in Init() (a ctor helper), so not readonly
         private readonly AgentTranscript _data;     // static mode (null in live mode)
         private readonly AgentLiveStream _stream;   // live mode (null in static mode)
-        private bool _liveAssistantOpen;            // is the last live message an open assistant bubble?
+        private bool _liveAssistantOpen;            // is the last message an open assistant bubble?
+        private bool _toolBlockOpen;                // is the last message an open chrome-less tool block?
 
         public AgentTranscriptViewerForm(AgentTranscript transcript)
         {
@@ -83,26 +84,33 @@ namespace GxPT
             if (string.IsNullOrEmpty(delta)) return;
             Ui(delegate
             {
+                _toolBlockOpen = false;
                 if (_liveAssistantOpen) _transcript.AppendToLastMessage(delta);
                 else { _transcript.AddMessage(MessageRole.Assistant, delta); _liveAssistantOpen = true; }
             });
         }
 
-        public void OnToolCall(string functionName, string callId)
+        public void OnToolCall(string functionName, string argumentsJson, string callId)
         {
-            string fn = !string.IsNullOrEmpty(functionName) ? functionName : "(tool)";
-            Ui(delegate { _liveAssistantOpen = false; _transcript.AddMessage(MessageRole.Tool, "Called `" + fn + "`"); });
+            string fn = functionName, args = argumentsJson, key = callId;
+            Ui(delegate { AddToolMarker(MainForm.EditDiffMarkerOrCall(_transcript, fn, args, key)); });
         }
 
-        public void OnToolResult(string functionName, string resultText, bool isError)
-        {
-            string res = resultText ?? string.Empty;
-            Ui(delegate { _liveAssistantOpen = false; _transcript.AddMessage(MessageRole.Tool, res); });
-        }
+        // Tool results are hidden, to match the main chat (which never shows raw tool output).
+        public void OnToolResult(string functionName, string resultText, bool isError) { }
 
         public void OnComplete()
         {
-            Ui(delegate { _liveAssistantOpen = false; });
+            Ui(delegate { _liveAssistantOpen = false; _toolBlockOpen = false; });
+        }
+
+        // Append a tool marker (a collapsible-record sentinel or a "using <tool>" line) the way the main
+        // chat does: consecutive tool calls accumulate into one chrome-less block; assistant text breaks it.
+        private void AddToolMarker(string marker)
+        {
+            _liveAssistantOpen = false;
+            if (_toolBlockOpen) _transcript.AppendToLastMessage("\r\n" + marker);
+            else { _transcript.AddMessage(MessageRole.Tool, marker); _toolBlockOpen = true; }
         }
 
         // Marshal an action onto the UI thread (sink callbacks may arrive on the child's worker thread; even
@@ -130,8 +138,9 @@ namespace GxPT
             catch { }
         }
 
-        // Renders a finished message list. Leading system message is the persona; the first user message is
-        // the task; assistant/tool turns follow. Assistant tool calls are shown as a compact Tool-role note.
+        // Renders a finished message list the same way the main chat does: the persona/task as bubbles,
+        // assistant text as bubbles, and each tool call as the same collapsible record (via the shared
+        // EditDiffMarkerOrCall). Raw tool results (role "tool") are skipped - the main chat never shows them.
         private void Populate(AgentTranscript t)
         {
             if (t == null || t.Messages == null) { _transcript.AddMessage(MessageRole.System, "(transcript unavailable)"); return; }
@@ -143,43 +152,37 @@ namespace GxPT
                 string role = m.Role ?? string.Empty;
                 string content = m.Content ?? string.Empty;
 
+                if (role == "tool") continue;   // results hidden, like the main chat
+
                 if (role == "user")
                 {
                     _transcript.AddMessage(MessageRole.User, content);
+                    _liveAssistantOpen = false; _toolBlockOpen = false;
                 }
                 else if (role == "system")
                 {
-                    if (content.Length > 0) _transcript.AddMessage(MessageRole.System, content);
-                }
-                else if (role == "tool")
-                {
-                    _transcript.AddMessage(MessageRole.Tool, content);
+                    if (content.Length > 0)
+                    {
+                        _transcript.AddMessage(MessageRole.System, content);
+                        _liveAssistantOpen = false; _toolBlockOpen = false;
+                    }
                 }
                 else if (role == "assistant")
                 {
                     if (content.Length > 0)
-                        _transcript.AddMessage(MessageRole.Assistant, content);
-                    if (m.ToolCalls != null)
                     {
-                        for (int c = 0; c < m.ToolCalls.Count; c++)
-                            _transcript.AddMessage(MessageRole.Tool, FormatToolCall(m.ToolCalls[c]));
+                        _transcript.AddMessage(MessageRole.Assistant, content);
+                        _liveAssistantOpen = false; _toolBlockOpen = false;
                     }
-                }
-                else if (content.Length > 0)
-                {
-                    _transcript.AddMessage(MessageRole.Tool, content);
+                    if (m.ToolCalls != null)
+                        for (int c = 0; c < m.ToolCalls.Count; c++)
+                        {
+                            ToolCall call = m.ToolCalls[c];
+                            if (call == null) continue;
+                            AddToolMarker(MainForm.EditDiffMarkerOrCall(_transcript, call.Name, call.ArgumentsJson, call.Id));
+                        }
                 }
             }
-        }
-
-        private static string FormatToolCall(ToolCall call)
-        {
-            if (call == null) return "(tool call)";
-            string name = !string.IsNullOrEmpty(call.Name) ? call.Name : "(tool)";
-            string args = call.ArgumentsJson != null ? call.ArgumentsJson.Trim() : string.Empty;
-            string head = "Called `" + name + "`";
-            if (args.Length == 0 || args == "{}") return head;
-            return head + "\n```json\n" + args + "\n```";
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

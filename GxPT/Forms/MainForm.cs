@@ -4135,8 +4135,9 @@ namespace GxPT
 
         // Activity marker for a tool call. If the tool maps to a collapsible/labelled record, register
         // it with the transcript under a stable key and return its sentinel; otherwise (or on any
-        // failure) return the generic "using <tool>" marker.
-        private static string EditDiffMarkerOrCall(ChatTranscriptControl transcript, string name, string argsJson, string key)
+        // failure) return the generic "using <tool>" marker. internal so the agent transcript viewer can
+        // render a child's tool calls identically to the main chat.
+        internal static string EditDiffMarkerOrCall(ChatTranscriptControl transcript, string name, string argsJson, string key)
         {
             if (transcript != null && !string.IsNullOrEmpty(key))
             {
