@@ -6,11 +6,11 @@ using System.Text;
 namespace GxPT
 {
     // Single source of truth for the models shipped to NEW installs and the default selection.
-    // The seed settings.json (SettingsForm.BuildDefaultJson), the in-memory fallback
-    // (SettingsForm.BuildDefaultSettings), and the model dropdown's fresh-install fallback
-    // (MainForm.PopulateModelsFromSettings) all pull from here, so the list is defined once and the
-    // three can't drift apart. Existing users' configured models live in their own settings.json and
-    // are never overwritten by this.
+    // The settings schema (SettingsSchema.BuildDefaults, which seeds settings.json and backs the
+    // form's typed fallback) and the model dropdown's fresh-install fallback
+    // (MainForm.PopulateModelsFromSettings) both pull from here, so the list is defined once and they
+    // can't drift apart. Existing users' configured models live in their own settings.json and are
+    // never overwritten by this.
     internal static class ModelDefaults
     {
         // Selected by default on a fresh install. Must be one of Models below.

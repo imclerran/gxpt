@@ -102,6 +102,7 @@
     <Compile Include="Managers\ImportExportManager.cs" />
     <Compile Include="Managers\SkillImportExportManager.cs" />
     <Compile Include="Services\AppSettings.cs" />
+    <Compile Include="Services\SettingsSchema.cs" />
     <Compile Include="Services\RecentWorkDirs.cs" />
     <Compile Include="Services\ScratchWorkspace.cs" />
     <Compile Include="Services\Skills\SkillSlug.cs" />

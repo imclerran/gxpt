@@ -55,6 +55,10 @@
     <Compile Include="..\GxPT\Services\Mcp\DefaultServerConnector.cs" Link="Linked\Mcp\DefaultServerConnector.cs" />
     <Compile Include="..\GxPT\Services\Logger.cs" Link="Linked\Logger.cs" />
     <Compile Include="..\GxPT\Services\AppSettings.cs" Link="Linked\AppSettings.cs" />
+    <!-- AppSettings now resolves defaults from the settings schema (issue #164); both are pure / -->
+    <!-- WinForms-free, so they compile into the headless test assembly. -->
+    <Compile Include="..\GxPT\Services\SettingsSchema.cs" Link="Linked\SettingsSchema.cs" />
+    <Compile Include="..\GxPT\Models\ModelDefaults.cs" Link="Linked\ModelDefaults.cs" />
     <Compile Include="..\GxPT\Services\ModelCatalogService.cs" Link="Linked\ModelCatalogService.cs" />
     <Compile Include="..\GxPT\Services\RecentWorkDirs.cs" Link="Linked\RecentWorkDirs.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillSlug.cs" Link="Linked\Skills\SkillSlug.cs" />

@@ -44,6 +44,37 @@ namespace GxPT
             }
         }
 
+        // Fill any settings.json key absent on disk with its declared default (SettingsSchema), then
+        // persist - so the on-disk file is always complete and behavior never depends on whether a key
+        // happens to be present (issue #164). Idempotent: writes only when something was actually added,
+        // so it's cheap to call on every startup. Creating the file and its directory is handled by the
+        // persist path (FileSafe). Call once early (Program.Main) before any component reads settings.
+        public static void EnsureSeeded()
+        {
+            lock (_gate)
+            {
+                EnsureLoadedLocked();
+                if (_cache == null) _cache = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+                bool changed = false;
+                var defaults = SettingsSchema.BuildDefaults();
+                foreach (var kv in defaults)
+                {
+                    if (_cache.ContainsKey(kv.Key)) continue;
+                    object value = kv.Value;
+                    // provider_zdr is special: when absent, derive its seed from the legacy
+                    // data-collection pref so an older file migrates correctly instead of being pinned to
+                    // the static default. (GetGlobalZdrDefault re-enters the lock, which is fine.)
+                    if (string.Equals(kv.Key, "provider_zdr", StringComparison.OrdinalIgnoreCase))
+                        value = GetGlobalZdrDefault();
+                    _cache[kv.Key] = value;
+                    changed = true;
+                }
+
+                if (changed) PersistLocked();
+            }
+        }
+
         // Ensure _cache reflects the current on-disk file. Must be called while holding _gate.
         private static void EnsureLoadedLocked()
         {
@@ -256,6 +287,13 @@ namespace GxPT
         public static double GetDouble(string key)
         {
             return GetDouble(key, 0);
+        }
+
+        // Overload that sources the default from the schema (SettingsSchema) - the single source of
+        // truth - so call sites don't each pass a literal that could drift from the seeded value.
+        public static bool GetBool(string key)
+        {
+            return GetBool(key, SettingsSchema.BoolDefault(key));
         }
 
         // Read boolean values (accepts true/false, 1/0, yes/no, on/off, strings or numbers)
