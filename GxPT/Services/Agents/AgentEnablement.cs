@@ -10,7 +10,10 @@ namespace GxPT
         // mechanism as the memory toggle's "mcp_memory_enabled"). Lives in settings.json - not a dedicated
         // agents.json - so a future settings-page checkbox binds to the same value.
         public const string GlobalSettingKey = "agents_enabled";
-        public const bool GlobalDefault = false;   // agents lead OFF (they spawn loops + cost)
+        // On by default now that a first-party agent suite ships with the app (so agents work out of the
+        // box). An absent settings.json key resolves to this; /toggle-agents global off opts out (and writes
+        // the key). A per-conversation override still wins over this.
+        public const bool GlobalDefault = true;
 
         // Effective on/off (pure): the conversation override wins when set; otherwise the global default.
         public static bool FeatureEnabled(bool? conversationOverride, bool globalDefault)

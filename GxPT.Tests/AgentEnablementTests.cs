@@ -16,10 +16,13 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void GlobalDefault_IsOff()
+        public void GlobalDefault_IsOn()
         {
-            Assert.False(AgentEnablement.GlobalDefault);
-            Assert.False(AgentEnablement.FeatureEnabled(null, AgentEnablement.GlobalDefault));
+            // On by default (a first-party agent suite ships with the app).
+            Assert.True(AgentEnablement.GlobalDefault);
+            Assert.True(AgentEnablement.FeatureEnabled(null, AgentEnablement.GlobalDefault));
+            // An explicit per-conversation override still wins.
+            Assert.False(AgentEnablement.FeatureEnabled(false, AgentEnablement.GlobalDefault));
         }
     }
 }
