@@ -1467,6 +1467,9 @@ namespace GxPT
             this.chkMcpGithub.Checked = s.mcp_github_enabled;
             this.txtWebSearchKey.Text = s.mcp_websearch_key != null ? s.mcp_websearch_key : string.Empty;
             this.txtGithubPat.Text = s.mcp_github_pat != null ? s.mcp_github_pat : string.Empty;
+            // Sub-agents: a free-form settings.json key (written by /toggle-agents), so read it via GetBool
+            // with the feature default - just like git/msbuild - so an absent key shows as on, not off.
+            this.chkAgents.Checked = AppSettings.GetBool(AgentEnablement.GlobalSettingKey, AgentEnablement.GlobalDefault);
             UpdateMcpEnableStates();
         }
 
@@ -1484,6 +1487,10 @@ namespace GxPT
             target.mcp_github_enabled = this.chkMcpGithub.Checked;
             target.mcp_websearch_key = this.txtWebSearchKey.Text != null ? this.txtWebSearchKey.Text.Trim() : string.Empty;
             target.mcp_github_pat = this.txtGithubPat.Text != null ? this.txtGithubPat.Text.Trim() : string.Empty;
+            // Sub-agents lives in settings.json as a free-form key, so persist it through the merge map
+            // (SettingsData doesn't model it). Captured here so Save writes the checkbox state.
+            if (_extraKeys == null) _extraKeys = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            _extraKeys[AgentEnablement.GlobalSettingKey] = this.chkAgents.Checked;
         }
 
         // A web-search / GitHub toggle is only enableable when its key/PAT looks plausibly valid;
