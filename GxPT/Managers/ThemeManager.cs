@@ -172,12 +172,7 @@ namespace GxPT
         {
             try
             {
-                string theme = null;
-                try { theme = AppSettings.GetString("theme"); }
-                catch { theme = null; }
-
-                bool dark = !string.IsNullOrEmpty(theme) &&
-                    theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+                bool dark = IsDarkTheme();
 
                 if (_txtMessage != null)
                 {
@@ -189,6 +184,27 @@ namespace GxPT
                 }
             }
             catch { }
+        }
+
+        // True when the active theme is dark.
+        public bool IsDarkTheme()
+        {
+            try
+            {
+                string theme = AppSettings.GetString("theme");
+                return !string.IsNullOrEmpty(theme) &&
+                    theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        // The input box's foreground color for real (non-hint) text under the active theme. Callers that
+        // programmatically replace the input text - e.g. accepting a slash-command completion - use this
+        // instead of SystemColors.WindowText so the text keeps the dark-mode color rather than turning black.
+        public Color GetUiForeColor()
+        {
+            try { return ThemeService.GetColors(IsDarkTheme()).UiForeground; }
+            catch { return SystemColors.WindowText; }
         }
     }
 }

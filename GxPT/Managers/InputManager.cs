@@ -72,6 +72,20 @@ namespace GxPT
             catch { }
         }
 
+        // The themed foreground color for real (non-hint) input text. Used whenever text is set
+        // programmatically so it doesn't revert to black under the dark theme; falls back to the system
+        // window text color if the theme manager isn't available yet (early init).
+        private Color GetThemedForeColor()
+        {
+            try
+            {
+                var theme = _mainForm != null ? _mainForm.GetThemeManager() : null;
+                if (theme != null) return theme.GetUiForeColor();
+            }
+            catch { }
+            return SystemColors.WindowText;
+        }
+
         // Programmatically set the input text and optionally focus the input box.
         public void SetInputText(string text, bool focus)
         {
@@ -79,7 +93,7 @@ namespace GxPT
             {
                 if (_txtMessage == null) return;
                 TextIsHint = false;
-                _txtMessage.ForeColor = SystemColors.WindowText;
+                _txtMessage.ForeColor = GetThemedForeColor();
                 _txtMessage.Text = text ?? string.Empty;
                 try { _txtMessage.SelectionStart = _txtMessage.TextLength; _txtMessage.SelectionLength = 0; }
                 catch { }
@@ -414,7 +428,7 @@ namespace GxPT
             if (_txtMessage.Focused)
             {
                 TextIsHint = false;
-                _txtMessage.ForeColor = SystemColors.WindowText;
+                _txtMessage.ForeColor = GetThemedForeColor();
                 return;
             }
             _txtMessage.Text = InputHintText;
