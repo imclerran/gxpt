@@ -14,8 +14,8 @@ two commands with no per-agent management — `/toggle-agents <here|global>
 
 Delegated, context-isolated **agents** for GxPT: a sub-agent is a markdown file
 with YAML-style frontmatter (the `SKILL.md` convention, one level up) that defines
-a *specialist* — a system prompt, a bounded tool allowlist, and an autonomy
-setting. The main agent hands a sub-agent a self-contained task; the sub-agent runs
+a *specialist* — a system prompt, a bounded tool allowlist, and a tier ceiling.
+The main agent hands a sub-agent a self-contained task; the sub-agent runs
 its **own** `McpChatOrchestrator` loop in a fresh context, does the work through
 tools, and returns **only its final answer** as the dispatching tool's result.
 
@@ -41,18 +41,17 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
   agents live under `<workdir>/.gxpt/agents/`; user-global under
   `%AppData%/GxPT/agents/`. Reuse `SkillRoots`/`SkillFrontmatter` wholesale.
 - **A sub-agent is one markdown file** — `<slug>.md` with frontmatter
-  (`name`/`description`/`tools`/`model`/`autonomy`/`max_tier`) + a body that is the
+  (`name`/`description`/`tools`/`model`/`max_tier`) + a body that is the
   agent's **system prompt**. (Skills use a `<slug>/SKILL.md` folder because they
   bundle assets; agents rarely do — A4.)
 - **Context isolation is the point.** A dispatched sub-agent runs in a *fresh*
   history (its system prompt + the parent's task string), never the parent's
   transcript, and returns only its final text. Keeps the parent's context small and
   firewalls the two conversations.
-- **Layered security, three independent layers** (§8): a static **tool allowlist**
-  in frontmatter (what it *can* reach), the existing **runtime approval gate** (the
-  backstop — Destructive still always-confirms), and a per-agent **autonomy dial**
-  (how much it prompts within those bounds). The dial can only ever *loosen* inside
-  the ceiling the other two layers set.
+- **Layered security** (§8): a static **tool allowlist** + **`max_tier` ceiling**
+  in frontmatter (what it *can* reach) and the existing **runtime approval gate** (the
+  backstop — Destructive still always-confirms, unremembered Write still prompts). (A
+  third "autonomy dial" layer was designed but **dropped** — A14 — as redundant.)
 - **Parallel by default where it's safe.** `dispatch_agent` is batch: several agents
   run on their own worker threads concurrently (the win is overlapping LLM streams),
   with per-connection serialization on shared MCP servers and a bounded fan-out.
@@ -85,7 +84,7 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A2 | **A sub-agent runs its own `McpChatOrchestrator` instance** on a fresh `List<ChatMessage>` seeded with `[system: body] + [user: task]` | The orchestrator is already built fresh per turn, documented un-shared/non-racy, and run on `ThreadPool` worker threads concurrently across tabs. Reusing it gives sub-agents the *entire* loop for free — streaming, reveal/skills, cancellation, usage accounting, the cap wrap-up — with zero new loop code. |
 | A3 | **Context firewall:** the sub-agent never sees the parent transcript; only its **final assistant message** returns as the `dispatch_agent` tool result | This is the whole value — token isolation (a 30-call research dig costs the parent ~one paragraph, not 30 tool results) and a clean trust boundary. Matches every mainstream sub-agent model (Claude Code's `Task`/agents). |
 | A4 | **One file per agent: `agents/<slug>.md`** (flat), not a `<slug>/` folder | Agents are a *prompt + tool list*; they almost never bundle scripts/assets (which is exactly why skills need a folder). A flat file matches the cross-tool `.claude/agents/<name>.md` convention the user already knows, and keeps the catalog a simple glob. An agent that genuinely needs bundled reference files can be paired with a skill it `open_skill`s. (Folder form deferred, A-open.) |
-| A5 | **Frontmatter is the security contract**: `tools` (allowlist), `max_tier` (ceiling), `autonomy` (dial), plus `model` — same `--- … ---` reader as skills (`SkillFrontmatter`), extended for list/enum values | net35 has no YAML parser and the repo keeps one JSON lib (D3); the hand-rolled frontmatter reader already ships for skills (S4). Extending it to parse a `[a, b]` inline list + a few enum keys is a few lines, no new dependency, authoring stays familiar. |
+| A5 | **Frontmatter is the security contract**: `tools` (allowlist), `max_tier` (ceiling), plus `model` (`autonomy` was specified here originally but later **dropped** — A14) — same `--- … ---` reader as skills (`SkillFrontmatter`), extended for list/enum values | net35 has no YAML parser and the repo keeps one JSON lib (D3); the hand-rolled frontmatter reader already ships for skills (S4). Extending it to parse a `[a, b]` inline list + a few enum keys is a few lines, no new dependency, authoring stays familiar. |
 | A6 | **`description` is the dispatch trigger** — a single "use this agent when…" line, the only thing in the always-on manifest | Identical to skills' `description` (S4): it is what the parent model reads to decide *whether* to delegate and *which* agent. Names-only-plus-one-liner keeps the manifest cheap (§4). |
 | A7 | **Only the final answer crosses back; no streaming into the parent** | Streaming a sub-agent's intermediate tool chatter into the parent re-imports the context cost the firewall exists to remove (A3). The sub-agent's live output still renders in the transcript UI (its own collapsible block, §9) so the user sees it — it just isn't fed to the *parent model*. |
 | A8 | **A dispatch is one-shot within the parent's turn** (no resumable agent sessions) | Keeps state trivial: the sub-orchestrator is a local object on a worker thread, joined before the parent's `dispatch_agent` tool result is formed. Resumable agents would need persisted sub-histories and a handle scheme — deferred until a real need appears. |
@@ -94,7 +93,7 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A11 | **Effective tools = `allowlist` ∩ `parent-available` ∩ `max_tier`** — a sub-agent can never exceed the parent's own reach | No privilege escalation: delegating cannot grant a capability the parent itself lacks in this workspace (e.g. a folderless turn's sub-agent still can't reach `files__*`). The allowlist *narrows*; it never widens. |
 | A12 | **`dispatch_agent` is never in a sub-agent's tool set** | One level of delegation only — structurally prevents recursive fan-out / fork bombs and unbounded cost. Enforced by the host (the dispatcher strips it from every child's exposed defs), not by author discipline. |
 | A13 | **The approval gate is fully in force for every sub-agent tool call**, with the **shared** remembered-allowlist and per-tab prompt host | The sub-agent isn't a trust upgrade: a Destructive call it makes still always-confirms, an unremembered Write still prompts. Prompts marshal to the parent tab's `ToolApprovalPanel` (the existing `Control.Invoke` path), attributed to the agent. This is the backstop that makes autonomy safe (§8, layer 2). |
-| A14 | **Autonomy is a per-agent dial** (`gated` \| `auto-readonly`), approved **once at dispatch** (remember by agent name), bounded by `max_tier` | "Leeway to act autonomously" without surrendering the gate: an `auto-readonly` research agent, approved once, runs a long read-only dig unattended; the moment it reaches for Write/Destructive it re-enters the normal gate. The grant can't exceed the tier ceiling, and Write/Destructive never auto-approve from a dial (only an exact remembered rule does). |
+| A14 | ~~**Autonomy is a per-agent dial** (`gated` \| `auto-readonly`)~~ **— DROPPED.** Intended to grant read-only leeway, but `max_tier` + the gate already auto-allow read-only and never auto-approve write/destructive, so `gated` and `auto-readonly` were behaviorally identical (and the dial was never wired up). Removed from the frontmatter contract; the gate (A13) + `max_tier` remain the controls. |
 | A15 | **Enablement is a single feature toggle** — a per-conversation override + a global default in **`settings.json`** — default **OFF**; **no per-agent enable/disable** | Simpler than skills' per-skill ladder: a sub-agent fan-out is a coarse capability you grant or not, not something to curate agent-by-agent. The global lives in `settings.json` (via `AppSettings`, like the memory toggle) so a future **General** settings-page checkbox can bind to it; the per-conversation `here` override gives a tab its own on/off (`/toggle-agents <here\|global> <on\|off\|inherit>`, scope-first per PR #157). Default OFF because agents spawn loops + cost. Drops `/list-agents`, `/toggle-agent`, `/reset-agents`, and the `agents.json` per-agent map (§6/§7). |
 | A16 | **Catalog & frontmatter are pure logic** (`AgentCatalog`, `Services/Agents/`), no WinForms — net48 linked-source tests, like `SkillCatalog` | Same dual-world test pattern (§10). Discovery, allowlist resolution, tier ceiling, and the manifest are all testable without the UI or a live model. |
 | A17 | **Per-agent `max_turns` budget** feeds the child orchestrator's existing `maxIterations` ctor arg | The orchestrator *already* takes `maxIterations` as a constructor parameter — a per-agent budget is free plumbing. OpenMonoAgent.ai assigns distinct budgets per specialist (from source: Explore/Plan 100, Verify 150, general 200, Coder 300 — far higher than its docs imply). Two implications: bounding an explore agent below a coder is the right grain, **and** our `DefaultMaxIterations = 25` is tuned for *interactive* turns (the continuation prompt is its release valve) — an **unattended** child has no continuation prompt, so write-capable bundled agents should set a generous `max_turns`, with doom-loop (A18) + cap-wrap-up as the backstops. |
@@ -139,7 +138,6 @@ description: Use to search and summarize unfamiliar code across the workspace be
 tools: [files__read, files__list, files__search]
 max_tier: readonly
 max_turns: 15
-autonomy: auto-readonly
 model: anthropic/claude-sonnet-4-6
 ---
 
@@ -170,8 +168,11 @@ find something after a genuine search, say so and name where you looked.
     child orchestrator's `maxIterations` ctor arg (A17). Omitted ⇒ the host default
     (`DefaultMaxIterations`). Lets an `explore` agent cap at ~15 while a `coder` runs
     ~30, so an unattended specialist's cost is bounded *to its job*, not the parent's.
-  - `autonomy` *(optional)* — `gated` (default) \| `auto-readonly` (§8 layer 3).
   - `model` *(optional)* — model id override; omitted ⇒ the parent turn's model.
+  - ~~`autonomy`~~ — **dropped.** It was redundant with `max_tier` + the approval
+    gate (read-only auto-allows, write/destructive prompt — for `gated` *and*
+    `auto-readonly` alike), so it never produced a distinct behavior. The key is
+    ignored if present. (Former §8 "layer 3" below is retained for history.)
 - The **body** is the agent's **system prompt** — it replaces `AgentSystemPrompt`'s
   *persona*, but the host still prepends the standing agent guidance and the
   workspace block (§5), so a sub-agent always knows it's tool-using and where it is.
@@ -199,7 +200,7 @@ lives entirely in the sub-agent's window. That asymmetry is the design.
 ### Catalog & manifest (host-native, `Services/Agents/`)
 
 ```
-Agent                 -- (slug, name, description, ToolSpec, MaxTier, Autonomy, Model, BodyPath)
+Agent                 -- (slug, name, description, ToolSpec, MaxTier, Model, BodyPath)
 AgentFrontmatter      -- extends SkillFrontmatter: inline-list + enum keys
 AgentCatalog          -- scans bundled+user+project agents/*.md, project>user>bundled
 AgentInjection        -- BuildManifestMessage(allAgents) -> the Level-1 block (all discovered agents)
@@ -376,12 +377,8 @@ narrower layer below it.
   (per call)  │ Destructive always-confirm; unremembered     │  — the backstop, unchanged
               │ Write/ReadOnly prompt; narrow remembered rules│
               └─────────────────────────────────────────────┘
-                              ▼ within which
-              ┌─────────────────────────────────────────────┐
-  Layer 3     │ AUTONOMY DIAL  (autonomy:, approved once)    │  how much it prompts
-  (per agent) │ auto-readonly ⇒ ReadOnly-tier auto-allows     │  — the LEEWAY, bounded by 1&2
-              │ for this run; Write/Destructive still gate     │
-              └─────────────────────────────────────────────┘
+  (Layer 3, an "autonomy dial", was designed but DROPPED — A14 — as redundant with
+  layers 1-2; the sections below are retained for history.)
 ```
 
 ### Layer 1 — static capability scoping (definition-time)
@@ -421,7 +418,12 @@ sub-agents:
 - **Attribution** — the prompt header shows which agent is asking
   (`code-explorer · files__read`), so the user always knows *who* wants the effect.
 
-### Layer 3 — the autonomy dial (the leeway, bounded)
+### Layer 3 — the autonomy dial (the leeway, bounded) — DROPPED (A14)
+> **Dropped.** This layer never produced a behavior distinct from layers 1-2:
+> `max_tier` + the gate already auto-allow read-only and never auto-approve
+> write/destructive, so `gated` and `auto-readonly` were identical. It was also
+> never wired up. Removed from the frontmatter contract; kept below for history.
+
 `autonomy` grants a sub-agent room to run unattended **inside** layers 1–2:
 - `gated` *(default)* — behaves exactly like the main agent: every tier prompts per
   the normal rules. Safe, but a long read-only dig prompts repeatedly.

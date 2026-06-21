@@ -22,7 +22,7 @@ namespace GxPT.Tests.Mcp
             // returns partial + the stop directive, and the orchestrator should force the wrap-up.
             RequestCancellation group = new RequestCancellation();
             group.Cancel();
-            Agent agent = new Agent("x", "x", "d", null, AgentMaxTier.ReadOnly, AgentAutonomy.Gated, null, 0,
+            Agent agent = new Agent("x", "x", "d", null, AgentMaxTier.ReadOnly, null, 0,
                 "nonexistent.md", AgentSource.Bundled);
             AgentDispatcher dispatcher = new AgentDispatcher(new List<Agent> { agent }, new ScriptedStreamer(),
                 null, null, "m", null, null, delegate(string n) { return ToolTier.ReadOnly; }, 25, 60000);

@@ -79,7 +79,6 @@ namespace GxPT.Tests
                 "description: Run the build and tests.",
                 "tools: [files__read, command__run]",
                 "max_tier: write",
-                "autonomy: auto-readonly",
                 "model: anthropic/claude-sonnet-4-6");
 
             AgentCatalog cat = AgentCatalog.Build(_bundled, _project);
@@ -88,7 +87,6 @@ namespace GxPT.Tests
             Assert.True(cat.TryGet("verify", out a));
             Assert.Equal(new string[] { "files__read", "command__run" }, a.Tools);
             Assert.Equal(AgentMaxTier.Write, a.MaxTier);
-            Assert.Equal(AgentAutonomy.AutoReadOnly, a.Autonomy);
             Assert.Equal("anthropic/claude-sonnet-4-6", a.Model);
         }
 

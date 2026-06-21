@@ -3,7 +3,6 @@ name: General Purpose
 description: General-purpose worker for a self-contained task. Dispatch it when no specialist fits - it can read and edit files and inspect git, working in isolation and reporting back. Edits are gated for your approval; it cannot delete files, push, or run shell commands.
 tools: [files__read, files__list, files__search, files__edit, git__status, git__diff, git__log, git__add, git__commit, web__search, web__extract]
 max_tier: write
-autonomy: gated
 max_turns: 40
 ---
 You are a capable generalist working on a self-contained task inside the user's workspace.

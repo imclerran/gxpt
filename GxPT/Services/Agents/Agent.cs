@@ -23,15 +23,6 @@ namespace GxPT
         Destructive
     }
 
-    // How much an agent may do unattended within the approval gate (design sec.8 layer 3). Default Gated -
-    // behaves like the main agent (every tier prompts per the normal rules). AutoReadOnly lets the
-    // agent's ReadOnly-tier calls auto-allow for the duration of a dispatch, once granted.
-    internal enum AgentAutonomy
-    {
-        Gated,
-        AutoReadOnly
-    }
-
     // One discovered sub-agent: a flat <slug>.md file whose frontmatter declares the agent's contract
     // and whose body is the agent's system prompt (design A4 - one file per agent, no folder). The
     // catalog holds a slug -> Agent map. The body is read from FilePath on dispatch (a single small
@@ -55,7 +46,6 @@ namespace GxPT
         public string[] Tools { get; private set; }
 
         public AgentMaxTier MaxTier { get; private set; }
-        public AgentAutonomy Autonomy { get; private set; }
 
         // Optional model id override; null/empty => the parent turn's model.
         public string Model { get; private set; }
@@ -71,7 +61,7 @@ namespace GxPT
         public AgentSource Source { get; private set; }
 
         public Agent(string slug, string name, string description, string[] tools,
-                     AgentMaxTier maxTier, AgentAutonomy autonomy, string model, int maxTurns,
+                     AgentMaxTier maxTier, string model, int maxTurns,
                      string filePath, AgentSource source)
         {
             Slug = slug;
@@ -79,7 +69,6 @@ namespace GxPT
             Description = description;
             Tools = tools;
             MaxTier = maxTier;
-            Autonomy = autonomy;
             Model = model;
             MaxTurns = maxTurns;
             FilePath = filePath;

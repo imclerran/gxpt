@@ -8,7 +8,7 @@ namespace GxPT.Tests
     {
         private static Agent A(string slug, string desc)
         {
-            return new Agent(slug, slug, desc, null, AgentMaxTier.Write, AgentAutonomy.Gated, null,
+            return new Agent(slug, slug, desc, null, AgentMaxTier.Write, null,
                              0, slug + ".md", AgentSource.Bundled);
         }
 

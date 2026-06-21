@@ -14,7 +14,6 @@ namespace GxPT.Tests
                 "description: Use to search the codebase. Read-only.\n" +
                 "tools: [files__read, files__list, files__search]\n" +
                 "max_tier: readonly\n" +
-                "autonomy: auto-readonly\n" +
                 "model: anthropic/claude-sonnet-4-6\n" +
                 "---\n" +
                 "\n" +
@@ -27,7 +26,6 @@ namespace GxPT.Tests
             Assert.Equal("Use to search the codebase. Read-only.", fm.Description);
             Assert.Equal(new string[] { "files__read", "files__list", "files__search" }, fm.Tools);
             Assert.Equal(AgentMaxTier.ReadOnly, fm.MaxTier);
-            Assert.Equal(AgentAutonomy.AutoReadOnly, fm.Autonomy);
             Assert.Equal("anthropic/claude-sonnet-4-6", fm.Model);
             Assert.Equal("You are a code-exploration specialist.", fm.Body);
         }
@@ -46,7 +44,6 @@ namespace GxPT.Tests
 
             Assert.Null(fm.Tools);                          // absent => null (resolved to ReadOnly default later)
             Assert.Equal(AgentMaxTier.Write, fm.MaxTier);   // default ceiling
-            Assert.Equal(AgentAutonomy.Gated, fm.Autonomy); // default dial
             Assert.Null(fm.Model);
         }
 
@@ -85,17 +82,6 @@ namespace GxPT.Tests
         {
             AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\nmax_tier: " + value + "\n---\nb\n");
             Assert.Equal(expected, fm.MaxTier.ToString());
-        }
-
-        [Theory]
-        [InlineData("gated", "Gated")]
-        [InlineData("auto-readonly", "AutoReadOnly")]
-        [InlineData("Auto_ReadOnly", "AutoReadOnly")]
-        [InlineData("bogus", "Gated")]     // invalid => default Gated
-        public void Parse_Autonomy(string value, string expected)
-        {
-            AgentFrontmatter fm = AgentFrontmatter.Parse("---\ndescription: d\nautonomy: " + value + "\n---\nb\n");
-            Assert.Equal(expected, fm.Autonomy.ToString());
         }
 
         [Fact]

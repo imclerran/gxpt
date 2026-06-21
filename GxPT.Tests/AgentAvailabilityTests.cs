@@ -29,7 +29,7 @@ namespace GxPT.Tests
 
         private static Agent ReadOnlyAgent(string slug, string[] tools)
         {
-            return new Agent(slug, slug, "d", tools, AgentMaxTier.ReadOnly, AgentAutonomy.AutoReadOnly,
+            return new Agent(slug, slug, "d", tools, AgentMaxTier.ReadOnly,
                 null, 0, null, AgentSource.Bundled);
         }
 

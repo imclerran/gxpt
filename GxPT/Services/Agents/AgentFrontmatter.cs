@@ -7,8 +7,8 @@ namespace GxPT
     // Hand-rolled reader for an agent <slug>.md's leading "--- ... ---" frontmatter block (design A5:
     // net35 has no YAML parser and the repo keeps one JSON lib, so we parse the handful of "key: value"
     // lines ourselves). It is the SkillFrontmatter reader extended for the agent contract: besides
-    // `name`/`description` it reads `tools` (an inline list), `max_tier` and `autonomy` (enums, with
-    // defaults), and `model`. Unknown keys are ignored (forward-compatible) and each known key is
+    // `name`/`description` it reads `tools` (an inline list), `max_tier` (an enum, with a default), and
+    // `model`. Unknown keys are ignored (forward-compatible) and each known key is
     // first-wins. Everything after the closing delimiter is the body (the agent's system prompt).
     // Lenient: a missing or unterminated block yields no frontmatter and treats the whole text as body;
     // an unrecognized enum value falls back to the default rather than rejecting the agent.
@@ -23,7 +23,6 @@ namespace GxPT
         public string[] Tools { get; private set; }
 
         public AgentMaxTier MaxTier { get; private set; }
-        public AgentAutonomy Autonomy { get; private set; }
         public string Model { get; private set; }
 
         // Per-agent iteration budget (design A17); 0 => unset (host default). Negative/non-numeric ignored.
@@ -37,7 +36,6 @@ namespace GxPT
             Body = string.Empty;
             Tools = null;
             MaxTier = AgentMaxTier.Write;     // default ceiling (design A5/sec.3)
-            Autonomy = AgentAutonomy.Gated;   // default dial (design sec.8 layer 3)
             MaxTurns = 0;                     // unset
         }
 
@@ -74,7 +72,7 @@ namespace GxPT
             }
 
             fm.HasFrontmatter = true;
-            bool toolsSet = false, tierSet = false, autoSet = false;
+            bool toolsSet = false, tierSet = false;
             for (int j = start; j < close; j++)
             {
                 string line = lines[j];
@@ -97,11 +95,6 @@ namespace GxPT
                 {
                     AgentMaxTier tier;
                     if (!tierSet && TryParseMaxTier(value, out tier)) { fm.MaxTier = tier; tierSet = true; }
-                }
-                else if (key == "autonomy")
-                {
-                    AgentAutonomy autonomy;
-                    if (!autoSet && TryParseAutonomy(value, out autonomy)) { fm.Autonomy = autonomy; autoSet = true; }
                 }
                 else if (key == "max_turns")
                 {
@@ -164,26 +157,6 @@ namespace GxPT
                     tier = AgentMaxTier.Write; return true;
                 case "destructive":
                     tier = AgentMaxTier.Destructive; return true;
-                default:
-                    return false;
-            }
-        }
-
-        // gated | auto-readonly (a few spelling variants tolerated). Returns false for an unrecognized
-        // value, so the caller keeps the default.
-        internal static bool TryParseAutonomy(string value, out AgentAutonomy autonomy)
-        {
-            autonomy = AgentAutonomy.Gated;
-            if (value == null) return false;
-            switch (value.Trim().ToLowerInvariant())
-            {
-                case "gated":
-                    autonomy = AgentAutonomy.Gated; return true;
-                case "auto-readonly":
-                case "auto_readonly":
-                case "autoreadonly":
-                case "auto-read-only":
-                    autonomy = AgentAutonomy.AutoReadOnly; return true;
                 default:
                     return false;
             }
