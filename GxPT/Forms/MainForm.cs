@@ -983,8 +983,81 @@ namespace GxPT
                 if (this.tslSkills != null) this.tslSkills.Text = "Skills:";
                 if (this.tslSkillsValue != null)
                     this.tslSkillsValue.Text = enabledSkills.Count.ToString(inv);
+
+                // Agents (after Skills): how many sub-agents are usable on the next turn. "Usable" means the
+                // agent's required tools are actually available here (runtime per-agent enablement), matching
+                // the send path's filter. The tooltip lists the enabled ones and, for any disabled, what to
+                // turn on (e.g. web-research needs the web tools).
+                int agentCount = 0;
+                string agentTip = "Sub-agents available to this conversation";
+                bool agentsOn = AgentEnablement.FeatureEnabled(convo != null ? convo.AgentsEnabled : null);
+                if (!agentsOn)
+                {
+                    agentTip = "Sub-agents are off. Turn them on in Settings (Tools) or with /toggle-agents.";
+                }
+                else
+                {
+                    AgentCatalog acat = AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
+                    if (acat.Agents.Count == 0)
+                    {
+                        agentTip = "No agents found. Add <slug>.md files under the app's agents folder, "
+                            + "%AppData%/GxPT/agents, or <workspace>/.gxpt/agents.";
+                    }
+                    else
+                    {
+                        IList<string> aNames = (_mcpRegistry != null)
+                            ? _mcpRegistry.NamesForWorkdir(workdir) : (IList<string>)new List<string>();
+                        Func<string, ToolTier> agentTierOf = AgentTierOf();
+                        List<string> enabledNames = new List<string>();
+                        List<string> disabledLines = new List<string>();
+                        for (int i = 0; i < acat.Agents.Count; i++)
+                        {
+                            Agent a = acat.Agents[i];
+                            if (AgentAvailability.IsAvailable(a, aNames, agentTierOf))
+                            {
+                                enabledNames.Add(a.Slug);
+                                agentCount++;
+                            }
+                            else
+                            {
+                                List<string> need = AgentAvailability.MissingTools(a, aNames);
+                                disabledLines.Add("  " + a.Slug + (need.Count > 0
+                                    ? " - needs " + string.Join(", ", need.ToArray()) : " - (no available tools)"));
+                            }
+                        }
+                        System.Text.StringBuilder tip = new System.Text.StringBuilder();
+                        tip.Append("Enabled (").Append(enabledNames.Count.ToString(inv)).Append("): ");
+                        tip.Append(enabledNames.Count > 0 ? string.Join(", ", enabledNames.ToArray()) : "none");
+                        if (disabledLines.Count > 0)
+                        {
+                            tip.Append("\r\n\r\nDisabled - required tools not available:");
+                            for (int i = 0; i < disabledLines.Count; i++) tip.Append("\r\n").Append(disabledLines[i]);
+                        }
+                        agentTip = tip.ToString();
+                    }
+                }
+                if (this.tslAgents != null) { this.tslAgents.Text = "Agents:"; this.tslAgents.ToolTipText = agentTip; }
+                if (this.tslAgentsValue != null)
+                {
+                    this.tslAgentsValue.Text = agentCount.ToString(inv);
+                    this.tslAgentsValue.ToolTipText = agentTip;
+                }
             }
             catch { }
+        }
+
+        // A tool->tier classifier for status-bar agent availability (workdir-independent classification,
+        // built fresh and cheap). Mirrors the send path's tierOf (the approval policy's classification);
+        // first-party agent tools are classified by the hardcoded table, so annotations are best-effort.
+        private Func<string, ToolTier> AgentTierOf()
+        {
+            try
+            {
+                ToolApprovalPolicy p = new ToolApprovalPolicy(new ToolClassifier(), null, null,
+                    _mcpRegistry as IToolAnnotationSource);
+                return p.TierOf;
+            }
+            catch { return null; }
         }
 
         // The tool registry changed (a server connected, refreshed its tools, or went away) on a
@@ -3104,36 +3177,47 @@ namespace GxPT
                             AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);
                         if (agentCatalog.Agents.Count > 0)
                         {
-                            List<Agent> agentsForTurn = new List<Agent>(agentCatalog.Agents);
-                            orch.AgentsManifestSystemMessageProvider =
-                                delegate { return AgentInjection.BuildManifestMessage(agentsForTurn); };
                             // tierOf reuses the approval policy's classification so an agent's max_tier
                             // ceiling matches the gate; the AllowAll fallback (no policy) leaves it null
                             // and the resolver treats every tool as Write.
                             Func<string, ToolTier> tierOf = null;
                             ToolApprovalPolicy tap = approval as ToolApprovalPolicy;
                             if (tap != null) tierOf = tap.TierOf;
-                            AgentDispatcher dispatcher = new AgentDispatcher(
-                                agentsForTurn, _client, _mcpRegistry, approval, model, ctx.WorkingDir,
-                                LoggerSink.Instance, tierOf,
-                                McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
-                            dispatcher.Cancellation = ctx.Cancellation;
-                            // Child usage adds to cost/token totals but must NOT move the parent's context
-                            // gauge (the child has its own isolated context) - so it routes through the
-                            // updateContextGauge=false overload, not orch.UsageReported.
-                            dispatcher.UsageReported = delegate(ResponseUsage u)
+                            // Runtime per-agent enablement: only offer agents whose required tools are
+                            // actually available in this workspace (e.g. web-research needs the web tools),
+                            // so the model never dispatches an agent that would resolve to nothing.
+                            IList<string> parentNames = _mcpRegistry != null
+                                ? _mcpRegistry.NamesForWorkdir(ctx.WorkingDir) : (IList<string>)new List<string>();
+                            List<Agent> agentsForTurn = new List<Agent>();
+                            for (int ai = 0; ai < agentCatalog.Agents.Count; ai++)
+                                if (AgentAvailability.IsAvailable(agentCatalog.Agents[ai], parentNames, tierOf))
+                                    agentsForTurn.Add(agentCatalog.Agents[ai]);
+                            if (agentsForTurn.Count > 0)
                             {
-                                RecordUsageAndReconcile(revealConvo, u,
-                                    OpenRouterClient.ModelSupportsPromptCaching(model), false);
-                            };
-                            // Observability + group cancel (design sec.14): a dedicated handle the panel's
-                            // Stop button trips, so it cancels the agents (children watch GroupCancellation)
-                            // without ending the turn - the parent loop resumes with the partial results.
-                            RequestCancellation agentGroup = new RequestCancellation();
-                            dispatcher.GroupCancellation = agentGroup;
-                            dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup, dispatcher);
-                            orch.AgentDispatcher = dispatcher;
-                            dispatcherForTurn = dispatcher;
+                                orch.AgentsManifestSystemMessageProvider =
+                                    delegate { return AgentInjection.BuildManifestMessage(agentsForTurn); };
+                                AgentDispatcher dispatcher = new AgentDispatcher(
+                                    agentsForTurn, _client, _mcpRegistry, approval, model, ctx.WorkingDir,
+                                    LoggerSink.Instance, tierOf,
+                                    McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
+                                dispatcher.Cancellation = ctx.Cancellation;
+                                // Child usage adds to cost/token totals but must NOT move the parent's context
+                                // gauge (the child has its own isolated context) - so it routes through the
+                                // updateContextGauge=false overload, not orch.UsageReported.
+                                dispatcher.UsageReported = delegate(ResponseUsage u)
+                                {
+                                    RecordUsageAndReconcile(revealConvo, u,
+                                        OpenRouterClient.ModelSupportsPromptCaching(model), false);
+                                };
+                                // Observability + group cancel (design sec.14): a dedicated handle the panel's
+                                // Stop button trips, so it cancels the agents (children watch GroupCancellation)
+                                // without ending the turn - the parent loop resumes with the partial results.
+                                RequestCancellation agentGroup = new RequestCancellation();
+                                dispatcher.GroupCancellation = agentGroup;
+                                dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup, dispatcher);
+                                orch.AgentDispatcher = dispatcher;
+                                dispatcherForTurn = dispatcher;
+                            }
                         }
                     }
 

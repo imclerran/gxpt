@@ -84,6 +84,8 @@
             this.tslToolsValue = new System.Windows.Forms.ToolStripStatusLabel();
             this.tslSkills = new System.Windows.Forms.ToolStripStatusLabel();
             this.tslSkillsValue = new System.Windows.Forms.ToolStripStatusLabel();
+            this.tslAgents = new System.Windows.Forms.ToolStripStatusLabel();
+            this.tslAgentsValue = new System.Windows.Forms.ToolStripStatusLabel();
             this.tslSpring = new System.Windows.Forms.ToolStripStatusLabel();
             this.tslContext = new System.Windows.Forms.ToolStripStatusLabel();
             this.tspContextMeter = new GxPT.ContextMeterItem();
@@ -559,6 +561,8 @@
             this.tslToolsValue,
             this.tslSkills,
             this.tslSkillsValue,
+            this.tslAgents,
+            this.tslAgentsValue,
             this.tslSpring,
             this.tslContext,
             this.tspContextMeter,
@@ -629,6 +633,22 @@
             this.tslSkillsValue.Name = "tslSkillsValue";
             this.tslSkillsValue.Size = new System.Drawing.Size(0, 17);
             this.tslSkillsValue.ToolTipText = "Skills enabled for this conversation";
+            //
+            // tslAgents
+            //
+            this.tslAgents.BorderSides = System.Windows.Forms.ToolStripStatusLabelBorderSides.Left;
+            this.tslAgents.Margin = new System.Windows.Forms.Padding(5, 3, 0, 2);
+            this.tslAgents.Name = "tslAgents";
+            this.tslAgents.Padding = new System.Windows.Forms.Padding(5, 0, 0, 0);
+            this.tslAgents.Size = new System.Drawing.Size(0, 17);
+            this.tslAgents.ToolTipText = "Sub-agents available to this conversation";
+            //
+            // tslAgentsValue
+            //
+            this.tslAgentsValue.Margin = new System.Windows.Forms.Padding(-2, 3, 0, 2);
+            this.tslAgentsValue.Name = "tslAgentsValue";
+            this.tslAgentsValue.Size = new System.Drawing.Size(0, 17);
+            this.tslAgentsValue.ToolTipText = "Sub-agents available to this conversation";
             //
             // tslSpring
             //
@@ -775,6 +795,8 @@
         private System.Windows.Forms.ToolStripStatusLabel tslToolsValue;
         private System.Windows.Forms.ToolStripStatusLabel tslSkills;
         private System.Windows.Forms.ToolStripStatusLabel tslSkillsValue;
+        private System.Windows.Forms.ToolStripStatusLabel tslAgents;
+        private System.Windows.Forms.ToolStripStatusLabel tslAgentsValue;
         private System.Windows.Forms.ToolStripStatusLabel tslSpring;
         private System.Windows.Forms.ToolStripStatusLabel tslContext;
         private ContextMeterItem tspContextMeter;

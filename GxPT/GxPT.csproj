@@ -119,6 +119,7 @@
     <Compile Include="Services\Agents\AgentCatalog.cs" />
     <Compile Include="Services\Agents\AgentRoots.cs" />
     <Compile Include="Services\Agents\AgentToolResolver.cs" />
+    <Compile Include="Services\Agents\AgentAvailability.cs" />
     <Compile Include="Services\Agents\AgentInjection.cs" />
     <Compile Include="Services\Agents\AgentEnablement.cs" />
     <Compile Include="Services\Agents\AgentDispatcher.cs" />
