@@ -52,6 +52,10 @@ namespace GxPT
         private bool _handledDetails;
         private bool _inLayoutToContent;
 
+        // The current prompt's tier, remembered so ApplyTheme can re-tint the tier badge (its color is
+        // semantic) when the theme switches live. The continuation prompt reuses the Write color.
+        private ToolTier _currentTier = ToolTier.Write;
+
         public ToolApprovalPanel()
         {
             this.Dock = DockStyle.Bottom;
@@ -113,6 +117,100 @@ namespace GxPT
             this.Controls.Add(_tierBadge);
             this.Controls.Add(_header);
             this.Controls.Add(_buttons);
+
+            // Theme the chrome up front so the panel isn't a stark white block before the first prompt.
+            ApplyTheme();
+        }
+
+        // True when the active theme is dark. Mirrors AgentActivityPanel.IsDark.
+        private static bool IsDark()
+        {
+            try
+            {
+                string th = AppSettings.GetString("theme");
+                return !string.IsNullOrEmpty(th) && th.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        // The tier badge color, brightened in dark mode so it stays legible against the dark panel
+        // (matching how the agents panel lightens its status colors).
+        private static Color TierColor(ToolTier tier, bool dark)
+        {
+            switch (tier)
+            {
+                case ToolTier.Destructive: return dark ? Color.FromArgb(240, 120, 120) : Color.Firebrick;
+                case ToolTier.Write: return dark ? Color.FromArgb(226, 184, 80) : Color.DarkGoldenrod;
+                default: return dark ? Color.FromArgb(126, 204, 126) : Color.ForestGreen;
+            }
+        }
+
+        // Re-color the panel and all its child controls for the active theme, using the same palette as
+        // the agents activity panel (ThemeService), so the approval prompt isn't stark white in dark
+        // mode. Safe to call repeatedly: the host calls it again on a live light<->dark switch (see
+        // MainForm.ApplyThemeToAllApprovalPanels), and it re-tints the already-rendered diff/preview.
+        public void ApplyTheme()
+        {
+            try
+            {
+                bool dark = IsDark();
+                ThemeColors tc = ThemeService.GetColors(dark);
+
+                this.BackColor = tc.AssistantBubbleBack;
+                this.ForeColor = tc.UiForeground;
+
+                if (_header != null) { _header.BackColor = tc.AssistantBubbleBack; _header.ForeColor = tc.UiForeground; }
+                if (_tierBadge != null) { _tierBadge.BackColor = tc.AssistantBubbleBack; _tierBadge.ForeColor = TierColor(_currentTier, dark); }
+                if (_previewLabel != null) { _previewLabel.BackColor = tc.AssistantBubbleBack; _previewLabel.ForeColor = tc.UiForeground; }
+                // The raw-JSON fallback preview reads like a code block, so use the code palette.
+                if (_preview != null) { _preview.BackColor = tc.CodeBack; _preview.ForeColor = tc.UiForeground; }
+
+                if (_buttons != null)
+                {
+                    _buttons.BackColor = tc.AssistantBubbleBack;
+                    foreach (Control c in _buttons.Controls)
+                    {
+                        Button b = c as Button;
+                        if (b != null) ApplyButtonTheme(b, dark, tc);
+                    }
+                }
+
+                // Re-tint the syntax-highlighted diff/preview when it's the visible details control, so a
+                // live theme switch updates it too (it was themed once at SetContent time).
+                if (_diffPanel != null && _diffPanel.Visible)
+                    _diffPanel.ReapplyTheme(dark, tc.CodeBack, tc.UiForeground);
+
+                Invalidate(true);
+            }
+            catch { }
+        }
+
+        // Dark mode: a flat button tinted from the theme (the native themed button ignores BackColor).
+        // Light mode: restore the native system look.
+        private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
+        {
+            if (dark)
+            {
+                b.FlatStyle = FlatStyle.Flat;
+                b.UseVisualStyleBackColor = false;
+                b.BackColor = tc.CodeBack;
+                b.ForeColor = tc.UiForeground;
+                try
+                {
+                    b.FlatAppearance.BorderColor = tc.AssistantBubbleBorder;
+                    b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
+                    b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
+                }
+                catch { }
+            }
+            else
+            {
+                // Restore the default themed (visual-styles) button look used in light mode.
+                b.FlatStyle = FlatStyle.Standard;
+                b.UseVisualStyleBackColor = true;
+                b.BackColor = SystemColors.Control;
+                b.ForeColor = SystemColors.ControlText;
+            }
         }
 
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
@@ -125,24 +223,19 @@ namespace GxPT
                            (req.ToolName != null ? req.ToolName : req.FunctionName);
 
             ToolTier tier = req.Policy != null ? req.Policy.Tier : ToolTier.Write;
+            _currentTier = tier;
             _tierBadge.Text = "Tier: " + tier;
-            _tierBadge.ForeColor = (tier == ToolTier.Destructive) ? Color.Firebrick
-                                  : (tier == ToolTier.Write ? Color.DarkGoldenrod : Color.ForestGreen);
+
+            // Theme palette for this prompt (the tier badge and diff/preview colors derive from it);
+            // ApplyTheme below colors the rest of the chrome.
+            bool dark = IsDark();
+            ThemeColors tc = ThemeService.GetColors(dark);
 
             // files__edit -> a colored diff (with a little live file context); command__run -> the
             // command line, syntax-highlighted. Either replaces the raw JSON preview.
             bool handled = false;
             if (req.Arguments != null)
             {
-                bool dark = false;
-                try
-                {
-                    string th = AppSettings.GetString("theme");
-                    dark = !string.IsNullOrEmpty(th) && th.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                }
-                catch { }
-                ThemeColors tc = ThemeService.GetColors(dark);
-
                 if (string.Equals(req.FunctionName, "files__edit", StringComparison.Ordinal))
                 {
                     string path = req.Arguments.Value<string>("path") ?? string.Empty;
@@ -393,6 +486,10 @@ namespace GxPT
             AddRememberButtons(req);
             AddButton("Allow once", ApprovalChoice.AllowOnce, false);
 
+            // Color the panel + the freshly built buttons for the active theme before measuring, so the
+            // button metrics used by LayoutToContent reflect their themed style.
+            ApplyTheme();
+
             // Size to fit the content (buttons built above so their height is counted, including any
             // wrapping at the current width; LayoutToContent measures the details at the live width).
             _handledDetails = handled;
@@ -416,8 +513,8 @@ namespace GxPT
             _onContinue = callback;
 
             _header.Text = "Tool-call limit reached";
+            _currentTier = ToolTier.Write; // informational; reuse the Write (goldenrod) badge color
             _tierBadge.Text = "Paused after " + iterationsSoFar + " tool iteration(s) this turn";
-            _tierBadge.ForeColor = Color.DarkGoldenrod;
 
             _previewLabel.Text = "Details:";
             _preview.Text = "The agent has been working for a long time. Do you want to continue?\r\n\r\n"
@@ -430,6 +527,8 @@ namespace GxPT
             // Added first => rightmost in the RightToLeft flow.
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
+
+            ApplyTheme();
 
             _handledDetails = false;
             LayoutToContent();

@@ -829,6 +829,24 @@ namespace GxPT
             catch { }
         }
 
+        // Re-theme every tab's tool-approval panel after a light<->dark switch: a currently-visible
+        // prompt updates immediately, and hidden ones are already correct when next shown (they also
+        // re-theme themselves in ShowFor). Mirrors how transcripts are refreshed on a theme change.
+        private void ApplyThemeToAllApprovalPanels()
+        {
+            try
+            {
+                if (_tabManager == null) return;
+                foreach (var kv in _tabManager.TabContexts)
+                {
+                    var ctx = kv.Value;
+                    if (ctx != null && ctx.ApprovalPanel != null)
+                        ctx.ApprovalPanel.ApplyTheme();
+                }
+            }
+            catch { }
+        }
+
         // The per-tab sub-agents activity panel (design sec.14), docked at the bottom like the approval
         // panel. Shown only while a dispatch_agent fan-out runs; updated via AgentActivityUiBridge.
         internal void AttachAgentActivityPanel(TabManager.ChatTabContext ctx)
@@ -3821,6 +3839,8 @@ namespace GxPT
                 UpdateApiKeyBanner();
                 try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
                 catch { }
+                // Theme may have changed in Settings; keep open approval prompts in sync.
+                ApplyThemeToAllApprovalPanels();
             }
         }
 
@@ -5474,6 +5494,9 @@ namespace GxPT
 
                 // Status bar follows the UI theme
                 ApplyThemeToStatusBar();
+
+                // Re-theme any open tool-approval prompts so they switch with the rest of the UI
+                ApplyThemeToAllApprovalPanels();
             }
             catch { }
         }

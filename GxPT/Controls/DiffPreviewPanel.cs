@@ -49,6 +49,18 @@ namespace GxPT
             Invalidate();
         }
 
+        // Re-color the already-set content for a light<->dark switch without rebuilding it: keep the
+        // current header/body/language and just swap the palette, re-measure, and repaint.
+        public void ReapplyTheme(bool dark, Color codeBack, Color foreColor)
+        {
+            _dark = dark;
+            _codeBack = codeBack;
+            _foreColor = foreColor;
+            this.BackColor = codeBack;
+            UpdateScrollSize();
+            Invalidate();
+        }
+
         private int HeaderHeight
         {
             get { return string.IsNullOrEmpty(_header) ? 0 : (this.Font != null ? this.Font.Height : 14) + Pad; }
