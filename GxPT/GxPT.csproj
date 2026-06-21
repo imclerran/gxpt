@@ -422,6 +422,13 @@
       <BundledSkillFiles Include="..\skills\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(BundledSkillFiles)" DestinationFiles="@(BundledSkillFiles->'$(OutDir)skills\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" ContinueOnError="true" />
+    <!-- Ship the bundled (first-party) agents next to GxPT.exe in an 'agents' folder. The host's
+         AgentRoots.BundledRoot resolves <exe>/agents, so a shipped agent (explore, plan, ...) is
+         discoverable at runtime. Flat <slug>.md files (design A4). Mirrors the skills copy above. -->
+    <ItemGroup>
+      <BundledAgentFiles Include="..\agents\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BundledAgentFiles)" DestinationFiles="@(BundledAgentFiles->'$(OutDir)agents\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" ContinueOnError="true" />
   </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
        Other similar extension points exist, see Microsoft.Common.targets.
