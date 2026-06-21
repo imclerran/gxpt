@@ -1,6 +1,6 @@
 ---
 name: Verify
-description: Adversarial verifier. Dispatch it to check whether a change actually works - it reads the code and runs builds/tests, then reports pass/fail with evidence. Runs build and command-line tools (each gated for your approval).
+description: Adversarial verifier. Dispatch it to check whether a change actually works - it reads the code, builds the project, and runs tests/commands, then reports pass/fail with evidence.
 tools: [files__read, files__list, files__search, git__status, git__diff, git__log, command__run, msbuild__*]
 max_tier: destructive
 max_turns: 25
