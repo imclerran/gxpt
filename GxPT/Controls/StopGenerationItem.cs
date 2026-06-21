@@ -19,15 +19,22 @@ namespace GxPT
         private bool _hover;
         private bool _pressed;
         private bool _awaiting;
+        private bool _agentsRunning;
 
         private const int PadX = 8;        // horizontal label padding, matching RetryBtnPadX
         public const int ItemHeight = 15;  // tspGenProgress's height
 
         private const string StopText = "Stop";
         private const string AwaitingText = "Awaiting user...";
+        private const string AgentsText = "Sub-agents running...";
 
         private const string StopTip = "Stop generating";
         private const string AwaitingTip = "Waiting for tool approval";
+        private const string AgentsTip = "Sub-agents are running - use Stop in the panel above to cancel them";
+
+        // Either passive state drops the button chrome and shows a status label instead (the turn isn't
+        // stopping from here: it's paused at a prompt, or its work is happening in sub-agents).
+        private bool Passive { get { return _awaiting || _agentsRunning; } }
 
         public StopGenerationItem()
         {
@@ -43,18 +50,28 @@ namespace GxPT
         public bool Awaiting
         {
             get { return _awaiting; }
-            set
-            {
-                if (_awaiting == value) return;
-                _awaiting = value;
-                _hover = false;
-                _pressed = false;
-                this.Text = value ? AwaitingText : StopText;
-                this.ToolTipText = value ? AwaitingTip : StopTip;
-                try { this.Width = PreferredWidth(); }
-                catch { }
-                Invalidate();
-            }
+            set { if (_awaiting != value) { _awaiting = value; OnPassiveChanged(); } }
+        }
+
+        // While a dispatch_agent fan-out runs, the turn is busy but the work is in the sub-agents (cancel
+        // them with the panel's Stop button); this item shows a passive "Sub-agents running..." label, the
+        // host keeps the marquee running, and clicks here are ignored.
+        public bool AgentsRunning
+        {
+            get { return _agentsRunning; }
+            set { if (_agentsRunning != value) { _agentsRunning = value; OnPassiveChanged(); } }
+        }
+
+        private void OnPassiveChanged()
+        {
+            _hover = false;
+            _pressed = false;
+            if (_awaiting) { this.Text = AwaitingText; this.ToolTipText = AwaitingTip; }
+            else if (_agentsRunning) { this.Text = AgentsText; this.ToolTipText = AgentsTip; }
+            else { this.Text = StopText; this.ToolTipText = StopTip; }
+            try { this.Width = PreferredWidth(); }
+            catch { }
+            Invalidate();
         }
 
         protected override Size DefaultSize
@@ -77,9 +94,9 @@ namespace GxPT
             catch { }
         }
 
-        protected override void OnMouseEnter(EventArgs e) { if (!_awaiting) { _hover = true; Invalidate(); } base.OnMouseEnter(e); }
+        protected override void OnMouseEnter(EventArgs e) { if (!Passive) { _hover = true; Invalidate(); } base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { _hover = false; _pressed = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { if (!_awaiting && e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); } base.OnMouseDown(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (!Passive && e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); } base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; Invalidate(); base.OnMouseUp(e); }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -89,10 +106,10 @@ namespace GxPT
 
             Rectangle bounds = new Rectangle(0, 0, this.Width, this.Height);
 
-            // Awaiting state: a flat status label, no border/fill, so it reads as passive text rather
-            // than a clickable Stop button. Uses ControlText (like the strip's other labels) rather
-            // than the lighter GrayText, which next to them reads as thinner/smaller.
-            if (_awaiting)
+            // Passive state (awaiting a prompt, or sub-agents running): a flat status label, no
+            // border/fill, so it reads as passive text rather than a clickable Stop button. Uses
+            // ControlText (like the strip's other labels) rather than the lighter GrayText.
+            if (Passive)
             {
                 TextRenderer.DrawText(g, this.Text, this.Font, bounds, SystemColors.ControlText,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |

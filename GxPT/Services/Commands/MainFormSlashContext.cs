@@ -12,6 +12,7 @@ namespace GxPT
         private readonly IModelControl _models;
         private readonly IServerControl _servers;
         private readonly ISkillEnablementStore _skills;
+        private readonly IAgentEnablementStore _agents;
 
         public MainFormSlashContext(MainForm form)
         {
@@ -19,6 +20,7 @@ namespace GxPT
             _models = new MainFormModelControl(form);
             _servers = new MainFormServerControl(form);
             _skills = new MainFormSkillStore(form);
+            _agents = new MainFormAgentStore(form);
         }
 
         public string WorkingDir { get { return _form.SlashWorkingDir(); } }
@@ -28,6 +30,7 @@ namespace GxPT
         public IModelControl Models { get { return _models; } }
         public IServerControl Servers { get { return _servers; } }
         public ISkillEnablementStore Skills { get { return _skills; } }
+        public IAgentEnablementStore Agents { get { return _agents; } }
 
         public void NewConversation() { _form.SlashNewConversation(); }
         public void ExportConversations() { _form.SlashExportConversations(); }
@@ -67,5 +70,14 @@ namespace GxPT
         public void SetConversationSkillOverride(string slug, bool? value) { _form.SlashSetConversationSkillOverride(slug, value); }
         public void ResetConversationSkills() { _form.SlashResetConversationSkills(); }
         public void RefreshSkillsServer() { _form.SlashRefreshSkillsServer(); }
+    }
+
+    internal sealed class MainFormAgentStore : IAgentEnablementStore
+    {
+        private readonly MainForm _form;
+        public MainFormAgentStore(MainForm form) { _form = form; }
+
+        public bool? GetConversationAgentsEnabled() { return _form.SlashGetConversationAgentsEnabled(); }
+        public void SetConversationAgentsEnabled(bool? value) { _form.SlashSetConversationAgentsEnabled(value); }
     }
 }

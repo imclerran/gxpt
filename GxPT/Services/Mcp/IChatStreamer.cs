@@ -24,8 +24,10 @@ namespace GxPT
     internal interface IToolLoopUi
     {
         void AppendTextDelta(string text);
-        void OnToolCall(string functionName, string argumentsJson);
-        void OnToolResult(string functionName, string resultText, bool isError);
+        // callId is the model-assigned tool-call id (may be null for some providers); the host uses it as
+        // the stable key for a tool record so the live and reloaded views share one identity.
+        void OnToolCall(string functionName, string argumentsJson, string callId);
+        void OnToolResult(string functionName, string resultText, bool isError, string callId);
         void OnError(string message);
         void Complete();
     }

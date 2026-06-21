@@ -41,6 +41,27 @@ namespace GxPT.Tests.Mcp
             return new ToolApprovalPolicy(new ToolClassifier(), prompt, store, annotations);
         }
 
+        // ---- TierOf (used by the sub-agent tool resolver) ----
+
+        [Fact]
+        public void TierOf_FirstParty_MatchesTable()
+        {
+            var pol = Policy(new ScriptedPrompt(), new InMemoryApprovalStore());
+            Assert.Equal(ToolTier.ReadOnly, pol.TierOf("files__read"));
+            Assert.Equal(ToolTier.Write, pol.TierOf("files__write"));
+            Assert.Equal(ToolTier.Destructive, pol.TierOf("files__delete"));
+        }
+
+        [Fact]
+        public void TierOf_ThirdParty_UsesAnnotations_FailsClosed()
+        {
+            var ann = new FakeAnnotations().Set("acme__peek", JObject.Parse("{\"readOnlyHint\":true}"));
+            var pol = Policy(new ScriptedPrompt(), new InMemoryApprovalStore(), ann);
+            Assert.Equal(ToolTier.ReadOnly, pol.TierOf("acme__peek"));
+            // Unknown third-party with no annotation must not classify as ReadOnly (fails closed).
+            Assert.NotEqual(ToolTier.ReadOnly, pol.TierOf("acme__unknown"));
+        }
+
         // ---- classification (spec §2) ----
 
         [Fact]

@@ -56,6 +56,10 @@ namespace GxPT
         // = force off); a slug absent inherits the global default. Set by the /toggle-skills and /toggle-skill commands.
         public bool? SkillsFeatureOff { get; set; }
         public Dictionary<string, bool> SkillOverrides { get; set; }
+        // Per-conversation sub-agents feature override (design A15/sec.7): null = inherit the global
+        // default (settings.json agents_enabled), true = on, false = off. No per-agent state. Set by the
+        // /toggle-agents command.
+        public bool? AgentsEnabled { get; set; }
         // Server-qualified MCP tool names this conversation has revealed, in recency order (reveal
         // and call both move a name to the end). Owned by the conversation - not the registry - so
         // concurrent tabs don't share reveal state (which would churn each other's tools array and
@@ -95,6 +99,16 @@ namespace GxPT
         // counted as zero, so totals stay "sum of what was billed and reported".
         internal void RecordUsage(ResponseUsage u)
         {
+            RecordUsage(u, true);
+        }
+
+        // updateContextGauge=false records a request's cost/token TOTALS without moving the "newest
+        // request's context size" gauge (Last* fields). Used for sub-agent (dispatch_agent) usage: a child
+        // runs in an isolated context, so the user is still billed for it (totals), but its prompt size
+        // must not be shown as this conversation's context fill - that gauge tracks the parent's own
+        // requests only.
+        internal void RecordUsage(ResponseUsage u, bool updateContextGauge)
+        {
             if (u == null) return;
             lock (_usageGate)
             {
@@ -104,9 +118,12 @@ namespace GxPT
                 TotalCachedTokens += u.CachedTokens;
                 TotalCompletionTokens += u.CompletionTokens;
                 TotalReasoningTokens += u.ReasoningTokens;
-                LastPromptTokens = u.PromptTokens;
-                LastCachedTokens = u.CachedTokens;
-                LastCacheWriteTokens = u.CacheWriteTokens;
+                if (updateContextGauge)
+                {
+                    LastPromptTokens = u.PromptTokens;
+                    LastCachedTokens = u.CachedTokens;
+                    LastCacheWriteTokens = u.CacheWriteTokens;
+                }
             }
             LastUpdated = DateTime.Now;
         }

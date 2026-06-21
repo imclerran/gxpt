@@ -69,6 +69,22 @@
     <Compile Include="..\GxPT\Services\Skills\SkillEnablement.cs" Link="Linked\Skills\SkillEnablement.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillResolve.cs" Link="Linked\Skills\SkillResolve.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillToolGate.cs" Link="Linked\Skills\SkillToolGate.cs" />
+    <Compile Include="..\GxPT\Services\Agents\Agent.cs" Link="Linked\Agents\Agent.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentFrontmatter.cs" Link="Linked\Agents\AgentFrontmatter.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentCatalog.cs" Link="Linked\Agents\AgentCatalog.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentRoots.cs" Link="Linked\Agents\AgentRoots.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentToolResolver.cs" Link="Linked\Agents\AgentToolResolver.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentAvailability.cs" Link="Linked\Agents\AgentAvailability.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentInjection.cs" Link="Linked\Agents\AgentInjection.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentEnablement.cs" Link="Linked\Agents\AgentEnablement.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentDispatcher.cs" Link="Linked\Agents\AgentDispatcher.cs" />
+    <Compile Include="..\GxPT\Services\Agents\IAgentLiveSink.cs" Link="Linked\Agents\IAgentLiveSink.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentLiveStream.cs" Link="Linked\Agents\AgentLiveStream.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentTranscript.cs" Link="Linked\Agents\AgentTranscript.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentTranscriptStore.cs" Link="Linked\Agents\AgentTranscriptStore.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentTranscriptPersistence.cs" Link="Linked\Agents\AgentTranscriptPersistence.cs" />
+    <Compile Include="..\GxPT\Services\Agents\AgentTranscriptLinks.cs" Link="Linked\Agents\AgentTranscriptLinks.cs" />
+    <Compile Include="..\GxPT\Services\Agents\IAgentActivityUi.cs" Link="Linked\Agents\IAgentActivityUi.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandKind.cs" Link="Linked\Commands\SlashCommandKind.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandResult.cs" Link="Linked\Commands\SlashCommandResult.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashArgs.cs" Link="Linked\Commands\SlashArgs.cs" />
@@ -76,6 +92,8 @@
     <Compile Include="..\GxPT\Services\Commands\IModelControl.cs" Link="Linked\Commands\IModelControl.cs" />
     <Compile Include="..\GxPT\Services\Commands\IServerControl.cs" Link="Linked\Commands\IServerControl.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISkillEnablementStore.cs" Link="Linked\Commands\ISkillEnablementStore.cs" />
+    <Compile Include="..\GxPT\Services\Commands\IAgentEnablementStore.cs" Link="Linked\Commands\IAgentEnablementStore.cs" />
+    <Compile Include="..\GxPT\Services\Commands\AgentCommands.cs" Link="Linked\Commands\AgentCommands.cs" />
     <Compile Include="..\GxPT\Services\Commands\ISlashCommand.cs" Link="Linked\Commands\ISlashCommand.cs" />
     <Compile Include="..\GxPT\Services\Commands\WorkspacePath.cs" Link="Linked\Commands\WorkspacePath.cs" />
     <Compile Include="..\GxPT\Services\Commands\IArgumentCompleter.cs" Link="Linked\Commands\IArgumentCompleter.cs" />

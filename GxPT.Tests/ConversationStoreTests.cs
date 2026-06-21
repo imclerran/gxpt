@@ -37,6 +37,28 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void RoundTrip_PreservesAgentsEnabled()
+        {
+            var convo = new Conversation(null);
+            convo.Id = "abc";
+            convo.AgentsEnabled = true;
+
+            var loaded = ConversationStore.LoadFromJson(null, ConversationStore.ToJson(convo));
+            Assert.Equal(true, loaded.AgentsEnabled);
+
+            convo.AgentsEnabled = false;
+            loaded = ConversationStore.LoadFromJson(null, ConversationStore.ToJson(convo));
+            Assert.Equal(false, loaded.AgentsEnabled);
+        }
+
+        [Fact]
+        public void LoadFromJson_MissingAgentsEnabled_InheritsGlobal()
+        {
+            var convo = ConversationStore.LoadFromJson(null, "{\"Id\":\"x\",\"Name\":\"N\",\"Messages\":[]}");
+            Assert.Null(convo.AgentsEnabled);   // absent -> inherit the global default
+        }
+
+        [Fact]
         public void LoadFromJson_NullOrEmpty_ReturnsNull()
         {
             Assert.Null(ConversationStore.LoadFromJson(null, null));

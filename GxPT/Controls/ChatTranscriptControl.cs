@@ -211,6 +211,9 @@ namespace GxPT
         public event Action<int, string> UserMessageEditRequested;
         // Raised when the user clicks the Retry button on a trailing error notice
         public event Action RetryRequested;
+        // Raised when the user clicks an agent "View transcript" link (the custom gxpt-agent: scheme); the
+        // host opens the read-only child transcript viewer instead of launching a browser.
+        public event Action<string> AgentTranscriptLinkClicked;
         // Hover/drag state for code block UI
         private MessageItem _hoverCopyItem;
         private int _hoverCopyCodeIndex = -1;
@@ -302,6 +305,9 @@ namespace GxPT
             public string HeaderText;
             public string Body;
             public string Language;
+            // When true the body is rendered with the normal Markdown renderer (DrawBlocks) instead of
+            // the syntax-highlighted code path - used for prose-style records like dispatch_agent.
+            public bool BodyIsMarkdown;
             public int Added = -1;
             public int Removed = -1;
         }
@@ -328,6 +334,8 @@ namespace GxPT
                     HeaderText = headerText ?? string.Empty,
                     Body = body ?? string.Empty,
                     Language = language ?? "text",
+                    BodyIsMarkdown = !string.IsNullOrEmpty(language)
+                        && language.Equals("markdown", StringComparison.OrdinalIgnoreCase),
                     Added = added,
                     Removed = removed
                 };
@@ -1221,7 +1229,13 @@ namespace GxPT
                                     + (countsText.Length > 0 ? TextRenderer.MeasureText(countsText, _baseFont).Width : 0);
                         int w = headerW;
                         int h = headerH;
-                        if (hasBody && !collapsed)
+                        if (hasBody && !collapsed && data.BodyIsMarkdown)
+                        {
+                            Size body = MeasureMarkdownBlocks(MarkdownParser.ParseMarkdown(data.Body), maxWidth);
+                            h += EditDiffBodyGap + body.Height + EditDiffBodyPad;
+                            w = Math.Max(w, body.Width);
+                        }
+                        else if (hasBody && !collapsed)
                         {
                             using (Graphics g = CreateGraphics())
                             {
@@ -1283,6 +1297,30 @@ namespace GxPT
                     }
             }
             return Size.Empty;
+        }
+
+        // Measures a list of Markdown blocks the same way a message body is measured (MeasureBlock plus
+        // the per-block-type trailing spacing in the height loop), so the value matches what DrawBlocks
+        // consumes. Used for tool records whose body is rendered as Markdown rather than highlighted code.
+        private Size MeasureMarkdownBlocks(List<Block> blocks, int maxWidth)
+        {
+            int h = 0;
+            int w = 0;
+            var numberedCounters = new Dictionary<int, int>();
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block blk = blocks[i];
+                if (blk.Type != BlockType.NumberedList && blk.Type != BlockType.BulletList)
+                    numberedCounters.Clear();
+                Size sz = MeasureBlock(blk, maxWidth, numberedCounters);
+                h += sz.Height;
+                if (blk.Type == BlockType.Heading) h += 4;
+                else if (blk.Type == BlockType.Paragraph) h += 2;
+                else if (blk.Type == BlockType.CodeBlock) h += 4;
+                else if (blk.Type == BlockType.Error) h += 2;
+                w = Math.Max(w, sz.Width);
+            }
+            return new Size(Math.Min(maxWidth, w), h);
         }
 
         // Build the inline runs for an error notice. The message is treated as literal text (no
@@ -1794,9 +1832,22 @@ namespace GxPT
                     }
                     y += headerH;
 
+                    // Expanded body. A Markdown record (e.g. dispatch_agent) reuses the normal block
+                    // renderer so bold/tables/etc. render as formatting; everything else is the
+                    // chromeless highlighted code body below.
+                    if (hasBody && !collapsed && data.BodyIsMarkdown)
+                    {
+                        y += EditDiffBodyGap;
+                        List<Block> bodyBlocks = MarkdownParser.ParseMarkdown(data.Body);
+                        int bodyH = MeasureMarkdownBlocks(bodyBlocks, maxWidth).Height;
+                        // Pass the owner so tables (TableScroll state) and copy work; the body's blocks
+                        // carry no EditDiff sentinels, so there's no re-entrancy.
+                        DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, owner);
+                        y += bodyH + EditDiffBodyPad;
+                    }
                     // Expanded: chromeless highlighted body, clipped to width (with horizontal scroll
                     // for over-wide content).
-                    if (hasBody && !collapsed)
+                    else if (hasBody && !collapsed)
                     {
                         y += EditDiffBodyGap;
                         SyntaxHighlightingRenderer.EnqueueHighlight(data.Language, _isDarkTheme, data.Body, _monoFont);
@@ -2785,6 +2836,14 @@ namespace GxPT
                     string link = HitTestLink(e.Location);
                     if (!string.IsNullOrEmpty(link))
                     {
+                        // Agent "View transcript" links are handled in-app (open the read-only viewer),
+                        // never launched as a URL.
+                        if (AgentTranscriptLinks.IsTranscriptLink(link))
+                        {
+                            Action<string> h = AgentTranscriptLinkClicked;
+                            if (h != null) h(link);
+                            return;
+                        }
                         try
                         {
                             string supermiumPath = @"C:\\Program Files\\Supermium\\chrome.exe";

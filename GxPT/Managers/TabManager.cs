@@ -66,6 +66,12 @@ namespace GxPT
             // The per-tab tool-approval panel docked at the bottom of this tab's transcript (set by
             // MainForm). A pending approval shows only on the conversation that requested it.
             public ToolApprovalPanel ApprovalPanel;
+            // The per-tab sub-agents activity panel docked at the bottom (set by MainForm). Shown only
+            // while a dispatch_agent fan-out runs on this tab's conversation.
+            public AgentActivityPanel AgentActivityPanel;
+            // True while a dispatch_agent fan-out is running on this tab - drives the status bar's passive
+            // "Sub-agents running..." indicator (set by AgentActivityUiBridge).
+            public bool AgentsFanOutActive;
             // The in-flight request's cancellation handle (null when idle). The status bar's Stop
             // button calls Cancel() on it to kill the model request.
             public RequestCancellation Cancellation;
@@ -695,6 +701,10 @@ namespace GxPT
                 {
                     try { if (kv.Value.Transcript != null) kv.Value.Transcript.RefreshTheme(); }
                     catch { }
+                    // The agent activity panel is owner-drawn and reads the theme in OnPaint, so a theme
+                    // toggle while it is visible needs an explicit repaint (it ignores BackColor/ForeColor).
+                    try { if (kv.Value.AgentActivityPanel != null) kv.Value.AgentActivityPanel.Invalidate(); }
+                    catch { }
                 }
             }
             catch { }
@@ -754,6 +764,12 @@ namespace GxPT
             ctx.Transcript.RetryRequested += delegate
             {
                 try { _mainForm.RetryLastTurn(ctx); }
+                catch { }
+            };
+            // A dispatch_agent record's "View transcript" link opens the read-only child viewer (tier 3).
+            ctx.Transcript.AgentTranscriptLinkClicked += delegate(string url)
+            {
+                try { _mainForm.OpenAgentTranscript(url); }
                 catch { }
             };
         }

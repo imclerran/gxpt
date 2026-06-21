@@ -93,6 +93,8 @@
             this.chkMcpMsBuild = new System.Windows.Forms.CheckBox();
             this.chkMcpCommandScratch = new System.Windows.Forms.CheckBox();
             this.grpMcpCustom = new System.Windows.Forms.GroupBox();
+            this.grpAgents = new System.Windows.Forms.GroupBox();
+            this.chkAgents = new System.Windows.Forms.CheckBox();
             this.tblMcpCustom = new System.Windows.Forms.TableLayoutPanel();
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
@@ -122,6 +124,7 @@
             this.grpMcpWeb.SuspendLayout();
             this.tblMcpWeb.SuspendLayout();
             this.grpMcpWorkspace.SuspendLayout();
+            this.grpAgents.SuspendLayout();
             this.tblMcpWorkspace.SuspendLayout();
             this.tblMcpKeyless.SuspendLayout();
             this.grpMcpCustom.SuspendLayout();
@@ -754,13 +757,15 @@
             this.tblMcp.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblMcp.Controls.Add(this.grpMcpWeb, 0, 0);
             this.tblMcp.Controls.Add(this.grpMcpWorkspace, 0, 1);
-            this.tblMcp.Controls.Add(this.grpMcpCustom, 0, 2);
+            this.tblMcp.Controls.Add(this.grpAgents, 0, 2);
+            this.tblMcp.Controls.Add(this.grpMcpCustom, 0, 3);
             this.tblMcp.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tblMcp.Location = new System.Drawing.Point(3, 3);
             this.tblMcp.Name = "tblMcp";
-            this.tblMcp.RowCount = 3;
+            this.tblMcp.RowCount = 4;
             this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 86F));
             this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 84F));
+            this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
             this.tblMcp.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblMcp.Size = new System.Drawing.Size(590, 357);
             this.tblMcp.TabIndex = 0;
@@ -953,9 +958,32 @@
             this.grpMcpCustom.Name = "grpMcpCustom";
             this.grpMcpCustom.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
             this.grpMcpCustom.Size = new System.Drawing.Size(584, 187);
-            this.grpMcpCustom.TabIndex = 2;
+            this.grpMcpCustom.TabIndex = 3;
             this.grpMcpCustom.TabStop = false;
             this.grpMcpCustom.Text = "Custom servers (mcp.json)";
+            //
+            // grpAgents
+            //
+            this.grpAgents.Controls.Add(this.chkAgents);
+            this.grpAgents.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.grpAgents.Location = new System.Drawing.Point(3, 173);
+            this.grpAgents.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.grpAgents.Name = "grpAgents";
+            this.grpAgents.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
+            this.grpAgents.Size = new System.Drawing.Size(584, 48);
+            this.grpAgents.TabIndex = 2;
+            this.grpAgents.TabStop = false;
+            this.grpAgents.Text = "Sub-agents";
+            //
+            // chkAgents
+            //
+            this.chkAgents.AutoSize = true;
+            this.chkAgents.Location = new System.Drawing.Point(9, 20);
+            this.chkAgents.Name = "chkAgents";
+            this.chkAgents.Size = new System.Drawing.Size(320, 17);
+            this.chkAgents.TabIndex = 0;
+            this.chkAgents.Text = "Enable sub-agents (delegate sub-tasks to specialist agents)";
+            this.chkAgents.UseVisualStyleBackColor = true;
             //
             // tblMcpCustom
             //
@@ -1032,6 +1060,8 @@
             this.tblMcpWeb.ResumeLayout(false);
             this.tblMcpWeb.PerformLayout();
             this.grpMcpWorkspace.ResumeLayout(false);
+            this.grpAgents.ResumeLayout(false);
+            this.grpAgents.PerformLayout();
             this.tblMcpWorkspace.ResumeLayout(false);
             this.tblMcpWorkspace.PerformLayout();
             this.tblMcpKeyless.ResumeLayout(false);
@@ -1100,6 +1130,8 @@
         private System.Windows.Forms.TableLayoutPanel tblMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpKeyless;
         private System.Windows.Forms.GroupBox grpMcpCustom;
+        private System.Windows.Forms.GroupBox grpAgents;
+        private System.Windows.Forms.CheckBox chkAgents;
         private System.Windows.Forms.TableLayoutPanel tblMcpCustom;
         private System.Windows.Forms.CheckBox chkMcpWeb;
         private System.Windows.Forms.TextBox txtWebSearchKey;

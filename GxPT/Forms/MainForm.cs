@@ -797,6 +797,7 @@ namespace GxPT
                 // Bottom approval panel. Add the docked siblings, then send the transcript to front.
                 ctx.Page.Controls.Add(strip);
                 AttachApprovalPanel(ctx);
+                AttachAgentActivityPanel(ctx);
                 if (ctx.Transcript != null) ctx.Transcript.BringToFront();
                 strip.SetWorkingDir(ctx.WorkingDir);
                 // Honor a persisted dismissal (only meaningful when no folder is set; setting one
@@ -823,6 +824,20 @@ namespace GxPT
                 // While this tab's prompt awaits the user, pause the status-bar marquee and swap the
                 // Stop button for an "awaiting user..." label (only when this is the active tab).
                 panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
+                ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
+            }
+            catch { }
+        }
+
+        // The per-tab sub-agents activity panel (design sec.14), docked at the bottom like the approval
+        // panel. Shown only while a dispatch_agent fan-out runs; updated via AgentActivityUiBridge.
+        internal void AttachAgentActivityPanel(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null || ctx.Page == null) return;
+            try
+            {
+                AgentActivityPanel panel = new AgentActivityPanel();
+                ctx.AgentActivityPanel = panel;
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
@@ -873,6 +888,14 @@ namespace GxPT
             catch { }
         }
 
+        // Called by AgentActivityUiBridge (on the UI thread) when a fan-out starts/ends on a tab, so the
+        // status bar's passive "Sub-agents running..." indicator tracks it.
+        internal void NotifyAgentFanOutChanged(TabManager.ChatTabContext ctx, bool active)
+        {
+            if (ctx != null) ctx.AgentsFanOutActive = active;
+            SyncGenerationIndicatorFromActiveTab();
+        }
+
         private void SyncGenerationIndicatorFromActiveTab()
         {
             try
@@ -882,12 +905,15 @@ namespace GxPT
                 // The turn is paused at an approval/continuation gate when the active tab's prompt is
                 // up: pause the marquee and show "awaiting user..." in place of the Stop button.
                 bool awaiting = busy && act.ApprovalPanel != null && act.ApprovalPanel.IsPromptVisible;
-                SetGenerationIndicatorVisible(busy, awaiting);
+                // A dispatch_agent fan-out is running: keep the marquee going but show a passive
+                // "Sub-agents running..." label (cancel them from the panel). Approval takes priority.
+                bool agentsRunning = busy && act.AgentsFanOutActive && !awaiting;
+                SetGenerationIndicatorVisible(busy, awaiting, agentsRunning);
             }
             catch { }
         }
 
-        private void SetGenerationIndicatorVisible(bool busy, bool awaiting)
+        private void SetGenerationIndicatorVisible(bool busy, bool awaiting, bool agentsRunning)
         {
             try
             {
@@ -905,6 +931,7 @@ namespace GxPT
                 if (this.tsiStopGen != null)
                 {
                     this.tsiStopGen.Awaiting = awaiting;
+                    this.tsiStopGen.AgentsRunning = agentsRunning;
                     this.tsiStopGen.Visible = busy;
                 }
                 // The slot's idle face: the active conversation's tool/skill counts. Refresh before
@@ -915,6 +942,8 @@ namespace GxPT
                 if (this.tslToolsValue != null) this.tslToolsValue.Visible = !busy;
                 if (this.tslSkills != null) this.tslSkills.Visible = !busy;
                 if (this.tslSkillsValue != null) this.tslSkillsValue.Visible = !busy;
+                if (this.tslAgents != null) this.tslAgents.Visible = !busy;
+                if (this.tslAgentsValue != null) this.tslAgentsValue.Visible = !busy;
             }
             catch { }
         }
@@ -956,8 +985,91 @@ namespace GxPT
                 if (this.tslSkills != null) this.tslSkills.Text = "Skills:";
                 if (this.tslSkillsValue != null)
                     this.tslSkillsValue.Text = enabledSkills.Count.ToString(inv);
+
+                // Agents (after Skills): how many sub-agents are usable on the next turn. "Usable" means the
+                // agent's required tools are actually available here (runtime per-agent enablement), matching
+                // the send path's filter. The tooltip lists the enabled ones and, for any disabled, what to
+                // turn on (e.g. web-research needs the web tools).
+                int agentCount = 0;
+                string agentTip = "Sub-agents available to this conversation";
+                bool agentsOn = AgentEnablement.FeatureEnabled(convo != null ? convo.AgentsEnabled : null);
+                if (!agentsOn)
+                {
+                    agentTip = "Sub-agents are off. Turn them on in Settings (Tools) or with /toggle-agents.";
+                }
+                else
+                {
+                    AgentCatalog acat = AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, workdir);
+                    if (acat.Agents.Count == 0)
+                    {
+                        agentTip = "No agents found. Add <slug>.md files under the app's agents folder, "
+                            + "%AppData%/GxPT/agents, or <workspace>/.gxpt/agents.";
+                    }
+                    else
+                    {
+                        IList<string> aNames = (_mcpRegistry != null)
+                            ? _mcpRegistry.NamesForWorkdir(workdir) : (IList<string>)new List<string>();
+                        Func<string, ToolTier> agentTierOf = AgentTierOf();
+                        // Three buckets: full use (all tools available), degraded (usable but missing some),
+                        // disabled (no tools available). The status-bar count is full + degraded (all usable).
+                        List<string> fullLines = new List<string>();
+                        List<string> degradedLines = new List<string>();
+                        List<string> disabledLines = new List<string>();
+                        for (int i = 0; i < acat.Agents.Count; i++)
+                        {
+                            Agent a = acat.Agents[i];
+                            List<string> need = AgentAvailability.MissingTools(a, aNames);
+                            string missing = need.Count > 0 ? " (missing " + string.Join(", ", need.ToArray()) + ")" : "";
+                            if (AgentAvailability.IsAvailable(a, aNames, agentTierOf))
+                            {
+                                agentCount++;
+                                if (need.Count > 0) degradedLines.Add("  " + a.Slug + missing);
+                                else fullLines.Add("  " + a.Slug);
+                            }
+                            else
+                            {
+                                disabledLines.Add("  " + a.Slug + (need.Count > 0 ? missing : " (no available tools)"));
+                            }
+                        }
+                        System.Text.StringBuilder tip = new System.Text.StringBuilder();
+                        AppendAgentSection(tip, "Full use", fullLines);
+                        AppendAgentSection(tip, "Degraded", degradedLines);
+                        AppendAgentSection(tip, "Disabled", disabledLines);
+                        agentTip = tip.ToString();
+                    }
+                }
+                if (this.tslAgents != null) { this.tslAgents.Text = "Agents:"; this.tslAgents.ToolTipText = agentTip; }
+                if (this.tslAgentsValue != null)
+                {
+                    this.tslAgentsValue.Text = agentCount.ToString(inv);
+                    this.tslAgentsValue.ToolTipText = agentTip;
+                }
             }
             catch { }
+        }
+
+        // A tool->tier classifier for status-bar agent availability (workdir-independent classification,
+        // built fresh and cheap). Mirrors the send path's tierOf (the approval policy's classification);
+        // first-party agent tools are classified by the hardcoded table, so annotations are best-effort.
+        private Func<string, ToolTier> AgentTierOf()
+        {
+            try
+            {
+                ToolApprovalPolicy p = new ToolApprovalPolicy(new ToolClassifier(), null, null,
+                    _mcpRegistry as IToolAnnotationSource);
+                return p.TierOf;
+            }
+            catch { return null; }
+        }
+
+        // Appends a "<header> (N):" section + its indented lines to the agents tooltip; skips empty sections,
+        // and separates non-first sections with a blank line.
+        private static void AppendAgentSection(System.Text.StringBuilder sb, string header, List<string> lines)
+        {
+            if (sb == null || lines == null || lines.Count == 0) return;
+            if (sb.Length > 0) sb.Append("\r\n\r\n");
+            sb.Append(header).Append(" (").Append(lines.Count).Append("):");
+            for (int i = 0; i < lines.Count; i++) sb.Append("\r\n").Append(lines[i]);
         }
 
         // The tool registry changed (a server connected, refreshed its tools, or went away) on a
@@ -981,9 +1093,10 @@ namespace GxPT
         // cancel the active tab's request.
         private void tsiStopGen_Click(object sender, EventArgs e)
         {
-            // While the item shows "awaiting user...", there's nothing to stop (the turn is paused at
-            // an approval gate); ignore clicks so it behaves as a passive label.
-            if (this.tsiStopGen != null && this.tsiStopGen.Awaiting) return;
+            // While the item shows a passive label ("awaiting user..." at an approval gate, or
+            // "sub-agents running..." during a fan-out - cancel those from the panel), there's nothing to
+            // stop from here; ignore clicks.
+            if (this.tsiStopGen != null && (this.tsiStopGen.Awaiting || this.tsiStopGen.AgentsRunning)) return;
             try { CancelActiveRequest(_tabManager != null ? _tabManager.GetActiveContext() : null); }
             catch { }
         }
@@ -1656,6 +1769,7 @@ namespace GxPT
             var all = new List<ISlashCommand>();
             all.AddRange(ClientCommands.BuiltIns());
             all.AddRange(SkillCommandShared.BuiltIns());
+            all.AddRange(AgentCommands.BuiltIns());
             all.AddRange(SlashCommandConfig.LoadMerged(userJson, LoggerSink.Instance));
 
             _slashRegistry = new SlashCommandRegistry(all);
@@ -1795,6 +1909,20 @@ namespace GxPT
             var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
             if (c == null || c.Conversation == null) return;
             c.Conversation.SkillsFeatureOff = value;
+            SaveConversationContext(c);
+        }
+
+        internal bool? SlashGetConversationAgentsEnabled()
+        {
+            var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
+            return (c != null && c.Conversation != null) ? c.Conversation.AgentsEnabled : null;
+        }
+
+        internal void SlashSetConversationAgentsEnabled(bool? value)
+        {
+            var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
+            if (c == null || c.Conversation == null) return;
+            c.Conversation.AgentsEnabled = value;
             SaveConversationContext(c);
         }
 
@@ -2623,6 +2751,55 @@ namespace GxPT
         // the turn restarts over the unchanged history — this holds for both the plain stream (the
         // user message is committed before the request) and the tool loop (the orchestrator's partial
         // progress stays in history, same as when the user keeps typing after a failure).
+        private static string ConvId(TabManager.ChatTabContext ctx)
+        {
+            return (ctx != null && ctx.Conversation != null) ? ctx.Conversation.Id : null;
+        }
+
+        // Open the live, streaming viewer for a running child agent (the panel's per-row "View transcript",
+        // tier 3 "watch live"). Modeless, so the user can keep watching while the fan-out continues (and
+        // still hit "Stop agents"). A null stream means the child already finished and its stream was
+        // dropped - fall back to a short notice.
+        internal void OpenAgentLiveTranscript(AgentLiveStream stream)
+        {
+            if (stream == null)
+            {
+                MessageBox.Show(this, "That agent has finished. Open its transcript from the dispatch record below.",
+                    "Agent transcript", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(stream);
+                viewer.Show(this);
+            }
+            catch { }
+        }
+
+        // Open the read-only child-transcript viewer for a dispatch_agent "View transcript" link (tier 3).
+        // The link encodes the dispatch record's key + agent slot; resolve it against the session cache. A
+        // miss (cache evicted, or a record reloaded from history after restart) shows a short notice rather
+        // than nothing, so the click is never silently dead.
+        internal void OpenAgentTranscript(string url)
+        {
+            string key; int slot;
+            if (!AgentTranscriptLinks.TryParse(url, out key, out slot)) return;
+            AgentTranscript t = AgentTranscriptStore.Get(key, slot);
+            if (t == null)
+            {
+                MessageBox.Show(this,
+                    "This agent's transcript is no longer available (it is kept only for the current session).",
+                    "Agent transcript", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                using (AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(t))
+                    viewer.ShowDialog(this);
+            }
+            catch { }
+        }
+
         internal void RetryLastTurn(TabManager.ChatTabContext ctx)
         {
             if (ctx == null || ctx.Conversation == null || ctx.Transcript == null) return;
@@ -2998,6 +3175,64 @@ namespace GxPT
                     ICollection<string> hiddenTools = SkillToolGate.HiddenTools(enabledSkills);
                     if (hiddenTools.Count > 0) orch.HiddenToolNames = hiddenTools;
 
+                    // Sub-agents: when the agents feature is enabled (settings.json `agents_enabled`),
+                    // discover all agents under <exe>/agents + <workdir>/.gxpt/agents + %AppData%/GxPT/agents
+                    // and expose the manifest + dispatch_agent. Rebuilt per send, so on-disk edits take
+                    // effect on the next turn. No per-agent enablement (design A15); the conversation
+                    // override (/toggle-agents here) wins over the global settings.json default.
+                    // Hoisted so onToolResult (below) can snapshot the most recent fan-out's child
+                    // transcripts under the dispatch record's key for the tier-3 viewer.
+                    AgentDispatcher dispatcherForTurn = null;
+                    if (AgentEnablement.FeatureEnabled(convo != null ? convo.AgentsEnabled : null))
+                    {
+                        AgentCatalog agentCatalog =
+                            AgentRoots.BuildCatalog(AppDomain.CurrentDomain.BaseDirectory, ctx.WorkingDir);
+                        if (agentCatalog.Agents.Count > 0)
+                        {
+                            // tierOf reuses the approval policy's classification so an agent's max_tier
+                            // ceiling matches the gate; the AllowAll fallback (no policy) leaves it null
+                            // and the resolver treats every tool as Write.
+                            Func<string, ToolTier> tierOf = null;
+                            ToolApprovalPolicy tap = approval as ToolApprovalPolicy;
+                            if (tap != null) tierOf = tap.TierOf;
+                            // Runtime per-agent enablement: only offer agents whose required tools are
+                            // actually available in this workspace (e.g. web-research needs the web tools),
+                            // so the model never dispatches an agent that would resolve to nothing.
+                            IList<string> parentNames = _mcpRegistry != null
+                                ? _mcpRegistry.NamesForWorkdir(ctx.WorkingDir) : (IList<string>)new List<string>();
+                            List<Agent> agentsForTurn = new List<Agent>();
+                            for (int ai = 0; ai < agentCatalog.Agents.Count; ai++)
+                                if (AgentAvailability.IsAvailable(agentCatalog.Agents[ai], parentNames, tierOf))
+                                    agentsForTurn.Add(agentCatalog.Agents[ai]);
+                            if (agentsForTurn.Count > 0)
+                            {
+                                orch.AgentsManifestSystemMessageProvider =
+                                    delegate { return AgentInjection.BuildManifestMessage(agentsForTurn); };
+                                AgentDispatcher dispatcher = new AgentDispatcher(
+                                    agentsForTurn, _client, _mcpRegistry, approval, model, ctx.WorkingDir,
+                                    LoggerSink.Instance, tierOf,
+                                    McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
+                                dispatcher.Cancellation = ctx.Cancellation;
+                                // Child usage adds to cost/token totals but must NOT move the parent's context
+                                // gauge (the child has its own isolated context) - so it routes through the
+                                // updateContextGauge=false overload, not orch.UsageReported.
+                                dispatcher.UsageReported = delegate(ResponseUsage u)
+                                {
+                                    RecordUsageAndReconcile(revealConvo, u,
+                                        OpenRouterClient.ModelSupportsPromptCaching(model), false);
+                                };
+                                // Observability + group cancel (design sec.14): a dedicated handle the panel's
+                                // Stop button trips, so it cancels the agents (children watch GroupCancellation)
+                                // without ending the turn - the parent loop resumes with the partial results.
+                                RequestCancellation agentGroup = new RequestCancellation();
+                                dispatcher.GroupCancellation = agentGroup;
+                                dispatcher.ActivityUi = new AgentActivityUiBridge(this, ctx, agentGroup, dispatcher);
+                                orch.AgentDispatcher = dispatcher;
+                                dispatcherForTurn = dispatcher;
+                            }
+                        }
+                    }
+
                     // Assistant text appends to the current assistant bubble; a tool call closes it so
                     // the next run of text starts a fresh bubble below the tool record. Inter-turn
                     // whitespace (a stray newline some models emit before the next tool call) must NOT
@@ -3046,13 +3281,25 @@ namespace GxPT
                     };
                     // argsJson is threaded through for files__edit etc., which render a collapsible
                     // record instead of the generic "using" marker; register the record (it has its own
-                    // lock) before taking sbLock. Live keys are per-call GUIDs (ephemeral — the reloaded
-                    // view re-derives under the persisted call id).
-                    Action<string, string, string, bool> onToolResult = delegate(string name, string argsJson, string resultText, bool isError)
+                    // lock) before taking sbLock. The record key is the model's call id, so the live and
+                    // reloaded views share one identity (and persisted agent transcripts resolve on reload).
+                    ToolResultCallback onToolResult = delegate(string name, string argsJson, string resultText, bool isError, string callId)
                     {
+                        string recKey = !string.IsNullOrEmpty(callId) ? callId : Guid.NewGuid().ToString("N");
+                        // A dispatch_agent record gets per-agent "View transcript" links keyed by recKey;
+                        // cache + persist this fan-out's child transcripts under the same key so the links
+                        // resolve now and after reload. Tool calls are serial, so LastTranscripts is this
+                        // call's batch.
+                        if (dispatcherForTurn != null && AgentDispatcher.DispatchAgentName == name
+                            && dispatcherForTurn.LastTranscripts != null)
+                        {
+                            AgentTranscriptStore.Put(recKey, dispatcherForTurn.LastTranscripts);
+                            try { AgentTranscriptPersistence.Save(ConvId(ctx), recKey, dispatcherForTurn.LastTranscripts); }
+                            catch { }
+                        }
                         string marker = McpMarkers.IsDenied(resultText)
                             ? McpMarkers.Denied(name)
-                            : EditDiffMarkerOrCall(ctx.Transcript, name, argsJson, Guid.NewGuid().ToString("N"));
+                            : EditDiffMarkerOrCall(ctx.Transcript, name, argsJson, recKey);
                         lock (sbLock)
                         {
                             if (pendingToolSeg != null)
@@ -3984,8 +4231,9 @@ namespace GxPT
 
         // Activity marker for a tool call. If the tool maps to a collapsible/labelled record, register
         // it with the transcript under a stable key and return its sentinel; otherwise (or on any
-        // failure) return the generic "using <tool>" marker.
-        private static string EditDiffMarkerOrCall(ChatTranscriptControl transcript, string name, string argsJson, string key)
+        // failure) return the generic "using <tool>" marker. internal so the agent transcript viewer can
+        // render a child's tool calls identically to the main chat.
+        internal static string EditDiffMarkerOrCall(ChatTranscriptControl transcript, string name, string argsJson, string key)
         {
             if (transcript != null && !string.IsNullOrEmpty(key))
             {
@@ -3993,7 +4241,7 @@ namespace GxPT
                 {
                     var args = Newtonsoft.Json.Linq.JObject.Parse(string.IsNullOrEmpty(argsJson) ? "{}" : argsJson);
                     string header, body, language; int added, removed;
-                    if (TryBuildToolRecord(name, args, out header, out body, out language, out added, out removed))
+                    if (TryBuildToolRecord(name, args, key, out header, out body, out language, out added, out removed))
                     {
                         transcript.RegisterToolRecord(key, header, body, language, added, removed);
                         return McpMarkers.EditDiff(key);
@@ -4026,7 +4274,7 @@ namespace GxPT
         // Maps a tool call to a transcript record. An empty body yields a one-line label (no expansion);
         // a non-empty body is a collapsible record highlighted in 'language'. Returns false for tools
         // that should keep the generic marker.
-        private static bool TryBuildToolRecord(string name, Newtonsoft.Json.Linq.JObject args, out string header, out string body, out string language, out int added, out int removed)
+        private static bool TryBuildToolRecord(string name, Newtonsoft.Json.Linq.JObject args, string key, out string header, out string body, out string language, out int added, out int removed)
         {
             header = null; body = string.Empty; language = "text"; added = -1; removed = -1;
 
@@ -4083,6 +4331,44 @@ namespace GxPT
                 {
                     string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
                     header = "Ran a command"; body = cmd; language = "batch"; return true;
+                }
+                case "dispatch_agent":
+                {
+                    Newtonsoft.Json.Linq.JToken arr = args != null ? args["agents"] : null;
+                    if (arr == null || arr.Type != Newtonsoft.Json.Linq.JTokenType.Array) return false;
+                    int count = 0;
+                    int slot = -1;   // entry slot, aligned with AgentDispatcher.LastTranscripts (counts every object element)
+                    System.Text.StringBuilder md = new System.Text.StringBuilder();
+                    foreach (Newtonsoft.Json.Linq.JToken t in (Newtonsoft.Json.Linq.JArray)arr)
+                    {
+                        if (t == null || t.Type != Newtonsoft.Json.Linq.JTokenType.Object) continue;
+                        slot++;
+                        Newtonsoft.Json.Linq.JObject ag = (Newtonsoft.Json.Linq.JObject)t;
+                        string slug = Str(ag, "name").Trim();
+                        string task = Str(ag, "task").Trim();
+                        if (slug.Length == 0 && task.Length == 0) continue;
+                        count++;
+                        // Blank line between agents so each is its own paragraph. Bold slug, then the
+                        // child's tool-call count (from its transcript) on its own line, then the
+                        // "View transcript" link. The count/link only show when a transcript exists
+                        // (live: just cached; reloaded: re-seeded from disk) - so an unknown agent that
+                        // ran no child has neither.
+                        if (md.Length > 0) md.Append("\n\n");
+                        md.Append("**").Append(slug.Length > 0 ? slug : "(agent)").Append(":**");
+                        AgentTranscript tr = !string.IsNullOrEmpty(key) ? AgentTranscriptStore.Get(key, slot) : null;
+                        if (tr != null)
+                        {
+                            int tc = tr.ToolCallCount;
+                            // Count on the same line as the slug; the link drops to the next line.
+                            md.Append(' ').Append(tc).Append(tc == 1 ? " tool call" : " tool calls");
+                            // Tier 3: a per-agent "View transcript" link the transcript control intercepts
+                            // (AgentTranscriptLinks scheme) to open the read-only child transcript popup.
+                            md.Append("\n[View transcript](").Append(AgentTranscriptLinks.Build(key, slot)).Append(')');
+                        }
+                    }
+                    if (count == 0) return false;
+                    header = "Dispatched " + count + (count == 1 ? " agent" : " agents");
+                    body = md.ToString(); language = "markdown"; return true;
                 }
                 case "web__search":
                 {
@@ -4587,6 +4873,18 @@ namespace GxPT
                 ctx.Transcript.ClearMessages();
                 if (_themeManager != null) _themeManager.ApplyFontSetting(ctx.Transcript);
                 try { ctx.Transcript.RefreshTheme(); }
+                catch { }
+
+                // Re-seed this conversation's persisted sub-agent transcripts into the in-memory store (keyed
+                // by the dispatch record id = tool call id), so the rebuilt records show the tool-call count
+                // and their "View transcript" links resolve after a restart.
+                try
+                {
+                    System.Collections.Generic.Dictionary<string, AgentTranscript[]> persisted =
+                        AgentTranscriptPersistence.LoadAll(convo.Id);
+                    foreach (System.Collections.Generic.KeyValuePair<string, AgentTranscript[]> kv in persisted)
+                        AgentTranscriptStore.Put(kv.Key, kv.Value);
+                }
                 catch { }
 
                 // Snapshot messages to process. System and tool-result messages are not shown. A
@@ -5267,8 +5565,15 @@ namespace GxPT
         // dashboard shows cache activity on every request.
         private void RecordUsageAndReconcile(Conversation convo, ResponseUsage u, bool cachingModel)
         {
+            RecordUsageAndReconcile(convo, u, cachingModel, true);
+        }
+
+        // updateContextGauge=false (sub-agent usage): accumulate cost/token totals and reconcile cost, but
+        // do not move the parent conversation's context gauge - the child runs in its own isolated context.
+        private void RecordUsageAndReconcile(Conversation convo, ResponseUsage u, bool cachingModel, bool updateContextGauge)
+        {
             if (convo == null || u == null) return;
-            convo.RecordUsage(u);
+            convo.RecordUsage(u, updateContextGauge);
             NotifyUsageUpdated(convo);
 
             if (string.IsNullOrEmpty(u.Id) || _client == null) return;

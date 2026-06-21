@@ -33,10 +33,12 @@ namespace GxPT.Tests.Commands
         public readonly FakeModelControl ModelStore = new FakeModelControl();
         public readonly FakeServerControl ServerStore = new FakeServerControl();
         public readonly FakeSkillEnablementStore SkillStore = new FakeSkillEnablementStore();
+        public readonly FakeAgentEnablementStore AgentStore = new FakeAgentEnablementStore();
 
         public IModelControl Models { get { return ModelStore; } }
         public IServerControl Servers { get { return ServerStore; } }
         public ISkillEnablementStore Skills { get { return SkillStore; } }
+        public IAgentEnablementStore Agents { get { return AgentStore; } }
 
         // ---- top-level state / recorded actions ----
         public List<string> Infos = new List<string>();
@@ -100,5 +102,13 @@ namespace GxPT.Tests.Commands
         { if (value.HasValue) ConvOverrides[slug] = value.Value; else ConvOverrides.Remove(slug); }
         public void ResetConversationSkills() { ConvFeatureOff = null; ConvOverrides.Clear(); }
         public void RefreshSkillsServer() { RefreshSkillsServerCount++; }
+    }
+
+    // Backs /toggle-agents: the per-conversation agents-enabled override (null = inherit global).
+    internal sealed class FakeAgentEnablementStore : IAgentEnablementStore
+    {
+        public bool? ConvAgentsEnabled;
+        public bool? GetConversationAgentsEnabled() { return ConvAgentsEnabled; }
+        public void SetConversationAgentsEnabled(bool? value) { ConvAgentsEnabled = value; }
     }
 }

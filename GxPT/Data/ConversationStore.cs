@@ -107,6 +107,7 @@ namespace GxPT
                 Zdr = convo.Zdr,
                 ZdrFirstMessageIndex = convo.ZdrFirstMessageIndex,
                 SkillsFeatureOff = convo.SkillsFeatureOff,
+                AgentsEnabled = convo.AgentsEnabled,
                 // Omit an empty map so untouched conversations stay clean (NullValueHandling.Ignore).
                 SkillOverrides = (convo.SkillOverrides != null && convo.SkillOverrides.Count > 0)
                     ? convo.SkillOverrides : null,
@@ -193,6 +194,7 @@ namespace GxPT
                 // Absent in older files -> not latched (-1), never index 0.
                 ZdrFirstMessageIndex = dto.ZdrFirstMessageIndex.HasValue ? dto.ZdrFirstMessageIndex.Value : -1,
                 SkillsFeatureOff = dto.SkillsFeatureOff,
+                AgentsEnabled = dto.AgentsEnabled,
                 SkillOverrides = dto.SkillOverrides != null
                     ? new Dictionary<string, bool>(dto.SkillOverrides, StringComparer.OrdinalIgnoreCase)
                     : new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
@@ -333,6 +335,8 @@ namespace GxPT
                     File.Delete(path);
             }
             catch { }
+            // Sub-agent transcripts persist alongside the conversation; remove them with it.
+            try { AgentTranscriptPersistence.DeleteConversation(id); } catch { }
         }
 
         public static int DeleteAll()
@@ -353,12 +357,16 @@ namespace GxPT
                 }
             }
             catch { }
+            try { AgentTranscriptPersistence.DeleteAll(); } catch { }
             return count;
         }
 
         public static void DeletePath(string path)
         {
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }
+            catch { }
+            // The conversation file is "<id>.json"; remove that conversation's sub-agent transcripts too.
+            try { AgentTranscriptPersistence.DeleteConversation(Path.GetFileNameWithoutExtension(path)); }
             catch { }
         }
 
@@ -377,6 +385,8 @@ namespace GxPT
             // from JSON when null/empty via NullValueHandling.Ignore.
             public bool? SkillsFeatureOff { get; set; }
             public Dictionary<string, bool> SkillOverrides { get; set; }
+            // Per-conversation sub-agents feature override (null/absent in older files -> inherit global).
+            public bool? AgentsEnabled { get; set; }
             // Revealed MCP tool names (prompt caching; null/absent in older files -> none revealed).
             public List<string> RevealedTools { get; set; }
             // Sticky cache-routing provider: the endpoint that last demonstrated a cache hit

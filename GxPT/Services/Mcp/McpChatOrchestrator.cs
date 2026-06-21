@@ -137,9 +137,22 @@ namespace GxPT
         // block, so a skill-less conversation leaves no trace in context.
         public Func<string> SkillsManifestSystemMessageProvider { get; set; }
 
+        // Optional provider of the agents manifest system block (the always-on slug/description list of
+        // dispatchable sub-agents plus its framing), rebuilt each request and injected as an ephemeral
+        // system message ordered after the skills block and before the MCP names manifest (design sec.5).
+        // Gated by the single agents feature toggle (the host only sets it when agents are enabled), so a
+        // conversation with agents off leaves no trace in context. Null/empty => no agents block.
+        public Func<string> AgentsManifestSystemMessageProvider { get; set; }
+
         // Optional skills meta-tool surface (open_skill). When set and it has skills, open_skill is
         // exposed in the tools array and handled locally without an MCP round-trip, like reveal_tools.
         public SkillTools SkillTools { get; set; }
+
+        // Optional sub-agent dispatch surface (dispatch_agent). When set and it has agents, dispatch_agent
+        // is exposed in the tools array and handled locally (a child McpChatOrchestrator runs the agent and
+        // its final answer is the tool result). The host only sets it when the agents feature is enabled.
+        // A child never gets a dispatcher, so a sub-agent cannot dispatch (no nesting, A12).
+        public AgentDispatcher AgentDispatcher { get; set; }
 
         // Server-qualified MCP tool names to omit from this turn's context (names manifest + exposed
         // defs) and refuse to call. Used to gate the skill-authoring tools on the meta-skill (SkillToolGate).
@@ -277,6 +290,10 @@ namespace GxPT
             // The cap is a budget rather than a fixed loop bound so the user can grant another batch
             // when it's reached (ContinuationDecider) instead of dead-ending the turn.
             int budget = _maxIterations;
+            // Set after a dispatch_agent the user stopped: the next model call is forced to tool_choice
+            // "none" so the model must produce a text answer (a summary + "how should I proceed?") instead
+            // of charging ahead with more tool calls. Reset each iteration once consumed.
+            bool forceTextThisCall = false;
             for (int iter = 0; ; iter++)
             {
                 // Stop requested between iterations (e.g. while the previous iteration's tools ran):
@@ -319,6 +336,11 @@ namespace GxPT
                     if (tools == null) tools = new List<JObject>();
                     tools.Add(SkillTools.OpenSkillDef());
                     tools.Add(SkillTools.ReadSkillFileDef());
+                }
+                if (AgentDispatcher != null && AgentDispatcher.HasAgents)
+                {
+                    if (tools == null) tools = new List<JObject>();
+                    tools.Add(AgentDispatcher.DispatchAgentDef());
                 }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
@@ -363,13 +385,19 @@ namespace GxPT
                     ? MemorySystemMessageProvider() : null;
                 string skillsBlock = SkillsManifestSystemMessageProvider != null
                     ? SkillsManifestSystemMessageProvider() : null;
-                string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, manifest);
+                string agentsBlock = AgentsManifestSystemMessageProvider != null
+                    ? AgentsManifestSystemMessageProvider() : null;
+                string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, agentsBlock, manifest);
                 if (!string.IsNullOrEmpty(ephemeralTail))
                     requestMessages.Add(new ChatMessage("user", ephemeralTail));
 
                 bool errored;
                 string errMessage;
-                ToolCallAssembler asm = StreamOnce(requestMessages, tools, null, ui, out errored, out errMessage);
+                // After a user-stopped fan-out, force a text-only answer (the dispatch result carries the
+                // "summarize and ask" directive); otherwise normal auto tool choice.
+                string toolChoice = forceTextThisCall ? "none" : null;
+                forceTextThisCall = false;
+                ToolCallAssembler asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
                 if (errored)
                 {
                     _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
@@ -384,7 +412,7 @@ namespace GxPT
                 if (!asm.ProducedToolCalls && IsEmptyText(asm.Text))
                 {
                     _log.Log("mcp", "[turn " + turnId + "] empty response (no tool calls, no text); retrying once");
-                    asm = StreamOnce(requestMessages, tools, null, ui, out errored, out errMessage);
+                    asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
                     if (errored)
                     {
                         _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
@@ -434,15 +462,23 @@ namespace GxPT
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
-                    if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson);
+                    if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson, call.Id);
 
                     bool isError;
                     string result = ExecuteCall(call, turnId, out isError);
 
-                    if (ui != null) ui.OnToolResult(call.Name, result, isError);
+                    if (ui != null) ui.OnToolResult(call.Name, result, isError, call.Id);
                     ChatMessage toolMsg = new ChatMessage("tool", result);
                     toolMsg.ToolCallId = call.Id;
                     history.Add(toolMsg);
+
+                    // If the user stopped this dispatch_agent fan-out, force the next model call to text
+                    // only so it wraps up (summary + ask) per the directive in the tool result, rather than
+                    // launching into more tool calls.
+                    if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name)
+                        && AgentDispatcher.GroupCancellation != null
+                        && AgentDispatcher.GroupCancellation.IsCancelled)
+                        forceTextThisCall = true;
                 }
                 // Loop: re-call the model with the tool results in context.
             }
@@ -633,13 +669,14 @@ namespace GxPT
         // parameter, which would put this back in front of the cached history; as a trailing user
         // message it merges into the same user turn as any preceding tool results ([tool_result...,
         // text] is the order Anthropic requires). Returns null when every block is empty, so a turn
-        // without memory/skills/tools leaves no trace. Never persisted; the UI never renders it.
-        internal static string BuildEphemeralContextText(string memory, string skills, string toolManifest)
+        // without memory/skills/agents/tools leaves no trace. Never persisted; the UI never renders it.
+        internal static string BuildEphemeralContextText(string memory, string skills, string agents, string toolManifest)
         {
             bool hasMemory = !string.IsNullOrEmpty(memory);
             bool hasSkills = !string.IsNullOrEmpty(skills);
+            bool hasAgents = !string.IsNullOrEmpty(agents);
             bool hasManifest = !string.IsNullOrEmpty(toolManifest);
-            if (!hasMemory && !hasSkills && !hasManifest) return null;
+            if (!hasMemory && !hasSkills && !hasAgents && !hasManifest) return null;
 
             StringBuilder sb = new StringBuilder();
             sb.Append("[Ephemeral context appended by the host application for this request. ");
@@ -648,6 +685,8 @@ namespace GxPT
                 sb.Append("\n\n<memory>\n").Append(memory).Append("\n</memory>");
             if (hasSkills)
                 sb.Append("\n\n<skills>\n").Append(skills).Append("\n</skills>");
+            if (hasAgents)
+                sb.Append("\n\n<agents>\n").Append(agents).Append("\n</agents>");
             if (hasManifest)
                 sb.Append("\n\n<available_tools>\n").Append(toolManifest).Append("\n</available_tools>");
             return sb.ToString();
@@ -709,6 +748,15 @@ namespace GxPT
                 _log.Log("mcp", "[turn " + turnId + "] read_skill_file: "
                     + (skillSlug != null ? skillSlug : "?") + " / " + (relpath != null ? relpath : "?"));
                 return SkillTools.ReadFile(skillSlug, relpath);
+            }
+
+            // dispatch_agent is a host meta-tool too: run the sub-agent(s) in isolated child orchestrators
+            // and return their final answer(s). No MCP round-trip; the child gets no dispatcher, so it
+            // cannot nest (A12). Failures inside a child come back as content, not an exception.
+            if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name))
+            {
+                _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
+                return AgentDispatcher.Dispatch(call.ArgumentsJson);
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.
