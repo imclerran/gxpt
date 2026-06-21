@@ -52,6 +52,15 @@ namespace GxPT
         private bool _handledDetails;
         private bool _inLayoutToContent;
 
+        // The current prompt's tier, remembered so ApplyTheme can re-tint the tier badge (its color is
+        // semantic) when the theme switches live. The continuation prompt reuses the Write color.
+        private ToolTier _currentTier = ToolTier.Write;
+
+        // The button to focus once the panel is shown (the tier's default action). Focus is deferred to
+        // after Visible = true: focusing while the panel is still hidden does nothing, so GotFocus never
+        // fires and the initial blue focus border was missing until the user tabbed.
+        private Button _defaultButton;
+
         public ToolApprovalPanel()
         {
             this.Dock = DockStyle.Bottom;
@@ -113,6 +122,131 @@ namespace GxPT
             this.Controls.Add(_tierBadge);
             this.Controls.Add(_header);
             this.Controls.Add(_buttons);
+
+            // Theme the chrome up front so the panel isn't a stark white block before the first prompt.
+            ApplyTheme();
+        }
+
+        // True when the active theme is dark. Mirrors AgentActivityPanel.IsDark.
+        private static bool IsDark()
+        {
+            try
+            {
+                string th = AppSettings.GetString("theme");
+                return !string.IsNullOrEmpty(th) && th.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        // The tier badge color, brightened in dark mode so it stays legible against the dark panel
+        // (matching how the agents panel lightens its status colors).
+        private static Color TierColor(ToolTier tier, bool dark)
+        {
+            switch (tier)
+            {
+                case ToolTier.Destructive: return dark ? Color.FromArgb(240, 120, 120) : Color.Firebrick;
+                case ToolTier.Write: return dark ? Color.FromArgb(226, 184, 80) : Color.DarkGoldenrod;
+                default: return dark ? Color.FromArgb(126, 204, 126) : Color.ForestGreen;
+            }
+        }
+
+        // Re-color the panel and all its child controls for the active theme, using the same palette as
+        // the agents activity panel (ThemeService), so the approval prompt isn't stark white in dark
+        // mode. Safe to call repeatedly: the host calls it again on a live light<->dark switch (see
+        // MainForm.ApplyThemeToAllApprovalPanels), and it re-tints the already-rendered diff/preview.
+        public void ApplyTheme()
+        {
+            try
+            {
+                bool dark = IsDark();
+                ThemeColors tc = ThemeService.GetColors(dark);
+
+                this.BackColor = tc.AssistantBubbleBack;
+                this.ForeColor = tc.UiForeground;
+
+                if (_header != null) { _header.BackColor = tc.AssistantBubbleBack; _header.ForeColor = tc.UiForeground; }
+                if (_tierBadge != null) { _tierBadge.BackColor = tc.AssistantBubbleBack; _tierBadge.ForeColor = TierColor(_currentTier, dark); }
+                if (_previewLabel != null) { _previewLabel.BackColor = tc.AssistantBubbleBack; _previewLabel.ForeColor = tc.UiForeground; }
+                // The raw-JSON fallback preview reads like a code block, so use the code palette.
+                if (_preview != null) { _preview.BackColor = tc.CodeBack; _preview.ForeColor = tc.UiForeground; }
+
+                if (_buttons != null)
+                {
+                    _buttons.BackColor = tc.AssistantBubbleBack;
+                    foreach (Control c in _buttons.Controls)
+                    {
+                        Button b = c as Button;
+                        if (b != null) ApplyButtonTheme(b, dark, tc);
+                    }
+                }
+
+                // Re-tint the syntax-highlighted diff/preview when it's the visible details control, so a
+                // live theme switch updates it too (it was themed once at SetContent time).
+                if (_diffPanel != null && _diffPanel.Visible)
+                    _diffPanel.ReapplyTheme(dark, tc.CodeBack, tc.UiForeground);
+
+                Invalidate(true);
+            }
+            catch { }
+        }
+
+        // Flat, theme-tinted buttons in both light and dark mode so the two themes match (a native
+        // visual-styles button ignores BackColor, so flat is the only way to tint it consistently).
+        // The Deny button is called out with a red (firebrick) border and text.
+        private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
+        {
+            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
+            Color red = TierColor(ToolTier.Destructive, dark);
+
+            b.FlatStyle = FlatStyle.Flat;
+            b.UseVisualStyleBackColor = false;
+            b.BackColor = tc.CodeBack;
+            b.ForeColor = isDeny ? red : tc.UiForeground;
+            try
+            {
+                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, tc);
+                b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
+                b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
+            }
+            catch { }
+        }
+
+        // The border color for a button in its current focus state: a focused non-Deny button gets a blue
+        // border so the keyboard default is obvious - the flat button's subtle panel border barely
+        // changed when focused. A fixed blue (lightened in dark mode) rather than the theme accent, since
+        // some themes' accent is red/orange. Deny stays red whether focused or not.
+        private static Color ButtonBorderColor(Button b, bool dark, ThemeColors tc)
+        {
+            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
+            if (isDeny) return TierColor(ToolTier.Destructive, dark);
+            if (!b.Focused) return tc.AssistantBubbleBorder;
+            return dark ? Color.FromArgb(120, 170, 255) : Color.FromArgb(0, 102, 204);
+        }
+
+        // Re-tint a button's border as it gains/loses focus (wired on every button), so the blue focus
+        // cue follows the keyboard default as the user tabs across the strip.
+        private void OnButtonFocusChanged(object sender, EventArgs e)
+        {
+            Button b = sender as Button;
+            if (b == null) return;
+            try
+            {
+                bool dark = IsDark();
+                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, ThemeService.GetColors(dark));
+                b.Invalidate();
+            }
+            catch { }
+        }
+
+        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Deny->Allow).
+        // The strip flows RightToLeft, so a button's visual left-to-right position is the reverse of its
+        // index in the Controls collection; assign TabIndex to follow the visual order.
+        private void SetButtonTabOrder()
+        {
+            if (_buttons == null) return;
+            int n = _buttons.Controls.Count;
+            for (int i = 0; i < n; i++)
+                _buttons.Controls[i].TabIndex = n - 1 - i;
         }
 
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
@@ -125,24 +259,19 @@ namespace GxPT
                            (req.ToolName != null ? req.ToolName : req.FunctionName);
 
             ToolTier tier = req.Policy != null ? req.Policy.Tier : ToolTier.Write;
+            _currentTier = tier;
             _tierBadge.Text = "Tier: " + tier;
-            _tierBadge.ForeColor = (tier == ToolTier.Destructive) ? Color.Firebrick
-                                  : (tier == ToolTier.Write ? Color.DarkGoldenrod : Color.ForestGreen);
+
+            // Theme palette for this prompt (the tier badge and diff/preview colors derive from it);
+            // ApplyTheme below colors the rest of the chrome.
+            bool dark = IsDark();
+            ThemeColors tc = ThemeService.GetColors(dark);
 
             // files__edit -> a colored diff (with a little live file context); command__run -> the
             // command line, syntax-highlighted. Either replaces the raw JSON preview.
             bool handled = false;
             if (req.Arguments != null)
             {
-                bool dark = false;
-                try
-                {
-                    string th = AppSettings.GetString("theme");
-                    dark = !string.IsNullOrEmpty(th) && th.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                }
-                catch { }
-                ThemeColors tc = ThemeService.GetColors(dark);
-
                 if (string.Equals(req.FunctionName, "files__edit", StringComparison.Ordinal))
                 {
                     string path = req.Arguments.Value<string>("path") ?? string.Empty;
@@ -388,10 +517,20 @@ namespace GxPT
             }
 
             _buttons.Controls.Clear();
-            // Deny is always present (added first => rightmost in RightToLeft flow).
+            _defaultButton = null;
+            // Deny is always present (added first => rightmost in RightToLeft flow). Auto-focused on the
+            // Destructive tier so the keyboard default is the safe choice (it shows the focused flat
+            // button's heavier border).
             AddButton("Deny", ApprovalChoice.Deny, tier == ToolTier.Destructive);
             AddRememberButtons(req);
-            AddButton("Allow once", ApprovalChoice.AllowOnce, false);
+            // Write tier defaults to "Allow once" (the cautious default for the riskier Destructive tier
+            // is Deny, handled above).
+            AddButton("Allow once", ApprovalChoice.AllowOnce, tier == ToolTier.Write);
+            SetButtonTabOrder();
+
+            // Color the panel + the freshly built buttons for the active theme before measuring, so the
+            // button metrics used by LayoutToContent reflect their themed style.
+            ApplyTheme();
 
             // Size to fit the content (buttons built above so their height is counted, including any
             // wrapping at the current width; LayoutToContent measures the details at the live width).
@@ -405,6 +544,29 @@ namespace GxPT
             // bottom edge and its right-docked scrollbar). BringToFront would cause exactly that.
             this.SendToBack();
             SetPromptVisible(true);
+            FocusDefaultButton();
+        }
+
+        // Focus the tier's default button now that the panel is visible (focusing earlier is a no-op).
+        // Real focus fires GotFocus, which paints the blue focus border; deferring to BeginInvoke lets
+        // the just-shown panel settle so the focus reliably takes.
+        private void FocusDefaultButton()
+        {
+            Button b = _defaultButton;
+            if (b == null) return;
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    try { if (b.IsHandleCreated && b.Visible) b.Focus(); }
+                    catch { }
+                });
+            }
+            catch
+            {
+                try { b.Focus(); }
+                catch { }
+            }
         }
 
         // Iteration-cap confirmation, reusing this docked panel so it reads like the tool-approval
@@ -416,8 +578,8 @@ namespace GxPT
             _onContinue = callback;
 
             _header.Text = "Tool-call limit reached";
+            _currentTier = ToolTier.Write; // informational; reuse the Write (goldenrod) badge color
             _tierBadge.Text = "Paused after " + iterationsSoFar + " tool iteration(s) this turn";
-            _tierBadge.ForeColor = Color.DarkGoldenrod;
 
             _previewLabel.Text = "Details:";
             _preview.Text = "The agent has been working for a long time. Do you want to continue?\r\n\r\n"
@@ -427,9 +589,13 @@ namespace GxPT
             _preview.Visible = true;
 
             _buttons.Controls.Clear();
+            _defaultButton = null;
             // Added first => rightmost in the RightToLeft flow.
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
+            SetButtonTabOrder();
+
+            ApplyTheme();
 
             _handledDetails = false;
             LayoutToContent();
@@ -437,6 +603,7 @@ namespace GxPT
             this.Visible = true;
             this.SendToBack();
             SetPromptVisible(true);
+            FocusDefaultButton();
         }
 
         public void HidePanel()
@@ -651,13 +818,15 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(choice);
             };
+            b.GotFocus += OnButtonFocusChanged;
+            b.LostFocus += OnButtonFocusChanged;
             _buttons.Controls.Add(b);
             if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
             {
                 try { _toolTip.SetToolTip(b, tooltip); }
                 catch { }
             }
-            if (defaultFocus) { try { b.Select(); } catch { } }
+            if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
         private void AddContinuationButton(string text, bool cont, bool defaultFocus)
@@ -672,8 +841,10 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(cont);
             };
+            b.GotFocus += OnButtonFocusChanged;
+            b.LostFocus += OnButtonFocusChanged;
             _buttons.Controls.Add(b);
-            if (defaultFocus) { try { b.Select(); } catch { } }
+            if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
         // Reads a workspace-relative file for diff context. Mirrors the files sandbox: relative paths
