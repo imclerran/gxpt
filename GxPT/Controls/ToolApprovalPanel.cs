@@ -199,9 +199,36 @@ namespace GxPT
             b.ForeColor = isDeny ? red : tc.UiForeground;
             try
             {
-                b.FlatAppearance.BorderColor = isDeny ? red : tc.AssistantBubbleBorder;
+                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, tc);
                 b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
                 b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
+            }
+            catch { }
+        }
+
+        // The border color for a button in its current focus state: a focused non-Deny button gets a blue
+        // border so the keyboard default is obvious - the flat button's subtle panel border barely
+        // changed when focused. A fixed blue (lightened in dark mode) rather than the theme accent, since
+        // some themes' accent is red/orange. Deny stays red whether focused or not.
+        private static Color ButtonBorderColor(Button b, bool dark, ThemeColors tc)
+        {
+            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
+            if (isDeny) return TierColor(ToolTier.Destructive, dark);
+            if (!b.Focused) return tc.AssistantBubbleBorder;
+            return dark ? Color.FromArgb(120, 170, 255) : Color.FromArgb(0, 102, 204);
+        }
+
+        // Re-tint a button's border as it gains/loses focus (wired on every button), so the blue focus
+        // cue follows the keyboard default as the user tabs across the strip.
+        private void OnButtonFocusChanged(object sender, EventArgs e)
+        {
+            Button b = sender as Button;
+            if (b == null) return;
+            try
+            {
+                bool dark = IsDark();
+                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, ThemeService.GetColors(dark));
+                b.Invalidate();
             }
             catch { }
         }
@@ -760,6 +787,8 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(choice);
             };
+            b.GotFocus += OnButtonFocusChanged;
+            b.LostFocus += OnButtonFocusChanged;
             _buttons.Controls.Add(b);
             if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
             {
@@ -781,6 +810,8 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(cont);
             };
+            b.GotFocus += OnButtonFocusChanged;
+            b.LostFocus += OnButtonFocusChanged;
             _buttons.Controls.Add(b);
             if (defaultFocus) { try { b.Select(); } catch { } }
         }
