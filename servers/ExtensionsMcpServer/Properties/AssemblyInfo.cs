@@ -1,8 +1,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("SkillsMcpServer")]
-[assembly: AssemblyDescription("First-party MCP server: author skills (and, later, run a skill's bundled .bat) under the writable skill roots.")]
+[assembly: AssemblyTitle("ExtensionsMcpServer")]
+[assembly: AssemblyDescription("First-party MCP server: author the user's local extensions (skills and agents) and run a skill's bundled .bat, under the writable extension roots.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Mcp35")]

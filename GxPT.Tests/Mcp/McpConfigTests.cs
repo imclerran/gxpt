@@ -130,6 +130,7 @@ namespace GxPT.Tests.Mcp
                 CmdShell = "cmd.exe",
                 SkillsBundledRoot = "C:\\app\\skills",
                 SkillsUserRoot = "C:\\users\\me\\AppData\\Roaming\\GxPT\\skills",
+                AgentsUserRoot = "C:\\users\\me\\AppData\\Roaming\\GxPT\\agents",
                 ServerDir = "C:\\app\\servers"
             };
             var specs = McpConfig.BuiltInSpecs(o);
@@ -161,7 +162,7 @@ namespace GxPT.Tests.Mcp
             Assert.False(byName["git"].RunsInScratch);
             Assert.False(byName["msbuild"].RunsInScratch);
             Assert.False(byName["memory"].RunsInScratch);
-            Assert.False(byName["skills"].RunsInScratch);
+            Assert.False(byName["extensions"].RunsInScratch);
 
             // msbuild — workdir-scoped, engines discovered (no extra env baked in).
             var msbuild = byName["msbuild"];
@@ -177,15 +178,17 @@ namespace GxPT.Tests.Mcp
             Assert.Equal(Path.Combine("C:\\app\\servers", "MemoryMcpServer.exe"), memory.Command);
             Assert.Equal("40", memory.Env[McpConfig.EnvMemoryMaxLines]);
 
-            // skills — workdir-scoped authoring/execution server; GXPT_WORKDIR injected at launch, the
-            // bundled + user skill roots baked in so run_skill_script can resolve those scopes.
-            var skills = byName["skills"];
-            Assert.True(skills.Enabled);
-            Assert.True(skills.WorkdirScoped);
-            Assert.Equal(Path.Combine("C:\\app\\servers", "SkillsMcpServer.exe"), skills.Command);
-            Assert.Equal("C:\\app\\skills", skills.Env[McpConfig.EnvSkillsBundledRoot]);
-            Assert.Equal("C:\\users\\me\\AppData\\Roaming\\GxPT\\skills", skills.Env[McpConfig.EnvSkillsUserRoot]);
-            Assert.True(skills.RunsWithoutWorkdir); // also runs a workdir-less instance for global authoring
+            // extensions — workdir-scoped skill + agent authoring/execution server; GXPT_WORKDIR injected at
+            // launch, the bundled + user skill roots and the user agent root baked in so run_skill_script
+            // and scope=user authoring can resolve those scopes.
+            var ext = byName["extensions"];
+            Assert.True(ext.Enabled);
+            Assert.True(ext.WorkdirScoped);
+            Assert.Equal(Path.Combine("C:\\app\\servers", "ExtensionsMcpServer.exe"), ext.Command);
+            Assert.Equal("C:\\app\\skills", ext.Env[McpConfig.EnvSkillsBundledRoot]);
+            Assert.Equal("C:\\users\\me\\AppData\\Roaming\\GxPT\\skills", ext.Env[McpConfig.EnvSkillsUserRoot]);
+            Assert.Equal("C:\\users\\me\\AppData\\Roaming\\GxPT\\agents", ext.Env[McpConfig.EnvAgentsUserRoot]);
+            Assert.True(ext.RunsWithoutWorkdir); // also runs a workdir-less instance for global authoring
         }
     }
 }

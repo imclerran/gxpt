@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using Mcp35.Core.Security;
 
-namespace SkillsMcpServer
+namespace ExtensionsMcpServer
 {
     /// <summary>A tool-level failure (relayed to the model as isError), never an exception out of a handler.</summary>
     internal sealed class SkillWriteException : Exception

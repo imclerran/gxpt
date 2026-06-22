@@ -5,22 +5,23 @@ using Mcp35.Server;
 using Mcp35.Server.Process;
 using Newtonsoft.Json.Linq;
 
-namespace SkillsMcpServer
+namespace ExtensionsMcpServer
 {
     /// <summary>
-    /// The skill authoring tools (design S16). Tier 1 (create flow): create_skill, write_skill_file,
-    /// update_skill. Tier 2 (maintenance): edit_skill_file, list_skill_files, delete_skill_file,
-    /// delete_skill, validate_skill. The host gates writes by (scope, slug); the server validates structure
-    /// (slug, frontmatter) and owns encoding/atomic writes, so the model never produces an unloadable
-    /// SKILL.md. run_skill_script (execution) registers here too once added.
+    /// The extension authoring tools - two families that share this server: SKILLS (design S16): create_skill,
+    /// write_skill_file, update_skill, edit_skill_file, list_skill_files, delete_skill_file, delete_skill,
+    /// validate_skill, plus run_skill_script (execution); and AGENTS (design A4/phase 10): create_agent,
+    /// update_agent, edit_agent, read_agent, list_agents, delete_agent, validate_agent. The host gates writes
+    /// by (scope, slug); the server validates structure (slug, frontmatter) and owns encoding/atomic writes,
+    /// so the model never produces an unloadable SKILL.md or agent file. Agents have no execution surface.
     /// </summary>
-    internal static class SkillsServerTools
+    internal static class ExtensionsServerTools
     {
         private const int DefaultTimeoutMs = 60000;
         private const int MaxTimeoutMs = 600000;
         private const int OutputCap = 100000; // chars per stream
 
-        public static void Register(McpServer server, SkillsConfig config)
+        public static void Register(McpServer server, ExtensionsConfig config)
         {
             // Two-mode: with a workspace (GXPT_WORKDIR set) the server offers the full surface and defaults
             // writes to project scope; without one (the workdir-independent instance) it advertises only the
@@ -31,8 +32,14 @@ namespace SkillsMcpServer
             string scopeDesc = hasWorkdir
                 ? "'project' (default, this workspace's .gxpt/skills) or 'user' (this machine's global skills)."
                 : "'user' (default; this conversation has no project folder). 'project' is unavailable here.";
+            string agentScopeDesc = hasWorkdir
+                ? "'project' (default, this workspace's .gxpt/agents) or 'user' (this machine's global agents)."
+                : "'user' (default; this conversation has no project folder). 'project' is unavailable here.";
 
             SkillWriter writer = new SkillWriter(config.ProjectRoot, config.UserRoot, defaultScope);
+            AgentWriter agents = new AgentWriter(config.AgentProjectRoot, config.AgentUserRoot, defaultScope);
+
+            RegisterAgentTools(server, agents, agentScopeDesc);
 
             if (hasWorkdir)
             {
@@ -201,6 +208,152 @@ namespace SkillsMcpServer
                 });
         }
 
+        // The agent authoring surface (design A4/phase 10): the SkillWriter analogue for sub-agents. An
+        // agent is one flat <slug>.md (frontmatter contract + system-prompt body); there are no bundled
+        // assets or scripts, so the surface is create/update/edit/read/list/delete/validate - no per-file
+        // tools and no execution. Mirrors the skill tools' shape (scope arg, tiers) so an agent-writer skill
+        // feels just like skill-writer.
+        private static void RegisterAgentTools(McpServer server, AgentWriter agents, string scopeDesc)
+        {
+            server.AddTool("create_agent",
+                "Create a NEW sub-agent: writes its <slug>.md from the given fields (the server assembles "
+                + "valid frontmatter). Refuses if the agent already exists - use update_agent to change one. "
+                + "The agent becomes dispatchable on the user's next message.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "Kebab-case handle (lowercase words joined by single hyphens, e.g. "
+                        + "release-notes); normalized automatically. This is the agent's file name and handle.")
+                    .Str("name", true, "Human-readable name (Title Case).")
+                    .Str("description", true, "Single line shown in the agents list - phrase it as 'use this "
+                        + "agent when ...', so the model knows when to delegate to it.")
+                    .Str("body", true, "The agent's system prompt (markdown): who it is, what to do, how to finish.")
+                    .Arr("tools", "string", false, "The tool allowlist: server-qualified names or glob patterns "
+                        + "(e.g. files__read, git__*, *). Omit to leave unspecified (a conservative default); "
+                        + "pass [] for an agent with no tools.")
+                    .Str("max_tier", false, "Capability ceiling: 'readonly', 'write' (default), or 'destructive'. "
+                        + "Caps the allowlist regardless of what tools names.")
+                    .Str("model", false, "Optional model id override; omit to use the parent turn's model.")
+                    .Int("max_turns", false, "Optional per-agent iteration budget; omit for the host default.")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Write(),
+                delegate(ToolCallContext ctx)
+                {
+                    try
+                    {
+                        return ToolResults.Text(agents.CreateAgent(
+                            Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "name"), Str(ctx, "description"),
+                            StrArrayOrNull(ctx, "tools"), Str(ctx, "max_tier"), Str(ctx, "model"),
+                            IntArg(ctx, "max_turns", 0, 0, 100000)));
+                    }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("update_agent",
+                "Edit an existing agent's <slug>.md frontmatter and/or body. Pass only the fields to change; "
+                + "omitted fields are left unchanged. For tools, omit to keep the current list or pass [] to "
+                + "clear it. The server re-assembles valid frontmatter.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("name", false, "New name, or omit to keep.")
+                    .Str("description", false, "New description, or omit to keep.")
+                    .Str("body", false, "New system prompt, or omit to keep. (For a focused change use edit_agent.)")
+                    .Arr("tools", "string", false, "New tool allowlist, or omit to keep. Pass [] to clear it.")
+                    .Str("max_tier", false, "New ceiling (readonly | write | destructive), or omit to keep.")
+                    .Str("model", false, "New model id override, or omit to keep.")
+                    .Int("max_turns", false, "New iteration budget (> 0), or omit to keep.")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Write(),
+                delegate(ToolCallContext ctx)
+                {
+                    try
+                    {
+                        return ToolResults.Text(agents.UpdateAgent(
+                            Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "name"), Str(ctx, "description"),
+                            StrArrayOrNull(ctx, "tools"), Str(ctx, "max_tier"), Str(ctx, "model"),
+                            IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
+                    }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("edit_agent",
+                "Make a targeted edit to an agent's BODY (its system prompt) by replacing an exact text span "
+                + "(like files__edit). old_string must match exactly and be unique unless replace_all is set. "
+                + "The frontmatter is untouched - use update_agent to change name/description/tools/max_tier.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("old_string", true, "Exact text to find in the body (must be unique unless replace_all is set).")
+                    .Str("new_string", true, "Replacement text.")
+                    .Bool("replace_all", false, "Replace every occurrence instead of requiring a unique match.")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Write(),
+                delegate(ToolCallContext ctx)
+                {
+                    try
+                    {
+                        return ToolResults.Text(agents.EditAgent(
+                            Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "old_string"),
+                            Str(ctx, "new_string"), Bool(ctx, "replace_all")));
+                    }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("read_agent",
+                "Read an agent's full <slug>.md (frontmatter + system prompt), so you can review it before "
+                + "editing. Read-only.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.ReadOnly(),
+                delegate(ToolCallContext ctx)
+                {
+                    try { return ToolResults.Text(agents.ReadAgent(Str(ctx, "scope"), Str(ctx, "slug"))); }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("list_agents",
+                "List the agent slugs in a scope (project or user). Read-only.",
+                SchemaBuilder.Object()
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.ReadOnly(),
+                delegate(ToolCallContext ctx)
+                {
+                    try { return ToolResults.Text(agents.ListAgents(Str(ctx, "scope"))); }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("delete_agent",
+                "Delete an entire agent: removes its <slug>.md. This cannot be undone.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Destructive(),
+                delegate(ToolCallContext ctx)
+                {
+                    try { return ToolResults.Text(agents.DeleteAgent(Str(ctx, "scope"), Str(ctx, "slug"))); }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("validate_agent",
+                "Check whether an agent's <slug>.md would load (its frontmatter must declare a non-empty "
+                + "description) and that its contract is well-formed (max_tier enum, tools list). Reports the "
+                + "parsed contract, or what is wrong. Read-only.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.ReadOnly(),
+                delegate(ToolCallContext ctx)
+                {
+                    try { return ToolResults.Text(agents.ValidateAgent(Str(ctx, "scope"), Str(ctx, "slug"))); }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+        }
+
         private static CallToolResult RunScript(SkillScriptRunner scripts, ToolCallContext ctx)
         {
             string slug = Str(ctx, "slug");
@@ -228,6 +381,24 @@ namespace SkillsMcpServer
             outp["timedOut"] = result.TimedOut;
             if (outTrunc || errTrunc) outp["truncated"] = true;
             return ToolResults.Json(outp);
+        }
+
+        // The string elements of an array arg as an array, or null when the key is ABSENT/null - so the
+        // caller can tell "tools not provided" (null -> keep/omit) from an explicit empty "tools: []"
+        // (a zero-length array -> clear). Skips null elements within a present array.
+        private static string[] StrArrayOrNull(ToolCallContext ctx, string key)
+        {
+            JToken t = ctx.Arguments[key];
+            if (t == null || t.Type == JTokenType.Null) return null;
+            JArray arr = t as JArray;
+            if (arr == null) return null;
+            List<string> list = new List<string>();
+            foreach (JToken e in arr)
+            {
+                if (e == null || e.Type == JTokenType.Null) continue;
+                list.Add(e.Type == JTokenType.String ? (string)e : e.ToString());
+            }
+            return list.ToArray();
         }
 
         // The string elements of an array arg (skips nulls); empty list when absent.

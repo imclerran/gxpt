@@ -8,8 +8,8 @@
     <ProjectGuid>{B0E7C3F2-9A41-4D6E-8B2C-5F1A3E7D9C04}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SkillsMcpServer</RootNamespace>
-    <AssemblyName>SkillsMcpServer</AssemblyName>
+    <RootNamespace>ExtensionsMcpServer</RootNamespace>
+    <AssemblyName>ExtensionsMcpServer</AssemblyName>
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -40,12 +40,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="SkillsConfig.cs" />
+    <Compile Include="ExtensionsConfig.cs" />
     <Compile Include="SkillSlug.cs" />
     <Compile Include="SkillFrontmatter.cs" />
     <Compile Include="SkillWriter.cs" />
     <Compile Include="SkillScriptRunner.cs" />
-    <Compile Include="SkillsServerTools.cs" />
+    <Compile Include="AgentFrontmatter.cs" />
+    <Compile Include="AgentWriter.cs" />
+    <Compile Include="ExtensionsServerTools.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

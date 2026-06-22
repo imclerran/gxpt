@@ -50,13 +50,14 @@ what's available rather than hardcoding one name.
   `memory__consolidate`. A skill rarely needs these directly - memory is usually managed by the
   app, not by a skill - but they exist.
 
-## skills - the skill system itself (host + this server)
+## skills - the skill system itself (host + the extensions server)
 - `open_skill(names[])` - open a skill and load its body
 - `read_skill_file(slug, relpath)` - read a skill's bundled file
 - `run_skill_script(slug, relpath, args[])` - run a skill's declared `.bat` (see `scripts.md`)
 - Authoring (what you're using now): `create_skill`, `write_skill_file`, `update_skill`,
   `edit_skill_file`, `list_skill_files`, `delete_skill_file`, `delete_skill`, `validate_skill`.
-  These are only available while this skill-writer skill is enabled.
+  These are only available while this skill-writer skill is enabled. (The same server also hosts
+  the agent-authoring tools, behind the separate agent-writer skill.)
 
 ## Also check your own current tools - the user may have added their own
 

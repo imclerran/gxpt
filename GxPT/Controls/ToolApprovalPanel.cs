@@ -284,7 +284,7 @@ namespace GxPT
                     _previewLabel.Text = "Diff:";
                     handled = true;
                 }
-                else if (string.Equals(req.FunctionName, "skills__edit_skill_file", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__edit_skill_file", StringComparison.Ordinal))
                 {
                     // Same treatment as files__edit: a colored diff of the change. The skill file lives
                     // outside the workspace, so there's no live file context to fold in - diff the
@@ -300,19 +300,19 @@ namespace GxPT
                     _previewLabel.Text = "Diff:";
                     handled = true;
                 }
-                else if (string.Equals(req.FunctionName, "skills__create_skill", StringComparison.Ordinal)
-                      || string.Equals(req.FunctionName, "skills__update_skill", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__create_skill", StringComparison.Ordinal)
+                      || string.Equals(req.FunctionName, "extensions__update_skill", StringComparison.Ordinal))
                 {
                     // Show the skill's authored fields (name/description/instructions) as readable
                     // markdown rather than raw JSON. update_skill carries only the fields being changed.
                     string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
                     string text = BuildSkillFields(req.Arguments);
                     _diffPanel.SetContent(slug, text, "markdown", dark, _monoFont, tc.CodeBack, tc.UiForeground);
-                    _previewLabel.Text = string.Equals(req.FunctionName, "skills__create_skill", StringComparison.Ordinal)
+                    _previewLabel.Text = string.Equals(req.FunctionName, "extensions__create_skill", StringComparison.Ordinal)
                         ? "Create skill:" : "Update skill:";
                     handled = true;
                 }
-                else if (string.Equals(req.FunctionName, "skills__write_skill_file", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__write_skill_file", StringComparison.Ordinal))
                 {
                     // Mirror files__write: the file content, highlighted by its extension.
                     string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
@@ -323,7 +323,7 @@ namespace GxPT
                     _previewLabel.Text = "Write skill file:";
                     handled = true;
                 }
-                else if (string.Equals(req.FunctionName, "skills__run_skill_script", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__run_skill_script", StringComparison.Ordinal))
                 {
                     // Mirror command__run: the script and its literal arguments.
                     string rel = req.Arguments.Value<string>("relpath") ?? string.Empty;
@@ -336,7 +336,7 @@ namespace GxPT
                         handled = true;
                     }
                 }
-                else if (string.Equals(req.FunctionName, "skills__delete_skill_file", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__delete_skill_file", StringComparison.Ordinal))
                 {
                     string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
                     string rel = req.Arguments.Value<string>("relpath") ?? string.Empty;
@@ -344,13 +344,46 @@ namespace GxPT
                     _previewLabel.Text = "Delete skill file:";
                     handled = true;
                 }
-                else if (string.Equals(req.FunctionName, "skills__delete_skill", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "extensions__delete_skill", StringComparison.Ordinal))
                 {
                     string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
                     if (slug.Length > 0)
                     {
                         _diffPanel.SetContent(string.Empty, slug, "text", dark, _monoFont, tc.CodeBack, tc.UiForeground);
                         _previewLabel.Text = "Delete skill:";
+                        handled = true;
+                    }
+                }
+                else if (string.Equals(req.FunctionName, "extensions__create_agent", StringComparison.Ordinal)
+                      || string.Equals(req.FunctionName, "extensions__update_agent", StringComparison.Ordinal))
+                {
+                    // Show the agent's authored fields (name/description/system prompt) as readable markdown
+                    // rather than raw JSON. update_agent carries only the fields being changed.
+                    string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
+                    string text = BuildSkillFields(req.Arguments);
+                    _diffPanel.SetContent(slug, text, "markdown", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                    _previewLabel.Text = string.Equals(req.FunctionName, "extensions__create_agent", StringComparison.Ordinal)
+                        ? "Create agent:" : "Update agent:";
+                    handled = true;
+                }
+                else if (string.Equals(req.FunctionName, "extensions__edit_agent", StringComparison.Ordinal))
+                {
+                    // Same treatment as edit_skill_file: a colored diff of the change to the agent's body.
+                    string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
+                    string oldS = req.Arguments.Value<string>("old_string") ?? string.Empty;
+                    string newS = req.Arguments.Value<string>("new_string") ?? string.Empty;
+                    LineDiffResult diff = DiffUtil.BuildLineDiff(oldS, newS);
+                    _diffPanel.SetContent(slug, diff.Body, "diff", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                    _previewLabel.Text = "Diff:";
+                    handled = true;
+                }
+                else if (string.Equals(req.FunctionName, "extensions__delete_agent", StringComparison.Ordinal))
+                {
+                    string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
+                    if (slug.Length > 0)
+                    {
+                        _diffPanel.SetContent(string.Empty, slug, "text", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                        _previewLabel.Text = "Delete agent:";
                         handled = true;
                     }
                 }

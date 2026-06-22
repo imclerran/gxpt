@@ -415,13 +415,13 @@
       <McpServerFiles Include="..\servers\WebSearchMcpServer\bin\$(Configuration)\**\*.*" Exclude="..\servers\WebSearchMcpServer\bin\$(Configuration)\**\*.pdb;..\servers\WebSearchMcpServer\bin\$(Configuration)\**\*.xml" />
       <McpServerFiles Include="..\servers\MSBuildMcpServer\bin\$(Configuration)\**\*.*" Exclude="..\servers\MSBuildMcpServer\bin\$(Configuration)\**\*.pdb;..\servers\MSBuildMcpServer\bin\$(Configuration)\**\*.xml" />
       <McpServerFiles Include="..\servers\MemoryMcpServer\bin\$(Configuration)\**\*.*" Exclude="..\servers\MemoryMcpServer\bin\$(Configuration)\**\*.pdb;..\servers\MemoryMcpServer\bin\$(Configuration)\**\*.xml" />
-      <McpServerFiles Include="..\servers\SkillsMcpServer\bin\$(Configuration)\**\*.*" Exclude="..\servers\SkillsMcpServer\bin\$(Configuration)\**\*.pdb;..\servers\SkillsMcpServer\bin\$(Configuration)\**\*.xml" />
+      <McpServerFiles Include="..\servers\ExtensionsMcpServer\bin\$(Configuration)\**\*.*" Exclude="..\servers\ExtensionsMcpServer\bin\$(Configuration)\**\*.pdb;..\servers\ExtensionsMcpServer\bin\$(Configuration)\**\*.xml" />
     </ItemGroup>
     <Copy SourceFiles="@(McpServerFiles)" DestinationFiles="@(McpServerFiles->'$(OutDir)mcp-servers\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" ContinueOnError="true" />
     <!-- Ship the bundled (first-party) skills next to GxPT.exe in a 'skills' folder. The host's
-         SkillRoots.BundledRoot resolves <exe>/skills, and SkillsMcpServer gets the same path as
-         GXPT_SKILLS_BUNDLED_ROOT, so a shipped skill (e.g. skill-writer) is discoverable and its
-         scripts runnable. Mirrors the mcp-servers copy above. -->
+         SkillRoots.BundledRoot resolves <exe>/skills, and ExtensionsMcpServer gets the same path as
+         GXPT_SKILLS_BUNDLED_ROOT, so a shipped skill (e.g. skill-writer, agent-writer) is discoverable
+         and its scripts runnable. Mirrors the mcp-servers copy above. -->
     <ItemGroup>
       <BundledSkillFiles Include="..\skills\**\*.*" />
     </ItemGroup>

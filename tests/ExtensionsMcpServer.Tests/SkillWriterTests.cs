@@ -1,9 +1,9 @@
 using System;
 using System.IO;
-using SkillsMcpServer;
+using ExtensionsMcpServer;
 using Xunit;
 
-namespace SkillsMcpServer.Tests
+namespace ExtensionsMcpServer.Tests
 {
     public sealed class SkillWriterTests : IDisposable
     {

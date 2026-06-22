@@ -50,6 +50,18 @@ same idea one level up.
 
 ## 2. Decision ledger
 
+> **Later update — the server was renamed `skills` → `extensions`.** When agent authoring
+> shipped (subagents-design phase 10), the same first-party server gained the agent-authoring
+> tools (`create_agent` / `update_agent` / `edit_agent` / `read_agent` / `list_agents` /
+> `delete_agent` / `validate_agent`). "Skills" no longer described its whole surface, so the
+> server (assembly `SkillsMcpServer` → `ExtensionsMcpServer`) and its tool prefix (`skills__*` →
+> `extensions__*`) were renamed to `extensions`. Agent authoring is the same *kind* of operation
+> as skill authoring (structured-frontmatter file writes to project/user roots with a `scope`
+> arg), so it reused `SkillWriter`'s atomic-write/validation machinery and the existing Write/
+> Destructive approval tiers rather than a new server — agents have no execution surface (S1/S11
+> don't apply to them). Below, read every `SkillsMcpServer` as the `extensions` server and every
+> `skills__<tool>` name as `extensions__<tool>`.
+
 | # | Decision | Rationale |
 |---|----------|-----------|
 | S1 | **Catalog & reads are host-synthesized meta-tools** (`open_skill`, `read_skill_file`), not a server; **only execution gets a server** (S11) | Discovery and asset reads are just disk reads, so a stdio process buys nothing — they ride the host registry like `reveal_tools`, never routed to a connection (D11). Spawning a *script* is the one concern that genuinely needs process isolation + a per-call timeout, so it (and only it) is a server. |

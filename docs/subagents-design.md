@@ -617,9 +617,17 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
    `max_tier: readonly`), **coder** (write, higher `max_turns`), **verify**
    (read + build/test, adversarial), plus a **general-purpose** catch-all — alongside
    the task-shaped `pr-reviewer`. Each is just an `AGENT.md`; nothing new in code.
-10. **(Optional/later)** an agent-authoring surface (an `agent-writer` skill, the
-    skill-writer precedent); folder-form agents with bundled assets; user-global
-    `scope` parity in any authoring flow.
+10. **(Shipped)** an agent-authoring surface — a bundled `agent-writer` skill (the
+    skill-writer precedent) backed by agent tools (`create_agent` / `update_agent` /
+    `edit_agent` / `read_agent` / `list_agents` / `delete_agent` / `validate_agent`)
+    on the **extensions** MCP server. The skills server was renamed `skills` →
+    `extensions` (its tool prefix is now `extensions__*`) because it now owns BOTH the
+    skill tools (authoring + `run_skill_script`) and agent authoring; agent authoring is
+    pure structured-file writes with a `scope` (project/user) arg, so it reused
+    `SkillWriter`'s atomic-write/validation machinery rather than a new server (agents
+    have no execution surface). The agent tools are gated on the `agent-writer` skill the
+    same way the skill tools are gated on `skill-writer` (`SkillToolGate`). Still later:
+    folder-form agents with bundled assets.
 
 ---
 
@@ -669,9 +677,9 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
   parent's turn (A8); a handle scheme + persisted sub-histories is a later feature.
 - **Streaming a child's output into the parent model** — deferred (A7); only the
   final answer crosses back. The user still *sees* live child activity (§9).
-- **Agent-authoring tools** (a writer like `skill-writer`) — phase 10; until then
-  agents are authored by hand or via the file tools.
-- **Folder-form agents + bundled assets**; **user-global authoring `scope`** parity.
+- ~~**Agent-authoring tools** (a writer like `skill-writer`)~~ — **shipped** (phase 10):
+  the `agent-writer` skill + agent tools on the `extensions` server (see phase 10 above).
+- **Folder-form agents + bundled assets** (user-global authoring `scope` for agents is shipped).
 - **Per-agent model *routing policy*** beyond a static `model:` override (e.g. "use
   a cheaper model for explore agents") — the static override covers the common case.
 

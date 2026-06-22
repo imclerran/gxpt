@@ -13,41 +13,74 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void HiddenTools_SkillEnabledButNotWriter_HidesAuthoring_ShowsRunScript()
+        public void HiddenTools_SkillEnabledButNoWriters_HidesAuthoring_ShowsRunScript()
         {
-            // A non-writer skill is enabled: the 8 authoring tools are hidden, but run_skill_script is
-            // available (any skill may ship a script).
+            // A non-writer skill is enabled: the 8 skill-authoring tools AND the 7 agent-authoring tools are
+            // hidden (neither meta-skill is on), but run_skill_script is available (any skill may ship one).
             ICollection<string> hidden = SkillToolGate.HiddenTools(new List<Skill> { MakeSkill("greeting") });
-            // tier 1
-            Assert.Contains("skills__create_skill", hidden);
-            Assert.Contains("skills__write_skill_file", hidden);
-            Assert.Contains("skills__update_skill", hidden);
-            // tier 2 (maintenance)
-            Assert.Contains("skills__edit_skill_file", hidden);
-            Assert.Contains("skills__list_skill_files", hidden);
-            Assert.Contains("skills__delete_skill_file", hidden);
-            Assert.Contains("skills__delete_skill", hidden);
-            Assert.Contains("skills__validate_skill", hidden);
+            // skill authoring: tier 1
+            Assert.Contains("extensions__create_skill", hidden);
+            Assert.Contains("extensions__write_skill_file", hidden);
+            Assert.Contains("extensions__update_skill", hidden);
+            // skill authoring: tier 2 (maintenance)
+            Assert.Contains("extensions__edit_skill_file", hidden);
+            Assert.Contains("extensions__list_skill_files", hidden);
+            Assert.Contains("extensions__delete_skill_file", hidden);
+            Assert.Contains("extensions__delete_skill", hidden);
+            Assert.Contains("extensions__validate_skill", hidden);
+            // agent authoring (owned by agent-writer, which is off)
+            Assert.Contains("extensions__create_agent", hidden);
+            Assert.Contains("extensions__update_agent", hidden);
+            Assert.Contains("extensions__edit_agent", hidden);
+            Assert.Contains("extensions__read_agent", hidden);
+            Assert.Contains("extensions__list_agents", hidden);
+            Assert.Contains("extensions__delete_agent", hidden);
+            Assert.Contains("extensions__validate_agent", hidden);
             // execution stays visible
-            Assert.DoesNotContain("skills__run_skill_script", hidden);
+            Assert.DoesNotContain("extensions__run_skill_script", hidden);
         }
 
         [Fact]
-        public void HiddenTools_MetaSkillEnabled_HidesNothing()
+        public void HiddenTools_BothMetaSkillsEnabled_HidesNothing()
         {
-            var enabled = new List<Skill> { MakeSkill("greeting"), MakeSkill(SkillToolGate.SkillWriterSlug) };
+            var enabled = new List<Skill>
+            {
+                MakeSkill("greeting"),
+                MakeSkill(SkillToolGate.SkillWriterSlug),
+                MakeSkill(SkillToolGate.AgentWriterSlug)
+            };
             Assert.Empty(SkillToolGate.HiddenTools(enabled));
         }
 
         [Fact]
-        public void HiddenTools_NoSkillEnabled_HidesEverySkillsTool()
+        public void HiddenTools_SkillWriterOnly_HidesAgentAuthoringNotSkillAuthoring()
         {
-            // No skill enabled at all: authoring AND run_skill_script are hidden.
+            var enabled = new List<Skill> { MakeSkill(SkillToolGate.SkillWriterSlug) };
+            ICollection<string> hidden = SkillToolGate.HiddenTools(enabled);
+            Assert.DoesNotContain("extensions__create_skill", hidden); // skill-writer is on
+            Assert.Contains("extensions__create_agent", hidden);       // agent-writer is off
+        }
+
+        [Fact]
+        public void HiddenTools_AgentWriterOnly_HidesSkillAuthoringNotAgentAuthoring()
+        {
+            var enabled = new List<Skill> { MakeSkill(SkillToolGate.AgentWriterSlug) };
+            ICollection<string> hidden = SkillToolGate.HiddenTools(enabled);
+            Assert.Contains("extensions__create_skill", hidden);          // skill-writer is off
+            Assert.DoesNotContain("extensions__create_agent", hidden);    // agent-writer is on
+        }
+
+        [Fact]
+        public void HiddenTools_NoSkillEnabled_HidesEveryExtensionsTool()
+        {
+            // No skill enabled at all: skill + agent authoring AND run_skill_script are hidden.
             foreach (ICollection<string> hidden in new[] { SkillToolGate.HiddenTools(null), SkillToolGate.HiddenTools(new List<Skill>()) })
             {
-                Assert.Contains("skills__create_skill", hidden);
-                Assert.Contains("skills__validate_skill", hidden);
-                Assert.Contains("skills__run_skill_script", hidden);
+                Assert.Contains("extensions__create_skill", hidden);
+                Assert.Contains("extensions__validate_skill", hidden);
+                Assert.Contains("extensions__create_agent", hidden);
+                Assert.Contains("extensions__validate_agent", hidden);
+                Assert.Contains("extensions__run_skill_script", hidden);
             }
         }
     }
@@ -65,8 +98,8 @@ namespace GxPT.Tests
         [Fact]
         public void FilterHiddenDefs_RemovesHiddenByFunctionName()
         {
-            var defs = new List<JObject> { Def("web__search"), Def("skills__create_skill") };
-            var hidden = new HashSet<string> { "skills__create_skill" };
+            var defs = new List<JObject> { Def("web__search"), Def("extensions__create_skill") };
+            var hidden = new HashSet<string> { "extensions__create_skill" };
 
             IList<JObject> result = McpChatOrchestrator.FilterHiddenDefs(defs, hidden);
 
@@ -84,12 +117,12 @@ namespace GxPT.Tests
         [Fact]
         public void FilterHiddenManifest_DropsHiddenLinesKeepsOthers()
         {
-            string manifest = "Available tools:\n- web__search\n- skills__create_skill\n- files__read";
-            var hidden = new HashSet<string> { "skills__create_skill" };
+            string manifest = "Available tools:\n- web__search\n- extensions__create_skill\n- files__read";
+            var hidden = new HashSet<string> { "extensions__create_skill" };
 
             string result = McpChatOrchestrator.FilterHiddenManifest(manifest, hidden);
 
-            Assert.DoesNotContain("skills__create_skill", result);
+            Assert.DoesNotContain("extensions__create_skill", result);
             Assert.Contains("- web__search", result);
             Assert.Contains("- files__read", result);
         }
