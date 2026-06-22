@@ -4648,8 +4648,11 @@ namespace GxPT
                 }
                 case "extensions__read_agent":
                 {
-                    string slug = Str(args, "slug"); if (slug.Length == 0) return false;
-                    header = "Read agent " + slug; return true;
+                    // Always render a record (mirrors read_skill_file): a slug-less call still reads as
+                    // "Read agent" rather than falling back to the raw "using extensions: read_agent" marker.
+                    string slug = Str(args, "slug");
+                    header = slug.Length > 0 ? "Read agent " + slug : "Read agent";
+                    return true;
                 }
                 case "extensions__list_agents":
                 {
