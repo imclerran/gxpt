@@ -6,8 +6,8 @@ A native chatbot client and coding agent for Windows XP. GxPT aims to provide a 
 
 ## Screenshot
 
-### Agentic Coding:
-![GxPT Agentic Coding Screenshot](GxPT-agentic-coding.png)
+### Subagents:
+![GxPT Subagents Screenshot](GxPT-subagents.PNG)
 
 ## Features
 
