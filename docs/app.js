@@ -1,12 +1,15 @@
 /* GxPT landing page — shared release lookup (ES5, no dependencies).
-   Loaded on every page. One unauthenticated call to the GitHub Releases API
-   populates, where present on the page:
+   Loaded on every page. Unauthenticated calls to the GitHub Releases API
+   populate, where present on the page:
      - the Download button's target (#download-btn) -> newest .msi
      - the download note's version (#download-note)
      - the sidebar "Latest release" widget version (#latest-ver)
-   Release assets are uploaded manually, so the very latest tag may not have its
-   installer yet; we walk back to the most recent release that does. On any
-   failure every element keeps its static fallback. */
+   We prefer the dedicated /releases/latest endpoint because its cache stays
+   fresh, whereas the paginated /releases list endpoint can lag by a day or
+   more after a new release. Release assets are uploaded manually, so the very
+   latest tag may not have its installer yet; when that happens (or the latest
+   lookup fails) we fall back to walking the list for the most recent release
+   that does. On any failure every element keeps its static fallback. */
 (function () {
   var btn = document.getElementById('download-btn');
   var note = document.getElementById('download-note');
@@ -31,23 +34,39 @@
     if (latest && tag) { latest.innerHTML = 'GxPT v' + tag; }
   }
 
-  try {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'https://api.github.com/repos/imclerran/GxPT/releases?per_page=20', true);
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState !== 4) return;
-      if (xhr.status < 200 || xhr.status >= 300) return; // keep fallbacks
-      try {
-        var releases = JSON.parse(xhr.responseText);
-        if (!releases || !releases.length) return;
-        for (var i = 0; i < releases.length; i++) {
-          if (releases[i].draft) continue;
-          var msi = findMsi(releases[i]);
-          if (msi) { apply(releases[i], msi); return; }
-        }
-        // No release carries an .msi yet — leave buttons on the releases page.
-      } catch (e) { /* keep fallbacks */ }
-    };
-    xhr.send();
-  } catch (e) { /* keep fallbacks */ }
+  function fetchJson(url, cb) {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status < 200 || xhr.status >= 300) { cb(null); return; } // keep fallbacks
+        try { cb(JSON.parse(xhr.responseText)); }
+        catch (e) { cb(null); }
+      };
+      xhr.send();
+    } catch (e) { cb(null); }
+  }
+
+  // Fallback: walk the full list (newest first) for the most recent release
+  // that carries an .msi. Used when /releases/latest has no installer yet.
+  function applyFromList() {
+    fetchJson('https://api.github.com/repos/imclerran/GxPT/releases?per_page=20', function (releases) {
+      if (!releases || !releases.length) return; // keep fallbacks
+      for (var i = 0; i < releases.length; i++) {
+        if (releases[i].draft) continue;
+        var msi = findMsi(releases[i]);
+        if (msi) { apply(releases[i], msi); return; }
+      }
+      // No release carries an .msi yet — leave buttons on the releases page.
+    });
+  }
+
+  // Prefer the dedicated "latest" endpoint; fall back to the list when it has
+  // no installer attached yet or the request fails.
+  fetchJson('https://api.github.com/repos/imclerran/GxPT/releases/latest', function (release) {
+    var msi = (release && !release.draft) ? findMsi(release) : null;
+    if (msi) { apply(release, msi); return; }
+    applyFromList();
+  });
 })();
