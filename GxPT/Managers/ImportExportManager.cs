@@ -53,7 +53,7 @@ namespace GxPT
                     if (ConversationStore.ListAll().Count > 0)
                     {
                         var dr = MessageBox.Show(owner,
-                            "Importing will overwrite existing files with the same names. Continue?",
+                            "Importing will overwrite existing conversations with the same ID. Continue?",
                             "Import Conversations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                         if (dr != DialogResult.Yes) return false;
                     }
@@ -110,7 +110,7 @@ namespace GxPT
                 if (sfd.ShowDialog(owner) != DialogResult.OK) return false;
                 try
                 {
-                    ImportExportService.ExportSingle(info.Path, sfd.FileName);
+                    ImportExportService.ExportSingle(info.Path, sfd.FileName, info.Id);
                     try { MessageBox.Show(owner, "Export completed.", "Export Conversation", MessageBoxButtons.OK, MessageBoxIcon.Information); }
                     catch { }
                     return true;

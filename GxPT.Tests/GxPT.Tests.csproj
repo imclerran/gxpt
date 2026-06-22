@@ -33,6 +33,7 @@
     <Compile Include="..\GxPT\Services\MarkdownParser.cs" Link="Linked\MarkdownParser.cs" />
     <Compile Include="..\GxPT\Utilities\ZipSafe.cs" Link="Linked\ZipSafe.cs" />
     <Compile Include="..\GxPT\Services\SkillImportExportService.cs" Link="Linked\SkillImportExportService.cs" />
+    <Compile Include="..\GxPT\Services\ImportExportService.cs" Link="Linked\ImportExportService.cs" />
     <Compile Include="..\GxPT\Utilities\FileSafe.cs" Link="Linked\FileSafe.cs" />
     <Compile Include="..\GxPT\Data\ConversationStore.cs" Link="Linked\ConversationStore.cs" />
     <Compile Include="..\GxPT\Models\Conversation.cs" Link="Linked\Conversation.cs" />
