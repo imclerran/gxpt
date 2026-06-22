@@ -77,7 +77,8 @@ Creating a new agent:
   return, and any rules or gotchas. Tell it to work by calling tools and to give its final answer as
   a plain message.
 
-Editing an existing agent (read it first with `read_agent`, or `list_agents` to see what exists):
+Editing an existing agent (first `list_agents` to see which slugs exist, then `read_agent(slug)` to
+read the one you want before changing it):
 - `edit_agent(slug, old_string, new_string)` - **your default for changing the system prompt.** A
   targeted edit that replaces an exact span in the body. Don't re-send the whole prompt for a small
   change.

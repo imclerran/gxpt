@@ -300,10 +300,11 @@ namespace ExtensionsMcpServer
                 });
 
             server.AddTool("read_agent",
-                "Read an agent's full <slug>.md (frontmatter + system prompt), so you can review it before "
-                + "editing. Read-only.",
+                "Read ONE existing agent's full <slug>.md (frontmatter + system prompt) by its slug, so you "
+                + "can review it before editing. Reads a single named agent - it does NOT list or read all "
+                + "agents; call list_agents first to discover the available slugs. Read-only.",
                 SchemaBuilder.Object()
-                    .Str("slug", true, "The agent's slug (it must already exist).")
+                    .Str("slug", true, "The slug of the agent to read, as shown by list_agents (it must already exist).")
                     .Str("scope", false, scopeDesc)
                     .Build(),
                 ToolAnnotations.ReadOnly(),
@@ -314,7 +315,9 @@ namespace ExtensionsMcpServer
                 });
 
             server.AddTool("list_agents",
-                "List the agent slugs in a scope (project or user). Read-only.",
+                "List the slugs of the agents in a scope (project or user). Use this to discover which agents "
+                + "exist - the slugs it returns are what you pass to read_agent / update_agent / edit_agent / "
+                + "delete_agent / validate_agent. Read-only.",
                 SchemaBuilder.Object()
                     .Str("scope", false, scopeDesc)
                     .Build(),
