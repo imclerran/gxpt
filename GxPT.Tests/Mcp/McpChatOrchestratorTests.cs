@@ -554,6 +554,33 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Empty_response_recovery_is_skipped_when_cancelled()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var cancel = new RequestCancellation();
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // initial: empty
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // retry - must NOT run after cancel
+            // Simulate the user pressing Stop the moment the first (empty) response lands.
+            streamer.OnCall = delegate(int idx) { if (idx == 0) cancel.Cancel(); };
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            var orch = New(streamer, reg);
+            orch.Cancellation = cancel;
+            orch.RunTurn(history, "go", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(1, streamer.Calls);   // no recovery request issued once Stop was pressed
+            // A cancelled turn surfaces no empty-response notice.
+            foreach (var m in history)
+                Assert.False(m.Content != null
+                    && m.Content.ToLowerInvariant().Contains("empty response"));
+        }
+
+        [Fact]
         public void Tool_isError_result_is_fed_back_and_loop_continues()
         {
             RegistryFakeTransport ft;

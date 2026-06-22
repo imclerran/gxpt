@@ -20,6 +20,10 @@ namespace GxPT
     {
         public const int DefaultMaxIterations = 25;
         public const int DefaultCallTimeoutMs = 60000;
+        // Inline recovery attempts when a tool turn returns an empty completion (no text, no tool
+        // calls): a bare resend first, then a nudge-continue on the final attempt. These run inline
+        // (not fresh loop iterations), so they do not consume the iteration budget.
+        private const int EmptyRecoveryAttempts = 2;
         // Reveal-set cap, enforced only on models whose provider has no prompt caching (see the
         // eviction note on RevealedToolNames). Matches the old registry-global LRU cap.
         public const int RevealEvictionCap = 24;
@@ -410,59 +414,48 @@ namespace GxPT
                 if (!string.IsNullOrEmpty(ephemeralTail))
                     requestMessages.Add(new ChatMessage("user", ephemeralTail));
 
-                bool errored;
-                string errMessage;
                 // After a user-stopped fan-out, force a text-only answer (the dispatch result carries the
                 // "summarize and ask" directive); otherwise normal auto tool choice.
                 string toolChoice = forceTextThisCall ? "none" : null;
                 forceTextThisCall = false;
-                ToolCallAssembler asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
-                if (errored)
-                {
-                    _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
-                        + ": stream error: " + (errMessage ?? "(none)"));
-                    if (ui != null) ui.OnError(errMessage);
-                    return;
-                }
-                LogResponse(turnId, iter, asm);
+                ToolCallAssembler asm = StreamLogged(requestMessages, tools, toolChoice, ui, true, iter, turnId, null);
+                if (asm == null) return;   // stream error: UI already notified, turn is done
 
                 // Degenerate response (no tool calls AND no text, but no error): some providers emit an
-                // empty completion on a transient hiccup. Retry the same request once before giving up.
-                if (!asm.ProducedToolCalls && IsEmptyText(asm.Text))
+                // empty completion on a transient hiccup. Recover inline before giving up - a bare resend
+                // first, then a nudge-continue on the final attempt: the same request plus a request-only
+                // "keep going" user message (EmptyResponseNudge) that gives a wedged model a different last
+                // token to react to. The nudge is never added to history, so it is neither rendered nor
+                // persisted. All inline (not fresh loop iterations), so recovery never consumes the tool-loop
+                // budget. Recovery attempts are not streamed live (live == false) so a discarded empty
+                // attempt can't leave stray text in the bubble; a recovered answer is surfaced once, just
+                // below. The CancelRequested() guard means a Stop issues no further requests.
+                bool streamedLive = true;   // the initial response above streamed to the UI
+                for (int rec = 0; rec < EmptyRecoveryAttempts
+                                  && !asm.ProducedToolCalls && IsEmptyText(asm.Text)
+                                  && !CancelRequested(); rec++)
                 {
-                    _log.Log("mcp", "[turn " + turnId + "] empty response (no tool calls, no text); retrying once");
-                    asm = StreamOnce(requestMessages, tools, toolChoice, ui, out errored, out errMessage);
-                    if (errored)
+                    bool nudge = (rec == EmptyRecoveryAttempts - 1);
+                    IList<ChatMessage> attemptMsgs = requestMessages;
+                    if (nudge)
                     {
-                        _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
-                            + " (retry): stream error: " + (errMessage ?? "(none)"));
-                        if (ui != null) ui.OnError(errMessage);
-                        return;
+                        List<ChatMessage> nudged = new List<ChatMessage>(requestMessages);
+                        nudged.Add(new ChatMessage("user", EmptyResponseNudge));
+                        attemptMsgs = nudged;
                     }
-                    LogResponse(turnId, iter, asm);
+                    _log.Log("mcp", "[turn " + turnId + "] empty response; "
+                        + (nudge ? "nudging" : "retrying") + " (off budget)");
+                    asm = StreamLogged(attemptMsgs, tools, toolChoice, ui, false, iter, turnId,
+                                       nudge ? "nudge" : "retry");
+                    if (asm == null) return;
+                    streamedLive = false;
                 }
 
-                // Still empty after the bare retry: one nudge-continue before giving up. Resend the same
-                // request plus a request-only "keep going" user message (EmptyResponseNudge) - it changes
-                // the last token the model reacts to without touching history, so it is never rendered or
-                // persisted. Done inline (not a fresh loop iteration), so it does not consume the tool-loop
-                // budget. Whatever this returns - tool calls, a final answer, or another empty - flows into
-                // the normal handling below, where a third empty hits the resumable notice.
-                if (!asm.ProducedToolCalls && IsEmptyText(asm.Text))
-                {
-                    _log.Log("mcp", "[turn " + turnId + "] still empty after retry; nudging once (off budget)");
-                    List<ChatMessage> nudged = new List<ChatMessage>(requestMessages);
-                    nudged.Add(new ChatMessage("user", EmptyResponseNudge));
-                    asm = StreamOnce(nudged, tools, toolChoice, ui, out errored, out errMessage);
-                    if (errored)
-                    {
-                        _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
-                            + " (nudge): stream error: " + (errMessage ?? "(none)"));
-                        if (ui != null) ui.OnError(errMessage);
-                        return;
-                    }
-                    LogResponse(turnId, iter, asm);
-                }
+                // A recovered answer was not streamed live, so surface it once here to keep the live
+                // bubble in step with the message that gets persisted. A still-empty asm falls through to
+                // the resumable notice below.
+                if (!streamedLive && ui != null && !IsEmptyText(asm.Text))
+                    ui.AppendTextDelta(asm.Text);
 
                 // Stop requested during (or just after) the model stream: the stream was killed, so its
                 // tool calls are partial/unexecutable. Keep any text it produced and finalize - never
@@ -477,11 +470,11 @@ namespace GxPT
                 {
                     if (IsEmptyText(asm.Text))
                     {
-                        // Still empty after the bare retry and the nudge-continue: surface a clear,
-                        // resumable notice rather than completing with a silent empty bubble.
+                        // Still empty after every recovery attempt: surface a clear, resumable notice
+                        // rather than completing with a silent empty bubble.
                         string emptyNotice = "The model returned an empty response. Please try again.";
                         history.Add(new ChatMessage("assistant", emptyNotice));
-                        _log.Log("mcp", "[turn " + turnId + "] still empty after retry + nudge; surfaced notice");
+                        _log.Log("mcp", "[turn " + turnId + "] still empty after recovery; surfaced notice");
                         if (ui != null) { ui.AppendTextDelta(emptyNotice); ui.Complete(); }
                         return;
                     }
@@ -525,8 +518,35 @@ namespace GxPT
             }
         }
 
-        // One streamed model request into a fresh assembler. Shared by the main loop, the
-        // empty-response retry, and (with toolChoice = "none") the cap wrap-up.
+        // Streams one model request, logs the response, and returns the assembler. On a stream error
+        // it notifies the UI and returns null - the caller must end the turn. attemptTag annotates the
+        // abort log (null/empty for the initial call, "retry"/"nudge" for empty-response recovery).
+        // 'live' controls only whether text deltas stream into the transcript: false for discardable
+        // empty-response recovery attempts (so a discarded attempt leaves no stray text), while errors
+        // still surface on the real ui either way. Shared by the initial per-iteration request and the
+        // recovery attempts so the stream -> error-check -> log sequence lives in one place.
+        private ToolCallAssembler StreamLogged(IList<ChatMessage> requestMessages, IList<JObject> tools,
+                                               string toolChoice, IToolLoopUi ui, bool live, int iter,
+                                               string turnId, string attemptTag)
+        {
+            bool errored;
+            string errMessage;
+            ToolCallAssembler asm = StreamOnce(requestMessages, tools, toolChoice,
+                                               live ? ui : null, out errored, out errMessage);
+            if (errored)
+            {
+                _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
+                    + (string.IsNullOrEmpty(attemptTag) ? string.Empty : " (" + attemptTag + ")")
+                    + ": stream error: " + (errMessage ?? "(none)"));
+                if (ui != null) ui.OnError(errMessage);
+                return null;
+            }
+            LogResponse(turnId, iter, asm);
+            return asm;
+        }
+
+        // One streamed model request into a fresh assembler. Shared by StreamLogged (the main loop and
+        // empty-response recovery) and (with toolChoice = "none") the cap wrap-up.
         private ToolCallAssembler StreamOnce(IList<ChatMessage> requestMessages, IList<JObject> tools,
                                              string toolChoice, IToolLoopUi ui, out bool errored,
                                              out string errMessage)
