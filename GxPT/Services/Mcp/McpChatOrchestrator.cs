@@ -29,6 +29,17 @@ namespace GxPT
         // references it.
         internal const string DeniedResultText = "[Call denied by user.]";
 
+        // Request-only "keep going" message used once when a response comes back empty even after the
+        // inline bare retry (see the empty-response handling in RunTurn). Appended to that one request
+        // as a user-role message - never added to history, so it is neither rendered nor persisted -
+        // to give a wedged model a different last token to react to than the prompt it just answered
+        // emptily. User-role (not system) because Anthropic via OpenRouter hoists in-array system
+        // messages to the top-level system parameter. Phrased to resume the task without forcing a
+        // tool call when the work is actually done.
+        internal const string EmptyResponseNudge =
+            "Your previous response came back empty. Continue with the task: if more work remains, "
+            + "make the next tool call; if the task is already complete, give your final answer.";
+
         // Agentic behavior guidance, prepended as a system message on tool-enabled turns only
         // (this orchestrator runs solely when at least one tool is available). Kept short to
         // limit token cost. Reinforces five things: act through the tools, don't return a null/
@@ -431,6 +442,28 @@ namespace GxPT
                     LogResponse(turnId, iter, asm);
                 }
 
+                // Still empty after the bare retry: one nudge-continue before giving up. Resend the same
+                // request plus a request-only "keep going" user message (EmptyResponseNudge) - it changes
+                // the last token the model reacts to without touching history, so it is never rendered or
+                // persisted. Done inline (not a fresh loop iteration), so it does not consume the tool-loop
+                // budget. Whatever this returns - tool calls, a final answer, or another empty - flows into
+                // the normal handling below, where a third empty hits the resumable notice.
+                if (!asm.ProducedToolCalls && IsEmptyText(asm.Text))
+                {
+                    _log.Log("mcp", "[turn " + turnId + "] still empty after retry; nudging once (off budget)");
+                    List<ChatMessage> nudged = new List<ChatMessage>(requestMessages);
+                    nudged.Add(new ChatMessage("user", EmptyResponseNudge));
+                    asm = StreamOnce(nudged, tools, toolChoice, ui, out errored, out errMessage);
+                    if (errored)
+                    {
+                        _log.Log("mcp", "[turn " + turnId + "] aborted on iteration " + (iter + 1)
+                            + " (nudge): stream error: " + (errMessage ?? "(none)"));
+                        if (ui != null) ui.OnError(errMessage);
+                        return;
+                    }
+                    LogResponse(turnId, iter, asm);
+                }
+
                 // Stop requested during (or just after) the model stream: the stream was killed, so its
                 // tool calls are partial/unexecutable. Keep any text it produced and finalize - never
                 // act on a half-streamed tool call.
@@ -444,11 +477,11 @@ namespace GxPT
                 {
                     if (IsEmptyText(asm.Text))
                     {
-                        // Still empty after a retry: surface a clear, resumable notice rather than
-                        // completing with a silent empty bubble.
+                        // Still empty after the bare retry and the nudge-continue: surface a clear,
+                        // resumable notice rather than completing with a silent empty bubble.
                         string emptyNotice = "The model returned an empty response. Please try again.";
                         history.Add(new ChatMessage("assistant", emptyNotice));
-                        _log.Log("mcp", "[turn " + turnId + "] still empty after retry; surfaced notice");
+                        _log.Log("mcp", "[turn " + turnId + "] still empty after retry + nudge; surfaced notice");
                         if (ui != null) { ui.AppendTextDelta(emptyNotice); ui.Complete(); }
                         return;
                     }
