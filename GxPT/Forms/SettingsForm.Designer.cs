@@ -30,7 +30,9 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SettingsForm));
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
-            this.btnSave = new System.Windows.Forms.Button();
+            this.btnOk = new System.Windows.Forms.Button();
+            this.btnCancel = new System.Windows.Forms.Button();
+            this.btnApply = new System.Windows.Forms.Button();
             this.rtbJson = new System.Windows.Forms.RichTextBox();
             this.tblSettings = new System.Windows.Forms.TableLayoutPanel();
             this.grpAccount = new System.Windows.Forms.GroupBox();
@@ -134,24 +136,49 @@
             // flowLayoutPanel1
             // 
             this.flowLayoutPanel1.AutoSize = true;
-            this.flowLayoutPanel1.Controls.Add(this.btnSave);
+            // RightToLeft flow lays children out from the right edge, so add Apply first (rightmost),
+            // then Cancel, then OK to get the standard Windows left-to-right order: OK | Cancel | Apply.
+            this.flowLayoutPanel1.Controls.Add(this.btnApply);
+            this.flowLayoutPanel1.Controls.Add(this.btnCancel);
+            this.flowLayoutPanel1.Controls.Add(this.btnOk);
             this.flowLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.flowLayoutPanel1.FlowDirection = System.Windows.Forms.FlowDirection.RightToLeft;
             this.flowLayoutPanel1.Location = new System.Drawing.Point(0, 437);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
-            this.flowLayoutPanel1.Size = new System.Drawing.Size(604, 23);
-            this.flowLayoutPanel1.TabIndex = 0;
-            // 
-            // btnSave
-            // 
-            this.btnSave.Location = new System.Drawing.Point(529, 0);
-            this.btnSave.Margin = new System.Windows.Forms.Padding(0);
-            this.btnSave.Name = "btnSave";
-            this.btnSave.Size = new System.Drawing.Size(75, 23);
-            this.btnSave.TabIndex = 0;
-            this.btnSave.Text = "Save";
-            this.btnSave.UseVisualStyleBackColor = true;
-            this.btnSave.Click += new System.EventHandler(this.btnSave_Click);
+            this.flowLayoutPanel1.Padding = new System.Windows.Forms.Padding(0, 3, 3, 3);
+            this.flowLayoutPanel1.Size = new System.Drawing.Size(604, 29);
+            this.flowLayoutPanel1.TabIndex = 4;
+            //
+            // btnOk
+            //
+            this.btnOk.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            this.btnOk.Name = "btnOk";
+            this.btnOk.Size = new System.Drawing.Size(75, 23);
+            this.btnOk.TabIndex = 0;
+            this.btnOk.Text = "OK";
+            this.btnOk.UseVisualStyleBackColor = true;
+            this.btnOk.Click += new System.EventHandler(this.btnOk_Click);
+            //
+            // btnCancel
+            //
+            this.btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.btnCancel.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(75, 23);
+            this.btnCancel.TabIndex = 1;
+            this.btnCancel.Text = "Cancel";
+            this.btnCancel.UseVisualStyleBackColor = true;
+            //
+            // btnApply
+            //
+            this.btnApply.Enabled = false;
+            this.btnApply.Margin = new System.Windows.Forms.Padding(6, 0, 0, 0);
+            this.btnApply.Name = "btnApply";
+            this.btnApply.Size = new System.Drawing.Size(75, 23);
+            this.btnApply.TabIndex = 2;
+            this.btnApply.Text = "Apply";
+            this.btnApply.UseVisualStyleBackColor = true;
+            this.btnApply.Click += new System.EventHandler(this.btnApply_Click);
             // 
             // rtbJson
             // 
@@ -1015,7 +1042,8 @@
             //
             // SettingsForm
             // 
-            this.AcceptButton = this.btnSave;
+            this.AcceptButton = this.btnOk;
+            this.CancelButton = this.btnCancel;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(604, 576);
@@ -1076,7 +1104,9 @@
         #endregion
 
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
-        private System.Windows.Forms.Button btnSave;
+        private System.Windows.Forms.Button btnOk;
+        private System.Windows.Forms.Button btnCancel;
+        private System.Windows.Forms.Button btnApply;
         private System.Windows.Forms.RichTextBox rtbJson;
         private System.Windows.Forms.TableLayoutPanel tblSettings;
         private System.Windows.Forms.GroupBox grpAccount;

@@ -24,6 +24,10 @@ namespace GxPT
         // Guard to prevent event loops during programmatic sync
         private bool _isSyncing = false;
 
+        // True once the user edits any control (and not yet saved). Drives the Apply button's enabled
+        // state; cleared on a successful Apply/OK save and reset to false after the initial load.
+        private bool _isDirty = false;
+
         // Debounce timer for JSON syntax highlighting
         private Timer _jsonHighlightTimer;
 
@@ -168,6 +172,54 @@ namespace GxPT
                 this.chkMcpCommand.CheckedChanged += McpCredential_TextChanged;
             }
             catch { }
+
+            // Track edits across every input so the Apply button can light up only when there are
+            // unsaved changes. Wired generically (by control type) so new controls are covered too.
+            try { WireDirtyTracking(this); }
+            catch { }
+            UpdateDialogButtons();
+        }
+
+        // Recursively subscribe to the relevant "changed" event of each input control. The handler is
+        // guarded by _isSyncing, so programmatic population (load, tab sync, post-save refresh) doesn't
+        // count as a user edit.
+        private void WireDirtyTracking(Control root)
+        {
+            if (root == null) return;
+            foreach (Control c in root.Controls)
+            {
+                if (c is TextBox || c is RichTextBox)
+                    c.TextChanged += AnyInput_Changed;
+                else if (c is CheckBox)
+                    ((CheckBox)c).CheckedChanged += AnyInput_Changed;
+                else if (c is ComboBox)
+                    ((ComboBox)c).SelectedIndexChanged += AnyInput_Changed;
+                else if (c is NumericUpDown)
+                    ((NumericUpDown)c).ValueChanged += AnyInput_Changed;
+
+                if (c.HasChildren) WireDirtyTracking(c);
+            }
+        }
+
+        private void AnyInput_Changed(object sender, EventArgs e)
+        {
+            if (_isSyncing) return;
+            MarkDirty();
+        }
+
+        private void MarkDirty()
+        {
+            if (_isSyncing) return;
+            _isDirty = true;
+            UpdateDialogButtons();
+        }
+
+        // OK and Cancel are always enabled (standard Windows practice); Apply only when there are
+        // unsaved changes.
+        private void UpdateDialogButtons()
+        {
+            try { if (this.btnApply != null) this.btnApply.Enabled = _isDirty; }
+            catch { }
         }
 
         private void McpCredential_TextChanged(object sender, EventArgs e)
@@ -200,6 +252,11 @@ namespace GxPT
 
                 // mcp.json lives in its own file beside settings.json.
                 LoadMcpJsonEditor();
+
+                // Nothing the user did yet: clear any dirty marks left by populating the controls
+                // (LoadMcpJsonEditor runs outside the _isSyncing block) so Apply starts disabled.
+                _isDirty = false;
+                UpdateDialogButtons();
             }
             catch (Exception ex)
             {
@@ -295,13 +352,35 @@ namespace GxPT
             }
         }
 
-        private void btnSave_Click(object sender, EventArgs e)
+        // OK: save and close.
+        private void btnOk_Click(object sender, EventArgs e)
         {
             if (SaveSettingsOnly())
             {
+                _isDirty = false;
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
+        }
+
+        // Apply: save without closing. Disabled (so unreachable) unless there are unsaved changes.
+        private void btnApply_Click(object sender, EventArgs e)
+        {
+            ApplyChanges();
+        }
+
+        // Persist the working settings, then clear the dirty state on success so Apply greys out again.
+        // Shared by the Apply button and Ctrl+S. Cancel needs no handler: it neither saves nor leaves a
+        // dirty file (the form only writes on save), so closing simply discards the unsaved edits.
+        private bool ApplyChanges()
+        {
+            bool ok = SaveSettingsOnly();
+            if (ok)
+            {
+                _isDirty = false;
+                UpdateDialogButtons();
+            }
+            return ok;
         }
 
         private void SettingsForm_KeyDown(object sender, KeyEventArgs e)
@@ -309,7 +388,7 @@ namespace GxPT
             if (e.Control && e.KeyCode == Keys.S)
             {
                 e.SuppressKeyPress = true; // prevent ding
-                SaveSettingsOnly(); // Save without closing the form
+                ApplyChanges(); // Save without closing the form
             }
         }
 
