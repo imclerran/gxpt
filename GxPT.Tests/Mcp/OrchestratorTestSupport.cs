@@ -70,6 +70,7 @@ namespace GxPT.Tests.Mcp
         public decimal? ServeCost;
 
         public int Calls;
+        public Action<int> OnCall;   // invoked with the call index at the start of each StreamChat
         public readonly List<IList<ChatMessage>> SeenMessages = new List<IList<ChatMessage>>();
         public readonly List<IList<JObject>> SeenTools = new List<IList<JObject>>();
         public readonly List<ClientProperties> SeenProps = new List<ClientProperties>();
@@ -82,6 +83,10 @@ namespace GxPT.Tests.Mcp
             SeenMessages.Add(messages);
             SeenTools.Add(tools);
             SeenProps.Add(props);
+
+            // Test hook fired with this call's index, e.g. to simulate the user pressing Stop
+            // mid-turn (cancel.Cancel()) after a particular streamed response.
+            if (OnCall != null) OnCall(idx);
 
             if (ServeAs != null && props != null && props.ResponseUsageCallback != null)
             {

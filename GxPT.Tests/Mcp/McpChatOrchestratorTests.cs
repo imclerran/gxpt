@@ -503,23 +503,81 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
-        public void Empty_response_twice_surfaces_a_notice()
+        public void Empty_response_after_retry_and_nudge_surfaces_a_notice()
         {
             RegistryFakeTransport ft;
             var reg = RegistryWith(out ft, "files", new ToolDef("read"));
 
             var streamer = new ScriptedStreamer();
-            streamer.Turns.Add(new ChatCompletionChunk[0]);
-            streamer.Turns.Add(new ChatCompletionChunk[0]);
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // initial: empty
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // bare retry: still empty
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // nudge-continue: still empty
 
             var history = new List<ChatMessage>();
             var ui = new RecordingUi();
             New(streamer, reg).RunTurn(history, "go", ui);
 
             Assert.True(ui.Completed);
-            Assert.Equal(2, streamer.Calls);   // initial + one retry, then surface
+            Assert.Equal(3, streamer.Calls);   // initial + bare retry + nudge, then surface
             Assert.Contains("empty response", history[history.Count - 1].Content.ToLowerInvariant());
             Assert.Contains("empty response", ui.Text.ToString().ToLowerInvariant());
+        }
+
+        [Fact]
+        public void Empty_after_retry_is_nudged_once_then_recovers()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // initial: empty
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // bare retry: still empty
+            streamer.Turns.Add(Chunks.Text("recovered"));     // nudge-continue: model answers
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            New(streamer, reg).RunTurn(history, "go", ui);
+
+            Assert.Equal(3, streamer.Calls);   // empty + retry + nudge(answer)
+            Assert.Equal("recovered", ui.Text.ToString());
+            Assert.True(ui.Completed);
+
+            // The nudge rides the third request as its last (user-role) message...
+            var nudgeReq = streamer.SeenMessages[2];
+            var last = nudgeReq[nudgeReq.Count - 1];
+            Assert.Equal("user", last.Role);
+            Assert.Equal(McpChatOrchestrator.EmptyResponseNudge, last.Content);
+
+            // ...but it is request-only: never written to history (not rendered or persisted).
+            foreach (var m in history)
+                Assert.NotEqual(McpChatOrchestrator.EmptyResponseNudge, m.Content);
+        }
+
+        [Fact]
+        public void Empty_response_recovery_is_skipped_when_cancelled()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var cancel = new RequestCancellation();
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // initial: empty
+            streamer.Turns.Add(new ChatCompletionChunk[0]);   // retry - must NOT run after cancel
+            // Simulate the user pressing Stop the moment the first (empty) response lands.
+            streamer.OnCall = delegate(int idx) { if (idx == 0) cancel.Cancel(); };
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            var orch = New(streamer, reg);
+            orch.Cancellation = cancel;
+            orch.RunTurn(history, "go", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(1, streamer.Calls);   // no recovery request issued once Stop was pressed
+            // A cancelled turn surfaces no empty-response notice.
+            foreach (var m in history)
+                Assert.False(m.Content != null
+                    && m.Content.ToLowerInvariant().Contains("empty response"));
         }
 
         [Fact]
