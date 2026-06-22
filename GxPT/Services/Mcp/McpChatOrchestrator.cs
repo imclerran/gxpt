@@ -31,8 +31,9 @@ namespace GxPT
 
         // Agentic behavior guidance, prepended as a system message on tool-enabled turns only
         // (this orchestrator runs solely when at least one tool is available). Kept short to
-        // limit token cost. Reinforces four things: act through the tools, don't return a null/
-        // evasive answer when a tool could resolve the question, treat a denial as scoped to that
+        // limit token cost. Reinforces five things: act through the tools, don't return a null/
+        // evasive answer when a tool could resolve the question, keep working through multi-step
+        // tasks instead of stopping to narrate while work remains, treat a denial as scoped to that
         // one call rather than a permanent ban, and don't volunteer a rundown of tools unasked.
         internal const string AgentSystemPrompt =
             "You are an AI assistant operating as an agent with access to tools. Use them "
@@ -42,6 +43,13 @@ namespace GxPT
             + "answer the question - if so, use it. Do not return an empty or evasive response when "
             + "investigation is possible; make a genuine attempt with the tools available before "
             + "reporting that something cannot be done.\n\n"
+            + "Work through multi-step tasks to completion before ending your turn. A turn with no "
+            + "tool call hands control back to the user, so do not just announce what you are about "
+            + "to do and then stop - when more work remains, make the next tool call in the same "
+            + "turn as any narration, and never send an empty message. Reserve a reply that has no "
+            + "tool call for when the task is genuinely finished or you need the user to decide "
+            + "something. This is not a push to over-call: once the request is satisfied, give your "
+            + "final answer and stop rather than making needless calls.\n\n"
             + "When a tool call is denied or cancelled, treat it as a refusal of that specific "
             + "call in that specific moment, not a permanent ban on the tool. You may try the same "
             + "tool again later with adjusted arguments or once the situation changes.\n\n"
