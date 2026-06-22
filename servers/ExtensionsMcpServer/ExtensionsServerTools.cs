@@ -37,7 +37,8 @@ namespace ExtensionsMcpServer
                 : "'user' (default; this conversation has no project folder). 'project' is unavailable here.";
 
             SkillWriter writer = new SkillWriter(config.ProjectRoot, config.UserRoot, defaultScope);
-            AgentWriter agents = new AgentWriter(config.AgentProjectRoot, config.AgentUserRoot, defaultScope);
+            AgentWriter agents = new AgentWriter(config.AgentProjectRoot, config.AgentUserRoot,
+                config.AgentBundledRoot, defaultScope);
 
             RegisterAgentTools(server, agents, agentScopeDesc);
 
@@ -301,30 +302,31 @@ namespace ExtensionsMcpServer
 
             server.AddTool("read_agent",
                 "Read ONE existing agent's full <slug>.md (frontmatter + system prompt) by its slug, so you "
-                + "can review it before editing. Reads a single named agent - it does NOT list or read all "
-                + "agents; call list_agents first to discover the available slugs. Read-only.",
+                + "can review it - e.g. to model a new agent on an existing one. Finds the agent in ANY scope: "
+                + "project, user, or the bundled agents shipped with the app (like 'explore') - you do not pass "
+                + "a scope. Reads a single named agent, not all of them; call list_agents to see the slugs. "
+                + "Read-only.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The slug of the agent to read, as shown by list_agents (it must already exist).")
-                    .Str("scope", false, scopeDesc)
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx)
                 {
-                    try { return ToolResults.Text(agents.ReadAgent(Str(ctx, "scope"), Str(ctx, "slug"))); }
+                    try { return ToolResults.Text(agents.ReadAgent(Str(ctx, "slug"))); }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
 
             server.AddTool("list_agents",
-                "List the slugs of the agents in a scope (project or user). Use this to discover which agents "
-                + "exist - the slugs it returns are what you pass to read_agent / update_agent / edit_agent / "
-                + "delete_agent / validate_agent. Read-only.",
+                "List every agent across all scopes - bundled (shipped with the app), user, and project - each "
+                + "tagged with its source. Use this to discover which agents exist; the slugs it returns are "
+                + "what you pass to read_agent / update_agent / edit_agent / delete_agent / validate_agent. "
+                + "Read-only.",
                 SchemaBuilder.Object()
-                    .Str("scope", false, scopeDesc)
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx)
                 {
-                    try { return ToolResults.Text(agents.ListAgents(Str(ctx, "scope"))); }
+                    try { return ToolResults.Text(agents.ListAgents()); }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
 
@@ -343,16 +345,16 @@ namespace ExtensionsMcpServer
 
             server.AddTool("validate_agent",
                 "Check whether an agent's <slug>.md would load (its frontmatter must declare a non-empty "
-                + "description) and that its contract is well-formed (max_tier enum, tools list). Reports the "
-                + "parsed contract, or what is wrong. Read-only.",
+                + "description) and that its contract is well-formed (max_tier enum, tools list). Finds the "
+                + "agent in any scope (project, user, or bundled); reports the parsed contract and which scope "
+                + "it came from, or what is wrong. Read-only.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The agent's slug (it must already exist).")
-                    .Str("scope", false, scopeDesc)
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx)
                 {
-                    try { return ToolResults.Text(agents.ValidateAgent(Str(ctx, "scope"), Str(ctx, "slug"))); }
+                    try { return ToolResults.Text(agents.ValidateAgent(Str(ctx, "slug"))); }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
         }

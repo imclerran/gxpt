@@ -9,14 +9,17 @@ namespace ExtensionsMcpServer.Tests
     {
         private readonly string _root;       // stand-in workspace root
         private readonly string _project;    // the project agents root the writer targets
+        private readonly string _bundled;    // a read-only bundled agents root (shipped agents)
         private readonly AgentWriter _writer;
 
         public AgentWriterTests()
         {
             _root = Path.Combine(Path.GetTempPath(), "gxpt_agentwriter_" + Guid.NewGuid().ToString("N"));
             _project = Path.Combine(_root, "agents");
+            _bundled = Path.Combine(_root, "bundled");
             Directory.CreateDirectory(_project);
-            _writer = new AgentWriter(_project, null, "project");   // user-global root not wired
+            Directory.CreateDirectory(_bundled);
+            _writer = new AgentWriter(_project, null, _bundled, "project");  // user-global root not wired
         }
 
         public void Dispose()
@@ -26,6 +29,13 @@ namespace ExtensionsMcpServer.Tests
         }
 
         private string AgentFile(string slug) { return Path.Combine(_project, slug + ".md"); }
+
+        // Lay down a bundled (read-only) agent <slug>.md directly, bypassing the writer.
+        private void MakeBundled(string slug, string body)
+        {
+            File.WriteAllText(Path.Combine(_bundled, slug + ".md"),
+                "---\nname: " + slug + "\ndescription: a bundled agent\n---\n" + body + "\n");
+        }
 
         [Fact]
         public void CreateAgent_WritesValidAgentMd()
@@ -154,19 +164,43 @@ namespace ExtensionsMcpServer.Tests
         public void ReadAgent_ReturnsFullText()
         {
             _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "the body");
-            string text = _writer.ReadAgent(null, "a");
+            string text = _writer.ReadAgent("a");
             Assert.Contains("name: A", text);
             Assert.Contains("the body", text);
         }
 
         [Fact]
-        public void ListAgents_ListsSlugs()
+        public void ReadAgent_FindsBundledAgent()
         {
+            // The reported bug: a bundled (shipped) agent like 'explore' was invisible to read_agent because
+            // it only looked at the writable scopes. Reads must span the bundled root too.
+            MakeBundled("explore", "You are an explorer.");
+            string text = _writer.ReadAgent("explore");
+            Assert.Contains("You are an explorer.", text);
+        }
+
+        [Fact]
+        public void ReadAgent_MissingEverywhere_Throws()
+        {
+            Assert.Throws<AgentWriteException>(() => _writer.ReadAgent("nope"));
+        }
+
+        [Fact]
+        public void ReadAgent_ProjectShadowsBundled()
+        {
+            MakeBundled("explore", "bundled body");
+            _writer.CreateAgent(null, "explore", "Explore", "desc", null, null, null, 0, "project body");
+            Assert.Contains("project body", _writer.ReadAgent("explore"));
+        }
+
+        [Fact]
+        public void ListAgents_SpansScopesWithSource()
+        {
+            MakeBundled("explore", "b");
             _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, 0, "b");
-            _writer.CreateAgent(null, "beta", "Beta", "d", null, null, null, 0, "b");
-            string listing = _writer.ListAgents(null);
-            Assert.Contains("- alpha", listing);
-            Assert.Contains("- beta", listing);
+            string listing = _writer.ListAgents();
+            Assert.Contains("- alpha (project)", listing);
+            Assert.Contains("- explore (bundled)", listing);
         }
 
         [Fact]
@@ -181,7 +215,7 @@ namespace ExtensionsMcpServer.Tests
         public void ValidateAgent_OkForLoadableAgent()
         {
             _writer.CreateAgent(null, "a", "A", "desc", new[] { "files__read" }, "readonly", null, 0, "body");
-            Assert.StartsWith("OK:", _writer.ValidateAgent(null, "a"));
+            Assert.StartsWith("OK:", _writer.ValidateAgent("a"));
         }
 
         [Fact]
@@ -190,7 +224,7 @@ namespace ExtensionsMcpServer.Tests
             // Write a file directly with a bad max_tier (bypassing create's validation) to exercise the
             // validator's warning path.
             File.WriteAllText(AgentFile("a"), "---\nname: A\ndescription: d\nmax_tier: bogus\n---\nbody\n");
-            string result = _writer.ValidateAgent(null, "a");
+            string result = _writer.ValidateAgent("a");
             Assert.StartsWith("OK:", result);
             Assert.Contains("WARNING", result);
         }

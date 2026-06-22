@@ -36,7 +36,7 @@ namespace ExtensionsMcpServer.Tests
         private SkillScriptRunner Runner(bool withWorkspace)
         {
             ExtensionsConfig cfg = ExtensionsConfig.ForTesting(
-                withWorkspace ? _workspace : null, _project, null, _bundled, "cmd.exe", null, null);
+                withWorkspace ? _workspace : null, _project, null, _bundled, "cmd.exe", null, null, null);
             return new SkillScriptRunner(cfg);
         }
 

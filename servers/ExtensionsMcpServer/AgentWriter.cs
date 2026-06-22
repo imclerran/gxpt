@@ -26,12 +26,14 @@ namespace ExtensionsMcpServer
 
         private readonly string _projectRoot; // <workdir>/.gxpt/agents, or null when no workspace
         private readonly string _userRoot;    // %AppData%/GxPT/agents, or null if no user root is configured
+        private readonly string _bundledRoot; // <exe>/agents - shipped agents, READ-ONLY (never a write target)
         private readonly string _defaultScope; // scope used when a call omits it ("project" or "user")
 
-        public AgentWriter(string projectRoot, string userRoot, string defaultScope)
+        public AgentWriter(string projectRoot, string userRoot, string bundledRoot, string defaultScope)
         {
             _projectRoot = projectRoot;
             _userRoot = userRoot;
+            _bundledRoot = bundledRoot;
             _defaultScope = string.IsNullOrEmpty(defaultScope) ? "project" : defaultScope;
         }
 
@@ -133,40 +135,39 @@ namespace ExtensionsMcpServer
                 + (replaceAll ? count + " replacement" + (count == 1 ? "" : "s") : "1 replacement") + ").";
         }
 
-        // read_agent (ReadOnly): the full <slug>.md text, so the author can review one before editing it.
-        public string ReadAgent(string scope, string slugIn)
+        // read_agent (ReadOnly): the full <slug>.md text. Reads from ANY root - project, user, or the
+        // bundled (shipped) agents - newest-wins (project > user > bundled), mirroring the catalog the host
+        // shows. So a bundled agent (e.g. explore) is readable even though it can't be edited in place;
+        // that's the "base a new agent on an existing one" path. Read is not scope-confined (only writes are).
+        public string ReadAgent(string slugIn)
         {
-            string root = RootFor(scope);
             string slug = RequireSlug(slugIn);
-            string file = Path.Combine(root, slug + ".md");
-            if (!File.Exists(file))
-                throw new AgentWriteException("agent '" + slug + "' does not exist");
+            string source;
+            string file = ResolveExistingFile(slug, out source);
+            if (file == null)
+                throw new AgentWriteException("agent '" + slug + "' does not exist in any scope (project, user, or bundled)");
             try { return File.ReadAllText(file, Encoding.UTF8); }
             catch (Exception ex) { throw new AgentWriteException("could not read agent: " + ex.Message); }
         }
 
-        // list_agents (ReadOnly): the agent slugs in a scope (the <slug> of each <slug>.md in the root).
-        public string ListAgents(string scope)
+        // list_agents (ReadOnly): every agent visible to the catalog, across ALL roots (bundled, user,
+        // project), each tagged with the source that wins (project shadows user shadows bundled). Discovery
+        // is not scope-confined - the author needs to see the shipped agents (e.g. explore) to model on them.
+        public string ListAgents()
         {
-            string root = RootFor(scope);
-            List<string> slugs = new List<string>();
-            if (Directory.Exists(root))
-            {
-                string[] files;
-                try { files = Directory.GetFiles(root, "*.md"); }
-                catch { files = new string[0]; }
-                foreach (string f in files)
-                {
-                    string nm = Path.GetFileNameWithoutExtension(f);
-                    if (!string.IsNullOrEmpty(nm)) slugs.Add(nm);
-                }
-            }
+            // Add least-specific first so a more-specific root overwrites the source label (newest wins).
+            Dictionary<string, string> bySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            AddRootSlugs(_bundledRoot, "bundled", bySlug);
+            AddRootSlugs(_userRoot, "user", bySlug);
+            AddRootSlugs(_projectRoot, "project", bySlug);
+
+            List<string> slugs = new List<string>(bySlug.Keys);
             slugs.Sort(StringComparer.OrdinalIgnoreCase);
 
             StringBuilder sb = new StringBuilder();
-            sb.Append("Agents in scope '").Append(ScopeName(scope)).Append("':");
+            sb.Append("Agents:");
             if (slugs.Count == 0) sb.Append("\n(none)");
-            foreach (string s in slugs) sb.Append('\n').Append("- ").Append(s);
+            foreach (string s in slugs) sb.Append('\n').Append("- ").Append(s).Append(" (").Append(bySlug[s]).Append(')');
             return sb.ToString();
         }
 
@@ -187,13 +188,13 @@ namespace ExtensionsMcpServer
         // validate_agent (ReadOnly): would this agent load, and is its contract well-formed? (mirrors host
         // discovery: a non-empty description is what makes it dispatchable.) Also checks the max_tier enum
         // and that the tools list parses; reports the parsed contract or what is wrong.
-        public string ValidateAgent(string scope, string slugIn)
+        public string ValidateAgent(string slugIn)
         {
-            string root = RootFor(scope);
             string slug = RequireSlug(slugIn);
-            string file = Path.Combine(root, slug + ".md");
-            if (!File.Exists(file))
-                throw new AgentWriteException("agent '" + slug + "' does not exist");
+            string source;
+            string file = ResolveExistingFile(slug, out source);
+            if (file == null)
+                throw new AgentWriteException("agent '" + slug + "' does not exist in any scope (project, user, or bundled)");
 
             string text;
             try { text = File.ReadAllText(file, Encoding.UTF8); }
@@ -214,8 +215,8 @@ namespace ExtensionsMcpServer
             string name = !IsBlank(fm.Name) ? fm.Name : slug;
             string tier = !IsBlank(fm.MaxTierRaw) ? fm.MaxTierRaw.Trim() : "write (default)";
             string tools = fm.ToolsRaw != null ? fm.ToolsRaw : "(none specified)";
-            return "OK: agent '" + slug + "' loads. name: " + name + "; description: " + fm.Description
-                + "; max_tier: " + tier + "; tools: " + tools + tierNote;
+            return "OK: agent '" + slug + "' loads (" + source + "). name: " + name + "; description: "
+                + fm.Description + "; max_tier: " + tier + "; tools: " + tools + tierNote;
         }
 
         // ---- frontmatter assembly + field validation ----
@@ -332,10 +333,35 @@ namespace ExtensionsMcpServer
             throw new AgentWriteException("unknown scope '" + scope + "' (use 'project' or 'user')");
         }
 
-        private string ScopeName(string scope)
+        // Read-side resolution: find <slug>.md across all roots, newest-wins (project > user > bundled),
+        // matching the host catalog's precedence. Returns the file path (and the source label) or null.
+        private string ResolveExistingFile(string slug, out string source)
         {
-            string s = (scope == null ? _defaultScope : scope.Trim().ToLowerInvariant());
-            return s.Length == 0 ? _defaultScope : s;
+            source = null;
+            string[] roots = new string[] { _projectRoot, _userRoot, _bundledRoot };
+            string[] labels = new string[] { "project", "user", "bundled" };
+            for (int i = 0; i < roots.Length; i++)
+            {
+                if (string.IsNullOrEmpty(roots[i])) continue;
+                string file = Path.Combine(roots[i], slug + ".md");
+                if (File.Exists(file)) { source = labels[i]; return file; }
+            }
+            return null;
+        }
+
+        // Adds each <slug>.md in root to the map under the given source label, overwriting any prior label
+        // (callers add least-specific first so the most-specific source wins).
+        private static void AddRootSlugs(string root, string label, Dictionary<string, string> bySlug)
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+            string[] files;
+            try { files = Directory.GetFiles(root, "*.md"); }
+            catch { files = new string[0]; }
+            foreach (string f in files)
+            {
+                string nm = Path.GetFileNameWithoutExtension(f);
+                if (!string.IsNullOrEmpty(nm)) bySlug[nm] = label;
+            }
         }
 
         private static string RequireSlug(string slugIn)

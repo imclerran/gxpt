@@ -71,6 +71,11 @@ Every write tool takes an optional `scope`: `project` (the default - this worksp
 `.gxpt/agents`) or `user` (this machine's agents, available in every project). Pass `scope: "user"`
 on every call for an agent the user wants everywhere; otherwise omit it.
 
+To model a new agent on an existing one (e.g. "like the explore agent"), run `list_agents` to see
+what exists, then `read_agent(slug)` to read it - this works for the bundled agents shipped with the
+app (like `explore`) as well as user/project ones - and adapt it. `read_agent` finds an agent in any
+scope, so you don't pass a scope to it.
+
 Creating a new agent:
 - `create_agent(slug, name, description, body, tools, max_tier, model, max_turns)` - the body is the
   agent's system prompt. Write it in the second person ("You are ..."), state the one job, what to

@@ -1536,9 +1536,12 @@ namespace GxPT
                 opts.SkillsBundledRoot = SkillRoots.BundledRoot(baseDir);
                 opts.SkillsUserRoot = SkillRoots.UserRoot();
                 // Agent authoring shares the same server; its user-global root (%AppData%/GxPT/agents) is
-                // injected so scope=user agent authoring has a target. The project root is derived from
-                // GXPT_WORKDIR inside the server; agents have no bundled root (they never execute).
+                // injected so scope=user agent authoring has a target (the project root is derived from
+                // GXPT_WORKDIR inside the server). The bundled root (<exe>/agents) is injected too so
+                // read_agent/list_agents can see the shipped agents (e.g. explore) - reads span all roots,
+                // mirroring read_skill_file; writes stay project/user.
                 opts.AgentsUserRoot = AgentRoots.UserRoot();
+                opts.AgentsBundledRoot = AgentRoots.BundledRoot(baseDir);
                 opts.WebSearchKey = AppSettings.GetString("mcp_websearch_key");
                 opts.CurlPath = curlPath;
                 // Server exes: dev builds deploy them to a 'mcp-servers' subfolder (AfterBuild copy);

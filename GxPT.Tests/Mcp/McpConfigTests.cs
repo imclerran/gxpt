@@ -131,6 +131,7 @@ namespace GxPT.Tests.Mcp
                 SkillsBundledRoot = "C:\\app\\skills",
                 SkillsUserRoot = "C:\\users\\me\\AppData\\Roaming\\GxPT\\skills",
                 AgentsUserRoot = "C:\\users\\me\\AppData\\Roaming\\GxPT\\agents",
+                AgentsBundledRoot = "C:\\app\\agents",
                 ServerDir = "C:\\app\\servers"
             };
             var specs = McpConfig.BuiltInSpecs(o);
@@ -188,6 +189,7 @@ namespace GxPT.Tests.Mcp
             Assert.Equal("C:\\app\\skills", ext.Env[McpConfig.EnvSkillsBundledRoot]);
             Assert.Equal("C:\\users\\me\\AppData\\Roaming\\GxPT\\skills", ext.Env[McpConfig.EnvSkillsUserRoot]);
             Assert.Equal("C:\\users\\me\\AppData\\Roaming\\GxPT\\agents", ext.Env[McpConfig.EnvAgentsUserRoot]);
+            Assert.Equal("C:\\app\\agents", ext.Env[McpConfig.EnvAgentsBundledRoot]);
             Assert.True(ext.RunsWithoutWorkdir); // also runs a workdir-less instance for global authoring
         }
     }

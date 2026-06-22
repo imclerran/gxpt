@@ -38,6 +38,7 @@ namespace GxPT
         public const string EnvSkillsBundledRoot = "GXPT_SKILLS_BUNDLED_ROOT";
         public const string EnvSkillsUserRoot = "GXPT_SKILLS_USER_ROOT";
         public const string EnvAgentsUserRoot = "GXPT_AGENTS_USER_ROOT";
+        public const string EnvAgentsBundledRoot = "GXPT_AGENTS_BUNDLED_ROOT";
 
         // Seeded into a fresh mcp.json so GitHub is discoverable; the user pastes a real PAT.
         public const string SeedJson =
@@ -70,6 +71,7 @@ namespace GxPT
             public string SkillsBundledRoot { get; set; } // GXPT_SKILLS_BUNDLED_ROOT (skills exec: <exe>/skills)
             public string SkillsUserRoot { get; set; }    // GXPT_SKILLS_USER_ROOT (skills: %AppData%/GxPT/skills)
             public string AgentsUserRoot { get; set; }    // GXPT_AGENTS_USER_ROOT (agents: %AppData%/GxPT/agents)
+            public string AgentsBundledRoot { get; set; } // GXPT_AGENTS_BUNDLED_ROOT (agents: <exe>/agents, read-only)
             public string ServerDir { get; set; }       // directory holding the built server exes
 
             public BuiltInOptions()
@@ -146,6 +148,7 @@ namespace GxPT
             if (!string.IsNullOrEmpty(o.SkillsBundledRoot)) ext.Env[EnvSkillsBundledRoot] = o.SkillsBundledRoot;
             if (!string.IsNullOrEmpty(o.SkillsUserRoot)) ext.Env[EnvSkillsUserRoot] = o.SkillsUserRoot;
             if (!string.IsNullOrEmpty(o.AgentsUserRoot)) ext.Env[EnvAgentsUserRoot] = o.AgentsUserRoot;
+            if (!string.IsNullOrEmpty(o.AgentsBundledRoot)) ext.Env[EnvAgentsBundledRoot] = o.AgentsBundledRoot;
             // Also run a workdir-less instance so user-global authoring works in a folderless conversation
             // (it advertises authoring tools only; the per-workdir instances add run_skill_script + project).
             ext.RunsWithoutWorkdir = true;

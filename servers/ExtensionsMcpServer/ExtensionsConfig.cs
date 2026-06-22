@@ -22,12 +22,13 @@ namespace ExtensionsMcpServer
         public readonly string BundledRoot;   // <exe>/skills, or null (for run_skill_script)
         public readonly string Shell;         // cmd.exe (ComSpec / GXPT_CMD_SHELL) for run_skill_script
 
-        // Agent roots (authoring only - agents are flat <slug>.md files, no execution).
+        // Agent roots (authoring is project/user; bundled is read-only, for read_agent/list_agents).
         public readonly string AgentProjectRoot; // <workdir>/.gxpt/agents, or null when no workspace
         public readonly string AgentUserRoot;    // %AppData%/GxPT/agents (user-global), or null if unset
+        public readonly string AgentBundledRoot; // <exe>/agents (shipped agents, read-only), or null
 
         private ExtensionsConfig(string workDir, string projectRoot, string userRoot, string bundledRoot,
-            string shell, string agentProjectRoot, string agentUserRoot)
+            string shell, string agentProjectRoot, string agentUserRoot, string agentBundledRoot)
         {
             WorkDir = workDir;
             ProjectRoot = projectRoot;
@@ -36,15 +37,17 @@ namespace ExtensionsMcpServer
             Shell = shell;
             AgentProjectRoot = agentProjectRoot;
             AgentUserRoot = agentUserRoot;
+            AgentBundledRoot = agentBundledRoot;
         }
 
         // Test-only construction (the production path is FromEnvironment). Internal, so it is reachable
         // only from the linked-source test assembly.
         internal static ExtensionsConfig ForTesting(string workDir, string projectRoot, string userRoot,
-            string bundledRoot, string shell, string agentProjectRoot, string agentUserRoot)
+            string bundledRoot, string shell, string agentProjectRoot, string agentUserRoot,
+            string agentBundledRoot)
         {
             return new ExtensionsConfig(workDir, projectRoot, userRoot, bundledRoot, shell,
-                agentProjectRoot, agentUserRoot);
+                agentProjectRoot, agentUserRoot, agentBundledRoot);
         }
 
         public static ExtensionsConfig FromEnvironment(ILogSink log)
@@ -66,7 +69,8 @@ namespace ExtensionsMcpServer
             if (string.IsNullOrEmpty(shell)) shell = Environment.GetEnvironmentVariable("ComSpec");
             if (string.IsNullOrEmpty(shell)) shell = "cmd.exe";
 
-            // Agent roots reuse the same .gxpt project home; no bundled root (agents never execute).
+            // Agent roots reuse the same .gxpt project home. Agents have no execution surface, but the
+            // bundled root IS used here (unlike skills) so read_agent/list_agents can see shipped agents.
             string agentProjectRoot = string.IsNullOrEmpty(workDir)
                 ? null
                 : Path.Combine(Path.Combine(workDir, ".gxpt"), "agents");
@@ -74,15 +78,19 @@ namespace ExtensionsMcpServer
             string agentUserRoot = Environment.GetEnvironmentVariable("GXPT_AGENTS_USER_ROOT");
             if (string.IsNullOrEmpty(agentUserRoot)) agentUserRoot = null;
 
+            string agentBundledRoot = Environment.GetEnvironmentVariable("GXPT_AGENTS_BUNDLED_ROOT");
+            if (string.IsNullOrEmpty(agentBundledRoot)) agentBundledRoot = null;
+
             if (log != null)
                 log.Log("extensions", "skills project=" + (projectRoot != null ? projectRoot : "(none)")
                     + " user=" + (userRoot != null ? userRoot : "(none)")
                     + " bundled=" + (bundledRoot != null ? bundledRoot : "(none)")
                     + "; agents project=" + (agentProjectRoot != null ? agentProjectRoot : "(none)")
-                    + " user=" + (agentUserRoot != null ? agentUserRoot : "(none)"));
+                    + " user=" + (agentUserRoot != null ? agentUserRoot : "(none)")
+                    + " bundled=" + (agentBundledRoot != null ? agentBundledRoot : "(none)"));
 
             return new ExtensionsConfig(workDir, projectRoot, userRoot, bundledRoot, shell,
-                agentProjectRoot, agentUserRoot);
+                agentProjectRoot, agentUserRoot, agentBundledRoot);
         }
     }
 }
