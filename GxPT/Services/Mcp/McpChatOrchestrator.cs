@@ -44,6 +44,14 @@ namespace GxPT
             "Your previous response came back empty. Continue with the task: if more work remains, "
             + "make the next tool call; if the task is already complete, give your final answer.";
 
+        // Text-only variant of the nudge, used when the request is sent with tool_choice "none" (the
+        // post-user-stop wrap-up path, where the model cannot call tools and is expected to summarize
+        // and ask how to proceed). The default nudge tells the model to "make the next tool call",
+        // which would contradict tool_choice "none"; this one steers it to produce that text wrap-up.
+        internal const string EmptyResponseNudgeTextOnly =
+            "Your previous response came back empty. Briefly summarize what you have done so far and "
+            + "what remains, then ask how you would like to proceed.";
+
         // Agentic behavior guidance, prepended as a system message on tool-enabled turns only
         // (this orchestrator runs solely when at least one tool is available). Kept short to
         // limit token cost. Reinforces five things: act through the tools, don't return a null/
@@ -439,8 +447,12 @@ namespace GxPT
                     IList<ChatMessage> attemptMsgs = requestMessages;
                     if (nudge)
                     {
+                        // tool_choice "none" (post-user-stop wrap-up) forbids tool calls, so use the
+                        // text-only nudge there; otherwise the default nudge that steers toward a call.
+                        string nudgeText = (toolChoice == "none")
+                            ? EmptyResponseNudgeTextOnly : EmptyResponseNudge;
                         List<ChatMessage> nudged = new List<ChatMessage>(requestMessages);
-                        nudged.Add(new ChatMessage("user", EmptyResponseNudge));
+                        nudged.Add(new ChatMessage("user", nudgeText));
                         attemptMsgs = nudged;
                     }
                     _log.Log("mcp", "[turn " + turnId + "] empty response; "
