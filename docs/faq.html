@@ -61,6 +61,17 @@
             (file, git, and shell operations), web search, and GitHub access. The agent
             chains these tool calls autonomously until your task is done.</dd>
 
+          <dt>What are sub-agents?</dt>
+          <dd>Sub-agents are specialist helpers you can delegate self-contained tasks to.
+            Each one runs its own loop in an isolated context and reports back only its
+            final answer, so the main conversation stays lean. Agents are simple markdown
+            files whose frontmatter sets a tool allowlist, capability tier, and turn budget;
+            read-only agents can run in parallel, and every tool call still goes through the
+            approval gate. GxPT ships bundled specialists &mdash; explore, plan, code-reviewer,
+            verify, web-research, and general-purpose. Turn the feature on per conversation or
+            globally with <code>/toggle-agents</code>, and delegate explicitly with
+            <code>/dispatch-agent</code>.</dd>
+
           <dt>Is it safe to let the agent run tools?</dt>
           <dd>Every tool call is gated by an in-app approval prompt, and file, git, and
             command tools stay confined to the workspace you choose. You can also cancel
