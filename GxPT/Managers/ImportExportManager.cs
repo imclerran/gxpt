@@ -53,7 +53,7 @@ namespace GxPT
                     if (ConversationStore.ListAll().Count > 0)
                     {
                         var dr = MessageBox.Show(owner,
-                            "Importing will overwrite existing files with the same names. Continue?",
+                            "Importing will overwrite existing conversations with the same ID. Continue?",
                             "Import Conversations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                         if (dr != DialogResult.Yes) return false;
                     }
