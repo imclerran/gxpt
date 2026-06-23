@@ -258,35 +258,52 @@ namespace GxPT
             return true;
         }
 
-        // Runs the runnable slots concurrently in waves of at most MaxParallelAgents, each child writing
+        // Runs the runnable slots concurrently with a sliding concurrency window of at most
+        // MaxParallelAgents: a small pool of worker threads pulls the next row from a shared cursor, so the
+        // moment one child finishes that worker starts the next-in-order child (no wave barrier - a slow
+        // child no longer holds back the rest of its group). Interlocked.Increment hands out row indices in
+        // strict order, so the lowest-numbered queued row is always the next to start (FIFO start order, so
+        // the panel never shows a later row running while an earlier one is still queued). Each child writes
         // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
-        // is valid here; no lock is held across the join, so the fan-out cannot deadlock.
+        // is valid here; no lock is held across the join, so the fan-out cannot deadlock. At most
+        // MaxParallelAgents worker handles are joined, well under WaitAll's 64-handle limit.
         private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results,
                                  AgentTranscript[] transcripts)
         {
-            int pos = 0;
-            while (pos < runnable.Count)
+            int count = runnable.Count;
+            int workerCount = Math.Min(MaxParallelAgents, count);
+            int next = -1;   // shared cursor; Interlocked.Increment yields 0,1,2,... in order across workers
+            System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[workerCount];
+            try
             {
-                int groupSize = Math.Min(MaxParallelAgents, runnable.Count - pos);
-                System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[groupSize];
-                for (int g = 0; g < groupSize; g++)
+                for (int w = 0; w < workerCount; w++)
                 {
-                    int row = pos + g;          // panel row index (position among runnable)
-                    int slot = runnable[row];   // entry slot (position in the full agents/tasks arrays)
-                    Agent agent = agents[slot];
-                    string task = tasks[slot];
                     System.Threading.ManualResetEvent done = new System.Threading.ManualResetEvent(false);
-                    dones[g] = done;
+                    dones[w] = done;
                     System.Threading.ThreadPool.QueueUserWorkItem(delegate
                     {
-                        try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
-                        catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                        // done.Set() is the outermost finally so WaitAll can never hang, even on an
+                        // unexpected throw. Each worker loops, claiming the next row until the batch is drained.
+                        try
+                        {
+                            int row;
+                            while ((row = System.Threading.Interlocked.Increment(ref next)) < count)
+                            {
+                                int slot = runnable[row];   // entry slot (position in the agents/tasks arrays)
+                                Agent agent = agents[slot];
+                                string task = tasks[slot];
+                                try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
+                                catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                            }
+                        }
                         finally { done.Set(); }
                     });
                 }
                 System.Threading.WaitHandle.WaitAll(dones);
-                for (int g = 0; g < groupSize; g++) dones[g].Close();
-                pos += groupSize;
+            }
+            finally
+            {
+                for (int w = 0; w < workerCount; w++) if (dones[w] != null) dones[w].Close();
             }
         }
 
