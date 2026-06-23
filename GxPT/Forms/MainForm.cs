@@ -3202,7 +3202,7 @@ namespace GxPT
                         });
                         orch.ContinuationDecider = delegate(int n) { return contPrompt.Ask(n); };
                     }
-                    string modelForTransform = modelToUse; // capture for transform closure
+                    string modelForTransform = model; // capture for transform closure
                     orch.RequestMessageTransform = delegate(IList<ChatMessage> h)
                     {
                         List<ChatMessage> asList = h as List<ChatMessage>;
@@ -4206,61 +4206,24 @@ namespace GxPT
             if (af == null) return;
             try
             {
+                bool darkForViewer = false;
+                try
+                {
+                    string theme = AppSettings.GetString("theme");
+                    darkForViewer = !string.IsNullOrEmpty(theme) && theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { darkForViewer = false; }
+
                 using (var dlg = new FileViewerForm())
                 {
-                    // Access RichTextBox via reflection to keep designer file untouched
-                    var rtbField = typeof(FileViewerForm).GetField("rtbFileText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var rtb = rtbField != null ? (RichTextBox)rtbField.GetValue(dlg) : null;
-                    if (rtb != null)
-                    {
-                        // Sanitize content for RichEdit: replace NULs (\u0000) which truncate display
-                        string content = af.Content ?? string.Empty;
-                        if (content.IndexOf('\0') >= 0)
-                        {
-                            try { Logger.Log("Viewer", "Attachment contains NUL characters; sanitizing for display."); }
-                            catch { }
-                            content = content.Replace('\0', ' ');
-                        }
-                        // Normalize newlines to CRLF for consistent caret/selection math
-                        content = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", Environment.NewLine);
-                        rtb.Text = content;
-                        string lang = GetFileExtension(af.FileName);
-
-                        // Match theme with chat transcript
-                        bool dark = false;
-                        try
-                        {
-                            string theme = AppSettings.GetString("theme");
-                            dark = !string.IsNullOrEmpty(theme) && theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                        }
-                        catch { dark = false; }
-
-                        var colors = ThemeService.GetColors(dark);
-                        rtb.BackColor = colors.UiBackground;
-                        rtb.ForeColor = colors.UiForeground;
-
-                        try { RichTextBoxSyntaxHighlighter.Highlight(rtb, lang, dark); }
-                        catch { }
-                    }
                     dlg.Text = af.FileName ?? "Attachment";
                     dlg.StartPosition = FormStartPosition.CenterParent;
+                    // LoadAttachment branches on Kind: PictureBox for images, RichTextBox for text.
+                    dlg.LoadAttachment(af, darkForViewer);
                     dlg.ShowDialog(this);
                 }
             }
             catch { }
-        }
-
-        private string GetFileExtension(string fileName)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(fileName)) return null;
-                string ext = System.IO.Path.GetExtension(fileName);
-                if (string.IsNullOrEmpty(ext)) return null;
-                return ext.TrimStart('.').ToLowerInvariant();
-            }
-            catch { }
-            return null;
         }
 
         private static System.Drawing.Drawing2D.GraphicsPath ChatTranscriptControl_RoundedRect(Rectangle r, int radius)

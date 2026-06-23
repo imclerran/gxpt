@@ -3174,19 +3174,6 @@ namespace GxPT
             catch { }
         }
 
-        private string GetFileExtension(string fileName)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(fileName)) return null;
-                string ext = Path.GetExtension(fileName);
-                if (string.IsNullOrEmpty(ext)) return null;
-                return ext.TrimStart('.').ToLowerInvariant();
-            }
-            catch { }
-            return null;
-        }
-
         private MessageItem HitTest(Point clientPt)
         {
             Point virt = new Point(clientPt.X, clientPt.Y + _scrollOffset);
