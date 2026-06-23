@@ -193,19 +193,17 @@ edit — see §12).
   chosen here (they break single-file portability); revisit only if transcript
   sizes become a real problem.
 - **Size guards (mandatory on XP):**
-  - Hard cap on attachment bytes (e.g. configurable, default a few hundred KB
-    per image).
-  - **Downscale images** to a max long-edge (e.g. 1024–1568 px) *before*
-    encoding (see §7).
-  - Oversized PDFs: prefer the text-only path; warn before embedding huge bytes.
+  - Hard cap: **500 KB per image** (configurable). Reject/warn at attach.
+  - **Downscale images** to a max long-edge of **1568 px** before encoding (see §7).
+  - Oversized PDFs: prefer the text-only path; warn before embedding large bytes.
 - **Memory discipline:** transcripts load fully into memory and re-serialize
   atomically (`FileSafe.WriteAllTextAtomic`). Caps keep this bounded.
 - **Cumulative request limits:** because every rich attachment replays each turn
-  (§2), a long conversation can accumulate enough images / PDF pages to exceed a
-  provider's per-request body-size or image-count cap (e.g. Anthropic ~100
-  images/request). Per-item caps don't bound the total — see §10 for oldest-first
-  pruning that keeps the *replayed* set within limits while the durable bytes
-  stay in the transcript.
+  (§2), a long conversation can accumulate enough images to exceed a
+  provider's per-request limits. Per-item caps don't bound the total — see §10 for
+  oldest-first pruning that keeps the *replayed* set within limits while the durable
+  bytes stay in the transcript. **Threshold: 10 replayed images OR ~4 MB cumulative
+  attachment bytes triggers prune-oldest-first** (global, not per-provider — see §10).
 
 ---
 
@@ -268,29 +266,48 @@ WebP, so WebP is rejected on input despite being a valid wire type.
 
 | Source | Action |
 |---|---|
-| `image/png`, `image/jpeg`, `image/gif` | Send as-is |
-| `image/bmp`, `image/tiff`, other GDI+-decodable | **Transcode to PNG** → `image/png` |
-| `image/webp` | Reject at attach (cannot decode locally) |
+| `image/png`, `image/jpeg`, `image/gif` — within size/dimension caps | Send as-is (original bytes) |
+| `image/png`, `image/jpeg` — exceeds size/dimension cap | Downscale then re-encode: JPEG if no alpha, PNG if alpha |
+| `image/gif` — exceeds size/dimension cap | Downscale then re-encode as PNG (GIF has no JPEG path; animation flattened) |
+| `image/bmp`, `image/tiff`, other GDI+-decodable | Decode, downscale if needed, re-encode: JPEG if no alpha, PNG if alpha |
+| `image/webp` | Reject at attach (GDI+ on XP cannot decode WebP) |
 
 ```csharp
-static byte[] TranscodeToPng(byte[] source)
+static byte[] NormalizeImage(byte[] source, out string mediaType)
 {
     using (var inMs = new MemoryStream(source))
-    using (var img  = Image.FromStream(inMs))
-    using (var outMs = new MemoryStream())
+    using (var img = Image.FromStream(inMs))
     {
-        img.Save(outMs, ImageFormat.Png);   // materialized before dispose — safe
-        return outMs.ToArray();
+        bool needsDownscale = img.Width > 1568 || img.Height > 1568;
+        bool isSupportedWireType = /* png/jpeg/gif */ ...;
+        if (!needsDownscale && isSupportedWireType)
+        {
+            mediaType = /* original */; return source;
+        }
+        var target = needsDownscale ? Downscale(img, 1568) : img;
+        bool hasAlpha = Image.IsAlphaPixelFormat(target.PixelFormat);
+        using (var outMs = new MemoryStream())
+        {
+            target.Save(outMs, hasAlpha ? ImageFormat.Png : ImageFormat.Jpeg);
+            mediaType = hasAlpha ? "image/png" : "image/jpeg";
+            return outMs.ToArray();
+        }
     }
 }
 ```
 
 Rules:
-- **Normalize to PNG** (lossless, preserves alpha). Use JPEG only to shrink large
-  photos known to lack alpha.
-- **Do not transcode GIF** — it's already a wire type, and re-encoding flattens
-  animation to one frame.
-- **Downscale before encode** to honor the size cap (§5).
+- **Downscale before encode** to the §5 long-edge cap (**1568 px**).
+- **Re-encode strategy (alpha-based):** after downscaling, use **JPEG** when the
+  image has no alpha channel (`!Image.IsAlphaPixelFormat(img.PixelFormat)`), **PNG**
+  when it does. Photographs (typically no alpha) shrink dramatically as JPEG;
+  screenshots and logos with transparency stay lossless PNG. This is deterministic
+  from `PixelFormat` — no fuzzy photo heuristic needed.
+- **Do not re-encode GIF** — it's already a wire type, and re-encoding flattens
+  animation to one frame. GIF is sent as-is if already within the size cap; if it
+  needs downscaling, convert to PNG (GIF has no JPEG path).
+- **Do not re-encode png/jpeg/gif** that are already within the size and dimension
+  caps — pass the original bytes straight to `Data`.
 - Transcode **once** at attach time; store the normalized bytes in `Data`. The
   viewer, transcript, and wire payload all use the same clean bytes.
 - **Encode once, reuse the exact bytes — never re-encode per request.** The
@@ -425,10 +442,15 @@ existing machinery** rather than adding new systems.
 - **Prune-with-placeholder, never delete.** When pruning, swap the *rendered*
   representation for a text placeholder (`[image earlier in conversation:
   photo.png]`) while keeping the durable bytes in the transcript. The file stays
-  viewable and re-activatable; only its wire form is trimmed. Prune oldest-first;
-  optional per-attachment "keep in context" pin. **Where the pin/pruned state
-  lives** is an open question (§14): persisted on `AttachedFile` (survives reload)
-  vs transient (recomputed each session).
+  viewable and re-activatable; only its wire form is trimmed. Prune oldest-first.
+  **Prune state is transient** — recomputed each session from the live token
+  numbers; no new persisted fields needed. (Pinning deferred to a later iteration.)
+- **Pruning triggers (v1 — global-conservative, not per-provider):**
+  - *Primary:* prior turn's `LastPromptTokens` approaches `TryGetContextLength`.
+  - *Safety net:* replayed image count exceeds **10** OR cumulative replayed
+    attachment bytes exceed **~4 MB** — whichever fires first. These bounds are
+    safe across all providers without per-provider catalog data. Refinement to
+    per-provider limits is a later enhancement.
 
 This resolves the "drops out after one question" worry: the file persists and
 replays until a deliberate budget/prune decision, and even then survives for
@@ -510,13 +532,16 @@ GDI+ gotchas to respect:
 
 ---
 
-## 14. Open questions
+## 14. Decisions log
 
-- Native PDF under ZDR: permit against confirmed-ZDR endpoints, or disable
-  entirely? (Spec default: conservative — keep local.)
-- Image downscale target (1024 vs 1568 px long edge) and per-image byte cap.
-- JPEG-for-photos heuristic, or always-PNG for simplicity?
-- Pin / pruned-state persistence (§10): store on `AttachedFile` (survives reload)
-  or keep transient (recomputed each session)?
-- Cumulative request-limit threshold (§5/§10): what total image/PDF size or count
-  triggers oldest-first pruning, and is it per-provider?
+All design questions are resolved. The table below records what was decided and
+the §-reference where it is implemented.
+
+| Question | Decision | Where |
+|---|---|---|
+| Native PDF under ZDR | **Disable entirely** — PDF is always local iTextSharp text under ZDR; scanned PDFs prompt the user to open a new non-ZDR conversation. | §9 |
+| Image downscale target | **1568 px** long edge (Anthropic's no-auto-downscale threshold; max fidelity). | §5, §7 |
+| Per-image byte cap | **500 KB** (configurable). | §5 |
+| Re-encode strategy | **Alpha-based:** JPEG when no alpha channel, PNG when alpha present. Deterministic from `PixelFormat`; no photo heuristic. GIF is sent as-is or converted to PNG (never JPEG). | §7 |
+| Prune/pin state | **Transient** — recomputed each session; no persisted fields. Pinning deferred to a later iteration. | §10 |
+| Pruning threshold | **Global-conservative:** 10 replayed images OR ~4 MB cumulative bytes (safety-net); primary trigger is token-meter (`LastPromptTokens` vs `TryGetContextLength`). Per-provider refinement deferred. | §5, §10 |
