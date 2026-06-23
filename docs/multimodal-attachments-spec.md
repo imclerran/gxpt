@@ -44,7 +44,7 @@ cache** that drives capability-aware decisions.
 | Request render | `BuildMessagesForModel` (`Forms/MainForm.cs:1970`) **re-inlines** attachment text into the message string with `--- Attached File: … ---` delimiters, on **every** request, via the `RequestMessageTransform` hook (`Services/Mcp/McpChatOrchestrator.cs:73`). Full history is resent each turn. |
 | Wire `content` | Always a **plain string** (`OpenRouterClient.BuildRequestBody`, `Services/OpenRouterClient.cs:30`). |
 | HTTP | Shells out to **curl** (`OpenRouterClient.BuildCurlArgs:422`) — required for TLS 1.2 on XP. |
-| Model info | **None fetched.** Only the model **ID string** is stored (`Conversation.SelectedModel`; `settings.json` `models[]`). No capability/pricing/context data. |
+| Model info | `ModelCatalogService` (`Services/ModelCatalogService.cs`, namespace `GxPT`) fetches `GET /api/v1/models` via bundled `Lib\curl.exe` on app-open (24h staleness) and via the Settings **"Update Model Info"** button. Keeps only `id → context_length` in `%AppData%\GxPT\model-context.txt`; `TryGetContextLength` feeds the status-bar context meter (`MainForm.cs:5760`). **No modality/pricing data retained yet.** |
 | ZDR | `ConversationDto.Zdr` + `ZdrFirstMessageIndex`. **ZDR locks once the first message is sent under it** — it cannot be turned off mid-conversation. |
 
 **Key architectural insight we build on:** GxPT already separates *durable
@@ -56,74 +56,73 @@ that `content` must sometimes be an **array of parts** instead of a string.
 
 ---
 
-## 3. The model-info cache (new subsystem)
+## 3. Model-info cache — extend `ModelCatalogService`
 
-Capability-aware attachment handling needs to know each model's input
-modalities. We fetch and cache the full OpenRouter model catalog.
+Capability-aware handling needs each model's input modalities — and that data
+already arrives in the **existing** OpenRouter model fetch. We widen what it
+keeps rather than building anything new.
 
-### 3.1 Fetch
+### 3.1 What already exists (reuse as-is)
 
-- **Endpoint:** `GET https://openrouter.ai/api/v1/models`.
-- **Transport:** the existing **curl** wrapper, *not* `HttpWebRequest`
-  (.NET 3.5 on XP negotiates only SSL3/TLS1.0; OpenRouter requires TLS 1.2).
-  Add a `GET`-style sibling to `BuildCurlArgs`.
-- **Trigger:** on app startup (async, non-blocking) and on an explicit
-  "Refresh models" action. Never on the chat hot path.
-- **Failure handling:** network failure is non-fatal — fall back to the last
-  cached copy; if none, fall back to capability-unknown behavior (§6.4).
+`ModelCatalogService` (`Services/ModelCatalogService.cs`, namespace `GxPT`):
 
-### 3.2 Storage
+- Fetches `GET https://openrouter.ai/api/v1/models` via the bundled `Lib\curl.exe`
+  (`HttpGetModels`: `-sS --fail-with-body --max-time 60`, public / no-auth) on a
+  **background thread**.
+- `RefreshIfDue()` on app open (24h staleness) and `ForceRefresh(onDone)` behind
+  the Settings **"Update Model Info"** button (`SettingsForm.BtnUpdateModelInfo_Click`).
+- `ParseModelsJson` keeps only `id → context_length`; persists a sorted
+  `id<TAB>tokens` file at `%AppData%\GxPT\model-context.txt`.
+- `TryGetContextLength(model, out ctx)` lookup ladder (verbatim → strip `~` →
+  strip `:variant`); raises `CatalogUpdated`; consumed by the status-bar context
+  meter (`MainForm.cs:5760`). Tested in `GxPT.Tests/ModelCatalogServiceTests.cs`.
 
-- **Location:** `%AppData%\GxPT\models-cache.json` (global, one cache for all
-  conversations — model capabilities are not conversation-specific).
-- **Shape:** preserve the **raw** OpenRouter objects verbatim (future-proof for
-  pricing and fields we don't consume yet) plus a fetch timestamp:
+The fetch, curl transport (mandatory — .NET 3.5 on XP can't do the TLS 1.2
+OpenRouter requires), refresh cadence, button, threading, and routing-suffix
+ladder are **already built and tested** — we reuse all of it.
 
-  ```json
-  {
-    "FetchedUtc": "2026-06-23T12:00:00Z",
-    "Models": [ { /* raw OpenRouter model object, unmodified */ } ]
-  }
-  ```
+### 3.2 The extension
 
-  Store each model as a Newtonsoft `JObject` so unknown fields round-trip
-  losslessly. Serialize with the same settings as `ConversationStore`.
+The current cache keeps a flat `int` per model; it can't hold modalities or
+pricing. Widen it to retain the **full model objects**:
 
-- **Staleness:** soft TTL (e.g. 24 h). Stale cache is still used; a background
-  refresh updates it. Never block on freshness.
-
-### 3.3 Typed view (`ModelInfo`)
-
-A thin read-only wrapper over the raw `JObject` — do **not** flatten the whole
-schema into C# properties. Surface only what we consume:
+- In `FetchAndStore`, keep the raw `data[]` objects and persist them as JSON at
+  `%AppData%\GxPT\models.json` (Newtonsoft, same settings as `ConversationStore`).
+  `model-context.txt` is either derived from the same fetch (kept for back-compat /
+  Notepad-readability) or retired in favor of deriving context length from the
+  JSON — implementer's call, but **`TryGetContextLength` semantics must not
+  change**. This is a deliberate step away from the original tab-file minimalism
+  (which was scoped to the context meter), justified by the new modality/pricing
+  requirement.
+- Add a typed read-only view + capability accessors (same lookup ladder):
+  - `bool TryGetModelInfo(string model, out ModelInfo info)`
+  - `ModelInfo.SupportsImageInput` ⇐ `architecture.input_modalities` contains `"image"`
+  - `ModelInfo.SupportsFileInput`  ⇐ `architecture.input_modalities` contains `"file"`
+  - `ModelInfo.Raw` (full `JObject`) for pricing/etc., read lazily — no migration
 
 ```csharp
+// Layered over the retained raw JObject; only what we consume is typed.
 public sealed class ModelInfo
 {
-    private readonly JObject _raw;           // full record, retained
     public string Id { get; }
-    public long?  ContextLength { get; }     // context_length
-    public IList<string> InputModalities { get; }   // architecture.input_modalities
-    public IList<string> OutputModalities { get; }  // architecture.output_modalities
-    // pricing / top_provider / supported_parameters exposed lazily as needed
-    public JObject Raw { get { return _raw; } }
-
+    public long? ContextLength { get; }              // context_length
+    public IList<string> InputModalities { get; }    // architecture.input_modalities
+    public JObject Raw { get; }                       // full record, for pricing/etc.
     public bool SupportsImageInput { get { return InputModalities.Contains("image"); } }
     public bool SupportsFileInput  { get { return InputModalities.Contains("file"); } } // PDF
 }
 ```
 
-Capability signals come from `architecture.input_modalities`:
-`"image"` ⇒ vision, `"file"` ⇒ native PDF/document. New typed fields (pricing,
-etc.) are added by reading more from `_raw` — no storage migration needed.
+Capability source of truth: `architecture.input_modalities` — `"image"` ⇒ vision,
+`"file"` ⇒ native PDF/document.
 
-### 3.4 Registry
+### 3.3 Consumption & fallback
 
-`ModelCatalog` (new): loads the cache, exposes
-`ModelInfo TryGet(string modelId)`. Handles the `~provider/model-latest`
-routing prefix from `ModelDefaults.cs` by normalizing before lookup (strip `~`,
-resolve `-latest` against the catalog where possible; on miss, return null →
-capability-unknown).
+Attachment gating (§6) and render (§8) call `TryGetModelInfo` for the selected
+model, reusing the routing-suffix ladder so `~provider/model-latest`, `:free`,
+and `:nitro` resolve. On a miss (model not in the catalog yet, or no fetch has
+ever succeeded), treat rich modalities as **unsupported** → text/placeholder
+fallback (§6.4); never emit a block that might 400.
 
 ---
 
@@ -187,7 +186,8 @@ only; their fallback is a placeholder note (§6.3).
 
 ## 6. Capability gating & representation choice
 
-At **attach time** and at **render time**, consult `ModelCatalog.TryGet(model)`.
+At **attach time** and at **render time**, consult
+`ModelCatalogService.TryGetModelInfo(model, out info)`.
 
 ### 6.1 Attach-time UI gating
 
@@ -376,9 +376,9 @@ GDI+ gotchas to respect:
 | Transcript | `Data/ConversationStore.cs` `MessageDto` | New fields round-trip (Newtonsoft, ignore-null); legacy parser untouched |
 | Render | `Forms/MainForm.cs` `BuildMessagesForModel` | Emit content-parts array; choose representation per `ModelInfo`+ZDR |
 | Wire | `Services/OpenRouterClient.cs` `BuildRequestBody` | String-vs-array `content` branch; `cache_control` on heavy blocks |
-| HTTP | `Services/OpenRouterClient.cs` `BuildCurlArgs` | Add `GET /models` via curl |
-| Model cache | **new** `ModelCatalog`, `ModelInfo`, `models-cache.json` | Fetch/cache/typed-view |
-| Capability gate | attach UI + render | Consult `ModelCatalog`; unknown → conservative |
+| Model fetch | `Services/ModelCatalogService.cs` | **Exists** — reuse curl `GET /models`, 24h refresh, "Update Model Info" button, background thread |
+| Model cache | `Services/ModelCatalogService.cs` (**extend**) + `models.json` | Retain full model objects; add `ModelInfo` + `TryGetModelInfo` / `SupportsImageInput` / `SupportsFileInput`; keep `TryGetContextLength` |
+| Capability gate | attach UI + render | Consult `ModelCatalogService.TryGetModelInfo`; unknown → conservative |
 | Viewer | **new** image viewer `Form` | Decode `Data` → `PictureBox` |
 | Tests | `OpenRouterClientTests`, `ConversationStoreTests` | Array content shape; new-field round-trip; model-cache parse |
 
@@ -386,8 +386,9 @@ GDI+ gotchas to respect:
 
 ## 13. Suggested phasing
 
-1. **Model-info cache** — `GET /models` via curl, `models-cache.json`,
-   `ModelCatalog`/`ModelInfo`. Independently useful; unblocks gating.
+1. **Extend `ModelCatalogService`** — retain full `/models` objects (`models.json`),
+   add `ModelInfo` + modality accessors; keep `TryGetContextLength`. Independently
+   useful; unblocks gating.
 2. **Data model + storage** — extend `AttachedFile`/`MessageDto`; round-trip
    tests; backward-compat verification.
 3. **Images end-to-end** — attach + normalize/transcode + content-array render +
