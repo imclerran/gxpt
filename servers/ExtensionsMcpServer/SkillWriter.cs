@@ -288,30 +288,20 @@ namespace ExtensionsMcpServer
         // the target writable root. If the slug names a bundled (shipped, read-only) skill, say so and point
         // at create_skill to override it - the bare "does not exist" is misleading when the model can see and
         // read that bundled skill. forDelete tailors the verb (a bundled skill is overridden, not deleted).
+        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
+        // writable scope, or it truly doesn't exist. Probes use the skill file shape (<slug>/SKILL.md); the
+        // wording is shared with AgentWriter via WriterIo so the two can't drift.
         private SkillWriteException NotWritable(string slug, string targetScope, bool forDelete)
         {
-            // A bundled (shipped, read-only) shadow: can't be written in place.
-            if (!string.IsNullOrEmpty(_bundledRoot)
-                && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md")))
-                return new SkillWriteException("skill '" + slug + "' is a bundled skill (shipped with the app) "
-                    + (forDelete
-                        ? "and can't be deleted; bundled skills are read-only"
-                        : "and can't be edited in place; create a project/user copy with create_skill (same slug) to override it"));
-
-            // It exists, just in the OTHER writable scope than this call wrote to: point there instead of
-            // the misleading "does not exist" (which would push the model to create a duplicate copy).
-            string eff = (targetScope == null ? _defaultScope : targetScope.Trim().ToLowerInvariant());
-            if (eff.Length == 0) eff = _defaultScope;
+            bool bundled = !string.IsNullOrEmpty(_bundledRoot)
+                && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md"));
+            string eff = WriterIo.NormalizeScope(targetScope, _defaultScope);
             string otherRoot = eff == "project" ? _userRoot : _projectRoot;
             string otherLabel = eff == "project" ? "user" : "project";
-            if (!string.IsNullOrEmpty(otherRoot)
-                && File.Exists(Path.Combine(Path.Combine(otherRoot, slug), "SKILL.md")))
-                return new SkillWriteException("skill '" + slug + "' is in the '" + otherLabel + "' scope, not '"
-                    + eff + "'; pass scope:\"" + otherLabel + "\" to " + (forDelete ? "delete" : "edit") + " it");
-
-            return new SkillWriteException(forDelete
-                ? "skill '" + slug + "' does not exist"
-                : "skill '" + slug + "' does not exist; create_skill first");
+            bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
+                && File.Exists(Path.Combine(Path.Combine(otherRoot, slug), "SKILL.md"));
+            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", forDelete,
+                bundled, inOther ? otherLabel : null, eff));
         }
 
         private string RootFor(string scope)

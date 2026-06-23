@@ -23,6 +23,36 @@ namespace ExtensionsMcpServer
             return value != null && (value.IndexOf('\n') >= 0 || value.IndexOf('\r') >= 0);
         }
 
+        // Normalizes a scope arg to "project"/"user", applying the writer's default for null/blank. (RootFor
+        // validates the value; this is the post-validation normalization shared by the writers.)
+        public static string NormalizeScope(string scope, string defaultScope)
+        {
+            string s = (scope == null ? defaultScope : scope.Trim().ToLowerInvariant());
+            return s.Length == 0 ? defaultScope : s;
+        }
+
+        // The shared "can't write here" message for a missing write/edit/delete target, so both writers word
+        // it identically (only the file-shape probe and exception type differ between them). noun is
+        // "agent"/"skill"; createTool is "create_agent"/"create_skill". bundled: the slug names a shipped
+        // read-only item (takes priority). otherScope: the writable scope where it actually lives, or null.
+        // targetScope: the scope this call wrote to. Falls through to the plain "does not exist".
+        public static string NotWritableMessage(string noun, string slug, string createTool, bool forDelete,
+            bool bundled, string otherScope, string targetScope)
+        {
+            if (bundled)
+                return noun + " '" + slug + "' is a bundled " + noun + " (shipped with the app) "
+                    + (forDelete
+                        ? "and can't be deleted; bundled " + noun + "s are read-only"
+                        : "and can't be edited in place; create a project/user copy with " + createTool
+                            + " (same slug) to override it");
+            if (!string.IsNullOrEmpty(otherScope))
+                return noun + " '" + slug + "' is in the '" + otherScope + "' scope, not '" + targetScope
+                    + "'; pass scope:\"" + otherScope + "\" to " + (forDelete ? "delete" : "edit") + " it";
+            return forDelete
+                ? noun + " '" + slug + "' does not exist"
+                : noun + " '" + slug + "' does not exist; " + createTool + " first";
+        }
+
         public static string DetectNewline(string text)
         {
             return text.IndexOf("\r\n", StringComparison.Ordinal) >= 0 ? "\r\n" : "\n";

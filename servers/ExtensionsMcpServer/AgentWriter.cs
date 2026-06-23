@@ -274,34 +274,43 @@ namespace ExtensionsMcpServer
         }
 
         // readonly | write | destructive (a few spelling variants tolerated). Returns the canonical lower
-        // form, or throws on an unrecognized value so the author fixes it at write time.
+        // form, null for a blank/absent value (the field is optional), or throws on an unrecognized value so
+        // the author fixes it at write time.
         private static string NormalizeTier(string maxTier)
         {
-            if (maxTier == null) return null;
-            string v = maxTier.Trim().ToLowerInvariant();
-            if (v.Length == 0) return null;
-            switch (v)
+            if (maxTier == null || maxTier.Trim().Length == 0) return null;
+            string canonical;
+            if (TryNormalizeTier(maxTier, out canonical)) return canonical;
+            throw new AgentWriteException("max_tier must be one of: readonly, write, destructive (got '"
+                + maxTier.Trim() + "')");
+        }
+
+        // The single source of accepted tier spellings: canonical lower form + true, or false for a blank/
+        // unrecognized value. NormalizeTier (throws on unrecognized) and IsKnownTier (returns the bool) both
+        // build on it - one vocabulary, and no exception-as-control-flow on validate_agent's warning path.
+        private static bool TryNormalizeTier(string maxTier, out string canonical)
+        {
+            canonical = null;
+            if (maxTier == null) return false;
+            switch (maxTier.Trim().ToLowerInvariant())
             {
                 case "readonly":
                 case "read-only":
                 case "read_only":
-                    return "readonly";
+                    canonical = "readonly"; return true;
                 case "write":
-                    return "write";
+                    canonical = "write"; return true;
                 case "destructive":
-                    return "destructive";
+                    canonical = "destructive"; return true;
                 default:
-                    throw new AgentWriteException("max_tier must be one of: readonly, write, destructive (got '"
-                        + maxTier.Trim() + "')");
+                    return false;
             }
         }
 
-        // Defer to NormalizeTier so the accepted spellings live in exactly one place (it returns the
-        // canonical form for a known tier and throws for an unknown one).
         private static bool IsKnownTier(string raw)
         {
-            try { return NormalizeTier(raw) != null; }
-            catch (AgentWriteException) { return false; }
+            string canonical;
+            return TryNormalizeTier(raw, out canonical);
         }
 
         private static string NormalizeModel(string model)
@@ -344,35 +353,19 @@ namespace ExtensionsMcpServer
         // writable root. If the slug names a bundled (shipped, read-only) agent, say so and point at
         // create_agent to override it - the bare "does not exist" is misleading when the model can see and
         // read that bundled agent. forDelete tailors the verb (a bundled agent is overridden, not deleted).
+        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
+        // writable scope, or it truly doesn't exist. Probes use the agent file shape (<slug>.md); the
+        // wording is shared with SkillWriter via WriterIo so the two can't drift.
         private AgentWriteException NotWritable(string slug, string targetScope, bool forDelete)
         {
-            // A bundled (shipped, read-only) shadow: can't be written in place.
-            if (!string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md")))
-                return new AgentWriteException("agent '" + slug + "' is a bundled agent (shipped with the app) "
-                    + (forDelete
-                        ? "and can't be deleted; bundled agents are read-only"
-                        : "and can't be edited in place; create a project/user copy with create_agent (same slug) to override it"));
-
-            // It exists, just in the OTHER writable scope than this call wrote to: point there instead of
-            // the misleading "does not exist" (which would push the model to create a duplicate copy).
-            string eff = EffectiveScope(targetScope);
+            bool bundled = !string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md"));
+            string eff = WriterIo.NormalizeScope(targetScope, _defaultScope);
             string otherRoot = eff == "project" ? _userRoot : _projectRoot;
             string otherLabel = eff == "project" ? "user" : "project";
-            if (!string.IsNullOrEmpty(otherRoot) && File.Exists(Path.Combine(otherRoot, slug + ".md")))
-                return new AgentWriteException("agent '" + slug + "' is in the '" + otherLabel + "' scope, not '"
-                    + eff + "'; pass scope:\"" + otherLabel + "\" to " + (forDelete ? "delete" : "edit") + " it");
-
-            return new AgentWriteException(forDelete
-                ? "agent '" + slug + "' does not exist"
-                : "agent '" + slug + "' does not exist; create_agent first");
-        }
-
-        // The effective scope a call resolves to (project/user); RootFor has already validated it by the
-        // time NotWritable runs, so this only normalizes the default/blank case.
-        private string EffectiveScope(string scope)
-        {
-            string s = (scope == null ? _defaultScope : scope.Trim().ToLowerInvariant());
-            return s.Length == 0 ? _defaultScope : s;
+            bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
+                && File.Exists(Path.Combine(otherRoot, slug + ".md"));
+            return new AgentWriteException(WriterIo.NotWritableMessage("agent", slug, "create_agent", forDelete,
+                bundled, inOther ? otherLabel : null, eff));
         }
 
         // Convenience for callers (read_agent) that only need the path, not which scope it came from.
