@@ -259,5 +259,43 @@ namespace ExtensionsMcpServer.Tests
             Assert.StartsWith("OK:", result);
             Assert.Contains("WARNING", result);
         }
+
+        [Fact]
+        public void UpdateAgent_BlankScalarKeepsExisting()
+        {
+            // A present-but-empty model/name means "keep", not "clear" (only a non-blank value changes it).
+            _writer.CreateAgent(null, "a", "A", "desc", null, "readonly", "deepseek/x", 0, "body");
+            _writer.UpdateAgent(null, "a", "", "new desc", null, null, "", 0, null); // name="" and model="" => keep
+            string text = File.ReadAllText(AgentFile("a"));
+            Assert.Contains("name: A", text);            // kept (not wiped)
+            Assert.Contains("model: deepseek/x", text);  // kept (not wiped)
+            Assert.Contains("description: new desc", text);
+        }
+
+        [Fact]
+        public void UpdateAgent_ExistsInOtherScope_PointsToThatScope()
+        {
+            string user = Path.Combine(_root, "user");
+            Directory.CreateDirectory(user);
+            AgentWriter w = new AgentWriter(_project, user, _bundled, "project");
+            w.CreateAgent("user", "reviewer", "Reviewer", "desc", null, null, null, 0, "body");
+
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(
+                () => w.UpdateAgent("project", "reviewer", null, "new", null, null, null, 0, null));
+            Assert.Contains("'user' scope", ex.Message);
+            Assert.Contains("scope:\"user\"", ex.Message);
+        }
+
+        [Fact]
+        public void EditAgent_ToleratesSurroundingWhitespaceInOldString()
+        {
+            // The stored body is trimmed, so an old_string copied with body-edge whitespace still matches its
+            // trimmed core rather than failing with "not found".
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "You are X.");
+            _writer.EditAgent(null, "a", "\n  You are X.  \n", "You are Y.", false);
+            string text = File.ReadAllText(AgentFile("a"));
+            Assert.Contains("You are Y.", text);
+            Assert.DoesNotContain("You are X.", text);
+        }
     }
 }

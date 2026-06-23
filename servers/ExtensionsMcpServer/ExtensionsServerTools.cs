@@ -390,13 +390,17 @@ namespace ExtensionsMcpServer
 
         // The string elements of an array arg as an array, or null when the key is ABSENT/null - so the
         // caller can tell "tools not provided" (null -> keep/omit) from an explicit empty "tools: []"
-        // (a zero-length array -> clear). Skips null elements within a present array.
+        // (a zero-length array -> clear). Skips null elements within a present array. A present-but-NON-array
+        // value (a bare string, an object) is a caller mistake: throw rather than silently treat it as "not
+        // provided", which would drop the intended allowlist with no error.
         private static string[] StrArrayOrNull(ToolCallContext ctx, string key)
         {
             JToken t = ctx.Arguments[key];
             if (t == null || t.Type == JTokenType.Null) return null;
             JArray arr = t as JArray;
-            if (arr == null) return null;
+            if (arr == null)
+                throw new AgentWriteException(key + " must be an array of tool names, e.g. [\"files__read\", "
+                    + "\"git__diff\"] (pass [] for none, or omit it to leave unchanged)");
             List<string> list = new List<string>();
             foreach (JToken e in arr)
             {

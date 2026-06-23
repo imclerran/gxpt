@@ -22,8 +22,6 @@ namespace ExtensionsMcpServer
     /// </summary>
     internal sealed class AgentWriter
     {
-        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
-
         private readonly string _projectRoot; // <workdir>/.gxpt/agents, or null when no workspace
         private readonly string _userRoot;    // %AppData%/GxPT/agents, or null if no user root is configured
         private readonly string _bundledRoot; // <exe>/agents - shipped agents, READ-ONLY (never a write target)
@@ -71,25 +69,28 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, false);
+                throw NotWritable(slug, scope, false);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
             catch (Exception ex) { throw new AgentWriteException("could not read agent: " + ex.Message); }
 
-            if (name != null) RequireSingleLine(name, "name");
-            if (description != null) RequireSingleLine(description, "description");
+            if (!IsBlank(name)) RequireSingleLine(name, "name");
+            if (!IsBlank(description)) RequireSingleLine(description, "description");
 
             AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
-            string newName = name != null ? name : fm.Name;     // may stay null -> name line omitted
-            string newDesc = description != null ? description : fm.Description;
+            // A present-but-blank scalar means "keep" (same as omitting it): only a non-blank value changes
+            // a field, so passing "" never silently wipes an existing name/description/model/max_tier/body.
+            // Clearing tools is the one explicit clear (pass []); clearing a scalar isn't supported.
+            string newName = !IsBlank(name) ? name : fm.Name;     // may stay null -> name line omitted
+            string newDesc = !IsBlank(description) ? description : fm.Description;
             if (IsBlank(newDesc)) throw new AgentWriteException("description is required");
 
             string toolsValue = tools != null ? FormatTools(tools) : fm.ToolsRaw;
-            string tierValue = maxTier != null ? NormalizeTier(maxTier) : fm.MaxTierRaw;
-            string modelValue = model != null ? NormalizeModel(model) : fm.ModelRaw;
+            string tierValue = !IsBlank(maxTier) ? NormalizeTier(maxTier) : fm.MaxTierRaw;
+            string modelValue = !IsBlank(model) ? NormalizeModel(model) : fm.ModelRaw;
             string turnsValue = maxTurns > 0 ? NormalizeTurns(maxTurns) : fm.MaxTurnsRaw;
-            string newBody = body != null ? body : fm.Body;
+            string newBody = !IsBlank(body) ? body : fm.Body;
 
             AtomicWrite(file, BuildAgentMd(newName, newDesc, toolsValue, tierValue, modelValue, turnsValue, newBody));
             return "Updated agent '" + slug + "'. Changes apply on your next message.";
@@ -104,7 +105,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, false);
+                throw NotWritable(slug, scope, false);
             if (IsBlank(oldString)) throw new AgentWriteException("old_string is required");
             if (newString == null) throw new AgentWriteException("new_string is required");
 
@@ -121,6 +122,14 @@ namespace ExtensionsMcpServer
             string newB = NormalizeNewlines(newString, "\n");
 
             int count = CountOccurrences(bodyText, oldB);
+            if (count == 0)
+            {
+                // The stored body is trimmed (no leading/trailing whitespace), so an old_string copied from
+                // read_agent's raw file that carried body-edge blank lines can't match. Retry against the
+                // trimmed core - that outer whitespace could never have matched the body anyway.
+                string oldTrim = oldB.Trim();
+                if (oldTrim.Length > 0 && oldTrim != oldB) { oldB = oldTrim; count = CountOccurrences(bodyText, oldB); }
+            }
             if (count == 0)
                 throw new AgentWriteException("old_string not found in agent '" + slug + "''s body (edit_agent "
                     + "changes the body; use update_agent for the name/description/tools/max_tier)");
@@ -142,8 +151,7 @@ namespace ExtensionsMcpServer
         public string ReadAgent(string slugIn)
         {
             string slug = RequireSlug(slugIn);
-            string source;
-            string file = ResolveExistingFile(slug, out source);
+            string file = ResolveExistingFile(slug);
             if (file == null)
                 throw new AgentWriteException("agent '" + slug + "' does not exist in any scope (project, user, or bundled)");
             try { return File.ReadAllText(file, Encoding.UTF8); }
@@ -178,7 +186,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, true);
+                throw NotWritable(slug, scope, true);
 
             try { File.Delete(file); }
             catch (Exception ex) { throw new AgentWriteException("could not delete agent '" + slug + "': " + ex.Message); }
@@ -247,7 +255,6 @@ namespace ExtensionsMcpServer
         private static string FormatTools(string[] tools)
         {
             if (tools == null) return null;
-            if (tools.Length == 0) return "[]";
 
             StringBuilder sb = new StringBuilder();
             sb.Append('[');
@@ -291,10 +298,12 @@ namespace ExtensionsMcpServer
             }
         }
 
+        // Defer to NormalizeTier so the accepted spellings live in exactly one place (it returns the
+        // canonical form for a known tier and throws for an unknown one).
         private static bool IsKnownTier(string raw)
         {
-            string v = raw != null ? raw.Trim().ToLowerInvariant() : "";
-            return v == "readonly" || v == "read-only" || v == "read_only" || v == "write" || v == "destructive";
+            try { return NormalizeTier(raw) != null; }
+            catch (AgentWriteException) { return false; }
         }
 
         private static string NormalizeModel(string model)
@@ -337,17 +346,39 @@ namespace ExtensionsMcpServer
         // writable root. If the slug names a bundled (shipped, read-only) agent, say so and point at
         // create_agent to override it - the bare "does not exist" is misleading when the model can see and
         // read that bundled agent. forDelete tailors the verb (a bundled agent is overridden, not deleted).
-        private AgentWriteException NotWritable(string slug, bool forDelete)
+        private AgentWriteException NotWritable(string slug, string targetScope, bool forDelete)
         {
+            // A bundled (shipped, read-only) shadow: can't be written in place.
             if (!string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md")))
                 return new AgentWriteException("agent '" + slug + "' is a bundled agent (shipped with the app) "
                     + (forDelete
                         ? "and can't be deleted; bundled agents are read-only"
                         : "and can't be edited in place; create a project/user copy with create_agent (same slug) to override it"));
+
+            // It exists, just in the OTHER writable scope than this call wrote to: point there instead of
+            // the misleading "does not exist" (which would push the model to create a duplicate copy).
+            string eff = EffectiveScope(targetScope);
+            string otherRoot = eff == "project" ? _userRoot : _projectRoot;
+            string otherLabel = eff == "project" ? "user" : "project";
+            if (!string.IsNullOrEmpty(otherRoot) && File.Exists(Path.Combine(otherRoot, slug + ".md")))
+                return new AgentWriteException("agent '" + slug + "' is in the '" + otherLabel + "' scope, not '"
+                    + eff + "'; pass scope:\"" + otherLabel + "\" to " + (forDelete ? "delete" : "edit") + " it");
+
             return new AgentWriteException(forDelete
                 ? "agent '" + slug + "' does not exist"
                 : "agent '" + slug + "' does not exist; create_agent first");
         }
+
+        // The effective scope a call resolves to (project/user); RootFor has already validated it by the
+        // time NotWritable runs, so this only normalizes the default/blank case.
+        private string EffectiveScope(string scope)
+        {
+            string s = (scope == null ? _defaultScope : scope.Trim().ToLowerInvariant());
+            return s.Length == 0 ? _defaultScope : s;
+        }
+
+        // Convenience for callers (read_agent) that only need the path, not which scope it came from.
+        private string ResolveExistingFile(string slug) { string source; return ResolveExistingFile(slug, out source); }
 
         // Read-side resolution: find <slug>.md across all roots, newest-wins (project > user > bundled),
         // matching the host catalog's precedence. Returns the file path (and the source label) or null.
@@ -408,72 +439,23 @@ namespace ExtensionsMcpServer
             return slug;
         }
 
-        // Frontmatter values are single-line by design: a CR/LF would close the "---" block early or
-        // inject keys, producing a forged/unloadable agent (the very thing these tools exist to prevent).
+        // Frontmatter values are single-line by design (the CR/LF guard lives in WriterIo so it can't drift
+        // from the skill writer's copy).
         private static void RequireSingleLine(string value, string field)
         {
-            if (value != null && (value.IndexOf('\n') >= 0 || value.IndexOf('\r') >= 0))
+            if (WriterIo.HasLineBreak(value))
                 throw new AgentWriteException(field + " must be a single line (no line breaks)");
         }
 
-        private static string NormalizeNewlines(string s, string nl)
-        {
-            if (s == null) return null;
-            string lf = s.Replace("\r\n", "\n").Replace("\r", "\n");
-            return nl == "\n" ? lf : lf.Replace("\n", nl);
-        }
-
-        private static int CountOccurrences(string text, string sub)
-        {
-            if (string.IsNullOrEmpty(sub)) return 0;
-            int count = 0, idx = 0;
-            while ((idx = text.IndexOf(sub, idx, StringComparison.Ordinal)) >= 0)
-            {
-                count++;
-                idx += sub.Length;
-            }
-            return count;
-        }
-
-        private static string ReplaceFirst(string text, string oldS, string newS)
-        {
-            int idx = text.IndexOf(oldS, StringComparison.Ordinal);
-            if (idx < 0) return text;
-            return text.Substring(0, idx) + newS + text.Substring(idx + oldS.Length);
-        }
+        private static string NormalizeNewlines(string s, string nl) { return WriterIo.NormalizeNewlines(s, nl); }
+        private static int CountOccurrences(string text, string sub) { return WriterIo.CountOccurrences(text, sub); }
+        private static string ReplaceFirst(string text, string oldS, string newS) { return WriterIo.ReplaceFirst(text, oldS, newS); }
 
         private static bool IsBlank(string s)
         {
             return s == null || s.Trim().Length == 0;
         }
 
-        // Atomic write (mirrors SkillWriter/MemoryStore): temp file then replace/move; creates parent dirs.
-        // A failed write never leaves a half-written or destroyed target; the fallback moves the original
-        // aside FIRST and restores it if the swap fails.
-        private static void AtomicWrite(string path, string content)
-        {
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            string tmp = path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp";
-            try
-            {
-                File.WriteAllText(tmp, content, Utf8NoBom);
-
-                if (!File.Exists(path)) { File.Move(tmp, path); return; }
-
-                try { File.Replace(tmp, path, null); return; }
-                catch { }
-
-                string bak = path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".bak";
-                File.Move(path, bak); // throws here => original untouched
-                try { File.Move(tmp, path); }
-                catch { File.Move(bak, path); throw; } // restore the original, then surface the failure
-                try { File.Delete(bak); } catch { }
-            }
-            finally
-            {
-                if (File.Exists(tmp)) { try { File.Delete(tmp); } catch { } }
-            }
-        }
+        private static void AtomicWrite(string path, string content) { WriterIo.AtomicWrite(path, content); }
     }
 }

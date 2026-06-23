@@ -41,6 +41,7 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="ExtensionsConfig.cs" />
+    <Compile Include="WriterIo.cs" />
     <Compile Include="SkillSlug.cs" />
     <Compile Include="SkillFrontmatter.cs" />
     <Compile Include="SkillWriter.cs" />
