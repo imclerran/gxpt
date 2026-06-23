@@ -23,18 +23,33 @@ namespace GxPT
     {
         private readonly List<IAttachmentExtractor> _extractors;
         private readonly TextFileAttachmentExtractor _textExtractor;
+        private readonly ImageAttachmentExtractor _imageExtractor;
+
+        // Hard capability gate: when false, the image extractor is skipped everywhere (dialog
+        // filter, IsSupported, extraction) so images cannot be attached to a non-vision model.
+        // The caller (MainForm) sets this from the selected model before each attach operation.
+        public bool ImageAttachmentsEnabled { get; set; }
 
         public AttachmentService()
         {
+            ImageAttachmentsEnabled = true;
             _extractors = new List<IAttachmentExtractor>();
             // Register built-in extractors (order matters only for dialog filter composition).
             // Images before text: the text extractor's byte-sniffer rejects binary files anyway,
             // but explicit ordering makes the intent clear.
-            _extractors.Add(new ImageAttachmentExtractor());
+            _imageExtractor = new ImageAttachmentExtractor();
+            _extractors.Add(_imageExtractor);
             _textExtractor = new TextFileAttachmentExtractor(null);
             _extractors.Add(_textExtractor);
             _extractors.Add(new PdfAttachmentExtractor());
             _extractors.Add(new DocxAttachmentExtractor());
+        }
+
+        // An extractor is active unless it's the image extractor while images are gated off.
+        private bool IsActive(IAttachmentExtractor ex)
+        {
+            if (!ImageAttachmentsEnabled && ReferenceEquals(ex, _imageExtractor)) return false;
+            return true;
         }
 
         public AttachmentService(IEnumerable<string> additionalTextFilePatterns)
@@ -63,6 +78,7 @@ namespace GxPT
             if (Directory.Exists(filePath)) return false; // folders not supported
             for (int i = 0; i < _extractors.Count; i++)
             {
+                if (!IsActive(_extractors[i])) continue;
                 try { if (_extractors[i].CanHandle(filePath)) return true; }
                 catch { }
             }
@@ -77,6 +93,7 @@ namespace GxPT
             for (int i = 0; i < _extractors.Count; i++)
             {
                 var ex = _extractors[i];
+                if (!IsActive(ex)) continue; // images gated off -> omit the Image Files category
                 IList<string> pats = null; string label = null;
                 try { pats = ex.GetFileDialogPatterns(); }
                 catch { }
@@ -181,6 +198,7 @@ namespace GxPT
         {
             for (int i = 0; i < _extractors.Count; i++)
             {
+                if (!IsActive(_extractors[i])) continue;
                 try { if (_extractors[i].CanHandle(path)) return _extractors[i]; }
                 catch { }
             }

@@ -25,6 +25,14 @@ namespace GxPT
 
         public bool CanHandle(string filePath)
         {
+            return IsImageFile(filePath);
+        }
+
+        // True if the path's extension is a decodable image type this extractor accepts.
+        // Static so attach-UI gating (MainForm) can identify image drops without an instance.
+        // WebP is intentionally excluded (GDI+ on XP cannot decode it).
+        public static bool IsImageFile(string filePath)
+        {
             if (string.IsNullOrEmpty(filePath)) return false;
             string ext = Path.GetExtension(filePath);
             if (string.IsNullOrEmpty(ext)) return false;

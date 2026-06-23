@@ -219,6 +219,24 @@ At **attach time** and at **render time**, consult
 - PDF attach always offered (text path is universal); native escalation offered
   only if `SupportsFileInput`.
 
+**Implemented as a hard gate** (decided over soft warn-and-allow): the gate is a
+`AttachmentService.ImageAttachmentsEnabled` flag the attach UI sets from
+`MainForm.CurrentModelSupportsImages()` before each operation. When off, the image
+extractor is skipped everywhere — the **Open dialog** omits the *Image Files*
+category, **drag-drop** rejects image files (with a clear "needs a vision-capable
+model" message rather than a generic "unsupported"), and even an image chosen via
+*All Files* is skipped by extraction. `CurrentModelSupportsImages()` is conservative
+on a catalog miss (unknown model / first-run) → returns false, so images stay gated
+until vision is positively confirmed.
+
+**Scope — attach action only.** The hard gate governs *adding* an image. It does
+**not** retroactively purge images already staged (pending) or already sent under a
+prior vision model: those are durable and handled by the render path (§8), which
+re-resolves representation against the *current* model every request — a staged or
+historical image silently becomes a placeholder under a non-vision model and goes
+native again when a vision model is reselected. WebP is always rejected regardless
+of model (GDI+ cannot decode it locally — a capability gate, not a model gate).
+
 ### 6.2 Images
 
 | Condition | Sent as |

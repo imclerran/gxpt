@@ -231,6 +231,9 @@ namespace GxPT
                     if (files != null && files.Length > 0)
                     {
                         EnsureAttachmentService();
+                        // Hard gate: a non-vision model rejects image files (IsSupported skips them).
+                        if (_attachmentService != null)
+                            _attachmentService.ImageAttachmentsEnabled = CurrentModelSupportsImages();
                         for (int i = 0; i < files.Length; i++)
                         {
                             var f = files[i];
@@ -261,6 +264,20 @@ namespace GxPT
             var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
             if (ctx == null) return;
             EnsureAttachmentService();
+            // Hard gate for this drop, based on the currently selected model.
+            bool imagesAllowed = CurrentModelSupportsImages();
+            if (_attachmentService != null)
+                _attachmentService.ImageAttachmentsEnabled = imagesAllowed;
+
+            // When images are gated off, detect dropped image files so we can explain the block
+            // with a clear reason rather than the generic "unsupported item" message.
+            bool droppedGatedImage = false;
+            if (!imagesAllowed && paths != null)
+            {
+                foreach (var p in paths)
+                    if (ImageAttachmentExtractor.IsImageFile(p)) { droppedGatedImage = true; break; }
+            }
+
             List<string> skipped = new List<string>();
             var extracted = (_attachmentService != null) ? _attachmentService.ExtractMany(paths, out skipped) : new List<AttachedFile>();
             if (extracted != null && extracted.Count > 0)
@@ -270,6 +287,28 @@ namespace GxPT
             }
 
             RebuildAttachmentsBanner();
+
+            if (droppedGatedImage)
+            {
+                try
+                {
+                    MessageBox.Show(this,
+                        "Images can only be attached to a vision-capable model. The selected model "
+                        + "cannot view images - switch to a model that supports image input, then attach again.",
+                        "Image Attachments Unavailable",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch { }
+                // Drop image entries from the generic skipped list so they aren't reported twice.
+                if (skipped != null && skipped.Count > 0)
+                {
+                    var filtered = new List<string>();
+                    foreach (var s in skipped)
+                        if (!ImageAttachmentExtractor.IsImageFile(s)) filtered.Add(s);
+                    skipped = filtered;
+                }
+            }
 
             if (skipped != null && skipped.Count > 0)
             {
@@ -3905,6 +3944,9 @@ namespace GxPT
             var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
             if (ctx == null) return;
             EnsureAttachmentService();
+            // Hard gate: only offer the Image Files category when the selected model has vision.
+            if (_attachmentService != null)
+                _attachmentService.ImageAttachmentsEnabled = CurrentModelSupportsImages();
             using (var ofd = new OpenFileDialog())
             {
                 ofd.Title = "Attach File(s)";
@@ -4002,6 +4044,23 @@ namespace GxPT
                 else
                     _attachmentService = new AttachmentService();
             }
+        }
+
+        // True only when the catalog confirms the selected model accepts image input. Conservative
+        // on a miss (unknown model / first-run before the catalog fetch lands) -> false, so images
+        // are gated off until capability is positively known (spec §6.4).
+        private bool CurrentModelSupportsImages()
+        {
+            try
+            {
+                string model = GetSelectedModel();
+                if (string.IsNullOrEmpty(model)) return false;
+                ModelInfo info;
+                if (ModelCatalogService.TryGetModelInfo(model, out info) && info != null)
+                    return info.SupportsImageInput;
+            }
+            catch { }
+            return false;
         }
 
         private void RebuildAttachmentsBanner()
