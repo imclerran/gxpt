@@ -3154,34 +3154,20 @@ namespace GxPT
             {
                 if (it == null || it.Attachments == null || index < 0 || index >= it.Attachments.Count) return;
                 var af = it.Attachments[index]; if (af == null) return;
+
+                bool dark = false;
+                try
+                {
+                    string theme = AppSettings.GetString("theme");
+                    dark = !string.IsNullOrEmpty(theme) && theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { dark = false; }
+
                 using (var dlg = new FileViewerForm())
                 {
-                    var rtbField = typeof(FileViewerForm).GetField("rtbFileText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    var rtb = rtbField != null ? (RichTextBox)rtbField.GetValue(dlg) : null;
-                    if (rtb != null)
-                    {
-                        rtb.Text = af.Content ?? string.Empty;
-
-                        // Determine theme
-                        bool dark = false;
-                        try
-                        {
-                            string theme = AppSettings.GetString("theme");
-                            dark = !string.IsNullOrEmpty(theme) && theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                        }
-                        catch { dark = false; }
-
-                        // Apply themed background/foreground to match chat
-                        var colors = ThemeService.GetColors(dark);
-                        rtb.BackColor = colors.UiBackground;
-                        rtb.ForeColor = colors.UiForeground;
-
-                        string lang = GetFileExtension(af.FileName);
-                        try { RichTextBoxSyntaxHighlighter.Highlight(rtb, lang, dark); }
-                        catch { }
-                    }
                     dlg.Text = af.FileName ?? "Attachment";
                     dlg.StartPosition = FormStartPosition.CenterParent;
+                    dlg.LoadAttachment(af, dark);
                     dlg.ShowDialog(FindForm());
                 }
             }

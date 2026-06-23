@@ -2610,7 +2610,7 @@ namespace GxPT
                 {
                     // Snapshot the history and log it
                     // Build a model snapshot where attachments are appended to content on-the-fly
-                    var snapshot = BuildMessagesForModel(convo.History);
+                    var snapshot = BuildMessagesForModel(convo.History, modelToUse);
                     // Prompt caching: the newest message carries the cache breakpoint, so each
                     // turn re-reads the prior turn's prefix and extends it. Snapshot messages are
                     // request-local clones - the flag never lands in persisted history.
@@ -3163,11 +3163,12 @@ namespace GxPT
                         });
                         orch.ContinuationDecider = delegate(int n) { return contPrompt.Ask(n); };
                     }
+                    string modelForTransform = modelToUse; // capture for transform closure
                     orch.RequestMessageTransform = delegate(IList<ChatMessage> h)
                     {
                         List<ChatMessage> asList = h as List<ChatMessage>;
                         if (asList == null) asList = new List<ChatMessage>(h);
-                        return BuildMessagesForModel(asList);
+                        return BuildMessagesForModel(asList, modelForTransform);
                     };
                     // AGENTS.md: inject the workspace root's project instructions into the stable
                     // head (Zone A - cached, so a large file bills once per conversation). Read
@@ -3478,9 +3479,23 @@ namespace GxPT
             }
         }
 
-        // Build a list of messages for the model, appending any attachments to the user message content
-        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history)
+        // Build request-scoped messages from persisted history, resolving per-attachment
+        // representation based on the selected model's capabilities (§6/§8):
+        //   - Text/PDF → inline extracted text into Content (unchanged path)
+        //   - Image, model supports vision → leave binary on nm.Attachments for ContentValue
+        //   - Image, model unknown or no vision → inline placeholder text into Content
+        // The model parameter may be null (first-run / catalog miss) → conservative text-only.
+        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history, string model)
         {
+            ModelInfo modelInfo = null;
+            bool supportsImage = false;
+            if (!string.IsNullOrEmpty(model))
+            {
+                try { ModelCatalogService.TryGetModelInfo(model, out modelInfo); }
+                catch { }
+                if (modelInfo != null) supportsImage = modelInfo.SupportsImageInput;
+            }
+
             var list = new List<ChatMessage>();
             if (history == null) return list;
             for (int i = 0; i < history.Count; i++)
@@ -3488,6 +3503,8 @@ namespace GxPT
                 var m = history[i];
                 if (m == null) continue;
                 string content = m.Content ?? string.Empty;
+                List<AttachedFile> nativeImages = null; // images to carry as binary parts
+
                 if (m.Attachments != null && m.Attachments.Count > 0)
                 {
                     var sb = new StringBuilder();
@@ -3496,17 +3513,41 @@ namespace GxPT
                     {
                         var af = m.Attachments[j];
                         if (af == null) continue;
-                        sb.AppendLine();
-                        sb.AppendLine("--- Attached File: " + af.FileName + " ---");
-                        sb.AppendLine(af.Content ?? string.Empty);
-                        sb.AppendLine("--- End Attached File: " + af.FileName + " ---");
+
+                        if (af.EffectiveKind == AttachmentKind.Image)
+                        {
+                            if (supportsImage && !string.IsNullOrEmpty(af.Data))
+                            {
+                                // Native image path: leave binary on the request-scoped message.
+                                if (nativeImages == null) nativeImages = new List<AttachedFile>();
+                                nativeImages.Add(af);
+                            }
+                            else
+                            {
+                                // Fallback: placeholder so the model knows the image was attached.
+                                sb.AppendLine();
+                                sb.AppendLine("[image attached: " + af.FileName
+                                    + (supportsImage ? "" : " — current model has no vision") + "]");
+                            }
+                        }
+                        else
+                        {
+                            // Text / PDF: inline extracted text content (unchanged path).
+                            sb.AppendLine();
+                            sb.AppendLine("--- Attached File: " + af.FileName + " ---");
+                            sb.AppendLine(af.Content ?? string.Empty);
+                            sb.AppendLine("--- End Attached File: " + af.FileName + " ---");
+                        }
                     }
                     content = sb.ToString();
                 }
+
                 var nm = new ChatMessage(m.Role, content);
                 // Preserve tool-call linkage so this is safe as the orchestrator's request transform.
                 nm.ToolCalls = m.ToolCalls;
                 nm.ToolCallId = m.ToolCallId;
+                // Native images travel on Attachments; ContentValue emits them as image_url parts.
+                if (nativeImages != null) nm.Attachments = nativeImages;
                 list.Add(nm);
             }
             return list;

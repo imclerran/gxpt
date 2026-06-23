@@ -27,7 +27,10 @@ namespace GxPT
         public AttachmentService()
         {
             _extractors = new List<IAttachmentExtractor>();
-            // Register built-in extractors (order matters only for dialog filter composition)
+            // Register built-in extractors (order matters only for dialog filter composition).
+            // Images before text: the text extractor's byte-sniffer rejects binary files anyway,
+            // but explicit ordering makes the intent clear.
+            _extractors.Add(new ImageAttachmentExtractor());
             _textExtractor = new TextFileAttachmentExtractor(null);
             _extractors.Add(_textExtractor);
             _extractors.Add(new PdfAttachmentExtractor());

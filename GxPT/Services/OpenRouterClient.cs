@@ -151,27 +151,85 @@ namespace GxPT
             return JsonConvert.SerializeObject(payload);
         }
 
-        // A message's content value: a plain string normally; a one-part content array carrying
-        // cache_control {type: ephemeral} when the message is flagged as a cache breakpoint (the
-        // array form is the OpenAI-compatible shape OpenRouter requires for cache_control). Emitted
-        // for EVERY model: providers without explicit caching ignore the annotation (documented by
-        // OpenRouter; field-verified harmless), while some third-party hosts may implement
-        // explicit-marker caching even for models whose author caches automatically (suspected of
-        // SiliconFlow-hosted DeepSeek, which never auto-cached prefix-stable requests). Empty
-        // content always stays a plain string - there is nothing to cache and Anthropic rejects
-        // empty text parts.
+        // A message's content value. Three cases:
+        //
+        // 1. No binary attachments, no cache flag → plain string (unchanged path).
+        // 2. No binary attachments, cache flag set → one-part text array with cache_control.
+        // 3. Binary attachments present → multi-part array: text part (if non-empty) + one
+        //    image_url part per image attachment; cache_control on the last part when flagged.
+        //
+        // The array form is the OpenAI-compatible shape OpenRouter requires for cache_control.
+        // Emitted for EVERY model: providers without explicit caching ignore the annotation.
+        // Empty text parts are omitted — Anthropic rejects them in content arrays.
         private static object ContentValue(ChatMessage m)
         {
             string text = m.Content != null ? m.Content : string.Empty;
-            if (!m.CacheControl || text.Length == 0) return text;
 
-            var part = new Dictionary<string, object>();
-            part["type"] = "text";
-            part["text"] = text;
-            var cc = new Dictionary<string, object>();
-            cc["type"] = "ephemeral";
-            part["cache_control"] = cc;
-            return new List<object> { part };
+            // Collect image attachments that have been flagged for native carriage by the transform.
+            List<AttachedFile> images = null;
+            if (m.Attachments != null)
+            {
+                for (int i = 0; i < m.Attachments.Count; i++)
+                {
+                    var af = m.Attachments[i];
+                    if (af == null) continue;
+                    if (af.EffectiveKind == AttachmentKind.Image && !string.IsNullOrEmpty(af.Data))
+                    {
+                        if (images == null) images = new List<AttachedFile>();
+                        images.Add(af);
+                    }
+                }
+            }
+
+            bool hasImages = images != null && images.Count > 0;
+
+            // Case 1: plain string — no images, no cache flag, or empty text with no images.
+            if (!hasImages && (!m.CacheControl || text.Length == 0)) return text;
+
+            // Build a content-parts list.
+            var parts = new List<object>();
+
+            // Text part (omitted when empty — Anthropic rejects empty text parts in arrays).
+            if (text.Length > 0)
+            {
+                var textPart = new Dictionary<string, object>();
+                textPart["type"] = "text";
+                textPart["text"] = text;
+                parts.Add(textPart);
+            }
+
+            // Image parts.
+            if (hasImages)
+            {
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var af = images[i];
+                    var imgPart = new Dictionary<string, object>();
+                    imgPart["type"] = "image_url";
+                    var imgUrl = new Dictionary<string, object>();
+                    imgUrl["url"] = "data:" + (af.MediaType ?? "image/png") + ";base64," + af.Data;
+                    imgPart["image_url"] = imgUrl;
+                    parts.Add(imgPart);
+                }
+            }
+
+            // No parts built (empty text, no images) — return plain empty string.
+            if (parts.Count == 0) return text;
+
+            // Attach cache_control to the last part so the heavy image sits inside the cached
+            // prefix. Respects the 4-breakpoint cap enforced upstream by ApplyCacheBreakpoints.
+            if (m.CacheControl)
+            {
+                var lastPart = parts[parts.Count - 1] as Dictionary<string, object>;
+                if (lastPart != null)
+                {
+                    var cc = new Dictionary<string, object>();
+                    cc["type"] = "ephemeral";
+                    lastPart["cache_control"] = cc;
+                }
+            }
+
+            return parts;
         }
 
         // Providers whose prompt caching (explicit cache_control OR implicit/automatic prefix

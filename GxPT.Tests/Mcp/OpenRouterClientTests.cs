@@ -345,5 +345,105 @@ namespace GxPT.Tests.Mcp
             Assert.Equal("files__read", tc.function.name);
             Assert.Equal("{}", tc.function.arguments);
         }
+
+        // ---- multimodal image_url content parts (phase 3) ----
+
+        [Fact]
+        public void Image_attachment_emits_multipart_image_url_array()
+        {
+            var msg = new ChatMessage("user", "what is this?");
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "photo.png", Kind = AttachmentKind.Image,
+                                   MediaType = "image/png", Data = "QUJD" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("vendor/vision", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(JTokenType.Array, content.Type);
+
+            var textPart = content[0];
+            Assert.Equal("text", (string)textPart["type"]);
+            Assert.Equal("what is this?", (string)textPart["text"]);
+
+            var imgPart = content[1];
+            Assert.Equal("image_url", (string)imgPart["type"]);
+            Assert.Equal("data:image/png;base64,QUJD", (string)imgPart["image_url"]["url"]);
+        }
+
+        [Fact]
+        public void Image_attachment_with_empty_text_omits_text_part()
+        {
+            var msg = new ChatMessage("user", "");
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "a.png", Kind = AttachmentKind.Image,
+                                   MediaType = "image/png", Data = "QUJD" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(JTokenType.Array, content.Type);
+            Assert.Single(content);
+            Assert.Equal("image_url", (string)content[0]["type"]);
+        }
+
+        [Fact]
+        public void Image_attachment_with_cache_flag_puts_cache_control_on_last_part()
+        {
+            var msg = new ChatMessage("user", "look");
+            msg.CacheControl = true;
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "a.png", Kind = AttachmentKind.Image,
+                                   MediaType = "image/jpeg", Data = "QUJD" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            var lastPart = content[content.Count() - 1];
+            // cache_control lands on the image part (last), not the text part.
+            Assert.Equal("image_url", (string)lastPart["type"]);
+            Assert.Equal("ephemeral", (string)lastPart["cache_control"]["type"]);
+            // Text part has no cache_control.
+            Assert.Null(content[0]["cache_control"]);
+        }
+
+        [Fact]
+        public void Multiple_image_attachments_emit_multiple_image_url_parts()
+        {
+            var msg = new ChatMessage("user", "compare");
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "a.png", Kind = AttachmentKind.Image,
+                                   MediaType = "image/png", Data = "QQ==" },
+                new AttachedFile { FileName = "b.jpg", Kind = AttachmentKind.Image,
+                                   MediaType = "image/jpeg", Data = "Qg==" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(3, content.Count()); // text + 2 images
+            Assert.Equal("image_url", (string)content[1]["type"]);
+            Assert.Contains("QQ==", (string)content[1]["image_url"]["url"]);
+            Assert.Equal("image_url", (string)content[2]["type"]);
+            Assert.Contains("Qg==", (string)content[2]["image_url"]["url"]);
+        }
+
+        [Fact]
+        public void Text_only_message_with_no_images_stays_plain_string()
+        {
+            // No attachments on the message — ContentValue must stay a plain string.
+            var msg = new ChatMessage("user", "hello");
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(JTokenType.String, content.Type);
+            Assert.Equal("hello", (string)content);
+        }
     }
 }
