@@ -120,6 +120,142 @@ namespace GxPT.Tests
             Assert.Contains("hello world", msg.Attachments[0].Content);
         }
 
+        // ---- Multimodal attachments (phase 2): new AttachedFile fields round-trip ----
+
+        [Fact]
+        public void ToJson_then_Load_roundtrips_image_attachment_fields()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            var msg = new ChatMessage("user", "look at this", new List<AttachedFile>
+            {
+                new AttachedFile
+                {
+                    FileName = "photo.png",
+                    Content = null,
+                    Kind = AttachmentKind.Image,
+                    MediaType = "image/png",
+                    Data = "QUJD", // base64 of "ABC"
+                    Width = 800,
+                    Height = 600
+                }
+            });
+            convo.History.Add(msg);
+
+            string json = ConversationStore.ToJson(convo);
+            var reload = ConversationStore.LoadFromJson(null, json);
+
+            Assert.Single(reload.History);
+            var att = reload.History[0].Attachments[0];
+            Assert.Equal("photo.png", att.FileName);
+            Assert.Equal(AttachmentKind.Image, att.Kind);
+            Assert.Equal(AttachmentKind.Image, att.EffectiveKind);
+            Assert.Equal("image/png", att.MediaType);
+            Assert.Equal("QUJD", att.Data);
+            Assert.Equal(800, att.Width);
+            Assert.Equal(600, att.Height);
+        }
+
+        [Fact]
+        public void ToJson_then_Load_roundtrips_pdf_dual_representation()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            convo.History.Add(new ChatMessage("user", "summarize", new List<AttachedFile>
+            {
+                new AttachedFile
+                {
+                    FileName = "report.pdf",
+                    Content = "extracted text body",
+                    Kind = AttachmentKind.Pdf,
+                    MediaType = "application/pdf",
+                    Data = "JVBERi0="
+                }
+            }));
+
+            string json = ConversationStore.ToJson(convo);
+            var reload = ConversationStore.LoadFromJson(null, json);
+
+            var att = reload.History[0].Attachments[0];
+            Assert.Equal(AttachmentKind.Pdf, att.Kind);
+            Assert.Equal("extracted text body", att.Content); // text path kept
+            Assert.Equal("JVBERi0=", att.Data);                 // original bytes kept
+        }
+
+        [Fact]
+        public void Kind_serializes_as_string_in_transcript()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            convo.History.Add(new ChatMessage("user", "x", new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "a.png", Kind = AttachmentKind.Image, Data = "QQ==" }
+            }));
+
+            string json = ConversationStore.ToJson(convo);
+            // Human-readable enum name, not a magic integer.
+            Assert.Contains("\"Image\"", json);
+        }
+
+        [Fact]
+        public void Legacy_attachment_without_kind_loads_as_text()
+        {
+            // Old transcript: structured attachment with only FileName/Content, no Kind field.
+            string json = "{\"Name\":\"Chat\",\"Messages\":[{\"Role\":\"user\",\"Content\":\"hi\"," +
+                          "\"Attachments\":[{\"FileName\":\"notes.txt\",\"Content\":\"body\"}]}]}";
+
+            var convo = ConversationStore.LoadFromJson(null, json);
+
+            var att = convo.History[0].Attachments[0];
+            Assert.Null(att.Kind);                                 // absent => null
+            Assert.Equal(AttachmentKind.Text, att.EffectiveKind);  // inferred Text
+            Assert.Equal("notes.txt", att.FileName);
+            Assert.Equal("body", att.Content);
+        }
+
+        [Fact]
+        public void Text_attachment_omits_new_fields_from_transcript()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            convo.History.Add(new ChatMessage("user", "x", new List<AttachedFile>
+            {
+                new AttachedFile("notes.txt", "body") // text-only: Kind/Data/etc left null
+            }));
+
+            string json = ConversationStore.ToJson(convo);
+            // NullValueHandling.Ignore keeps the legacy compact shape for text attachments.
+            Assert.DoesNotContain("\"Kind\"", json);
+            Assert.DoesNotContain("\"MediaType\"", json);
+            Assert.DoesNotContain("\"Data\"", json);
+            Assert.DoesNotContain("\"Width\"", json);
+        }
+
+        [Fact]
+        public void Clone_deep_copies_all_fields()
+        {
+            var src = new AttachedFile
+            {
+                FileName = "photo.png",
+                Content = "txt",
+                Kind = AttachmentKind.Image,
+                MediaType = "image/png",
+                Data = "QUJD",
+                Width = 10,
+                Height = 20
+            };
+            var copy = src.Clone();
+
+            Assert.NotSame(src, copy);
+            Assert.Equal("photo.png", copy.FileName);
+            Assert.Equal("txt", copy.Content);
+            Assert.Equal(AttachmentKind.Image, copy.Kind);
+            Assert.Equal("image/png", copy.MediaType);
+            Assert.Equal("QUJD", copy.Data);
+            Assert.Equal(10, copy.Width);
+            Assert.Equal(20, copy.Height);
+        }
+
         // ---- Newtonsoft migration (D16): tool-call persistence + backward compatibility ----
 
         [Fact]

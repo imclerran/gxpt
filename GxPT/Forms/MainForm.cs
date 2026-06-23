@@ -2373,7 +2373,9 @@ namespace GxPT
                                 for (int i = 0; i < pending.Count; i++)
                                 {
                                     var af = pending[i]; if (af == null) continue;
-                                    orig.Attachments.Add(new AttachedFile(af.FileName, af.Content));
+                                    // Clone (not new AttachedFile(name, content)) so binary
+                                    // payloads (images/PDFs) and Kind survive an edit/resend.
+                                    orig.Attachments.Add(af.Clone());
                                 }
                             }
                             else
@@ -2457,7 +2459,8 @@ namespace GxPT
                     {
                         var af = ctx.PendingAttachments[i];
                         if (af == null) continue;
-                        attachmentsSnapshot.Add(new AttachedFile(af.FileName, af.Content));
+                        // Clone so the snapshot keeps binary payloads (images/PDFs) and Kind.
+                        attachmentsSnapshot.Add(af.Clone());
                     }
                 }
                 if (!isEditResend)
@@ -5476,7 +5479,9 @@ namespace GxPT
             }
         }
 
-        // Compare attachments by filename and content (same order and count)
+        // Compare attachments by filename, text content, and binary payload/kind (same order and
+        // count). Data and Kind matter because an image's Content is empty - without them, swapping
+        // one image for another with the same filename would falsely read as "no change" on edit.
         private static bool AreAttachmentsEqual(List<AttachedFile> a, List<AttachedFile> b)
         {
             try
@@ -5493,6 +5498,12 @@ namespace GxPT
                     string acnt = ai != null ? (ai.Content ?? string.Empty) : string.Empty;
                     string bcnt = bi != null ? (bi.Content ?? string.Empty) : string.Empty;
                     if (!string.Equals(acnt, bcnt, StringComparison.Ordinal)) return false;
+                    string adata = ai != null ? (ai.Data ?? string.Empty) : string.Empty;
+                    string bdata = bi != null ? (bi.Data ?? string.Empty) : string.Empty;
+                    if (!string.Equals(adata, bdata, StringComparison.Ordinal)) return false;
+                    AttachmentKind akind = ai != null ? ai.EffectiveKind : AttachmentKind.Text;
+                    AttachmentKind bkind = bi != null ? bi.EffectiveKind : AttachmentKind.Text;
+                    if (akind != bkind) return false;
                 }
                 return true;
             }

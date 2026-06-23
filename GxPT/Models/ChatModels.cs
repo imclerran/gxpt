@@ -1,12 +1,37 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace GxPT
 {
+    // Kind = wire CARRIAGE (how the attachment is sent), NOT source format.
+    // A .docx extracts to text => carried as Text. Binary bytes live in Data,
+    // never in Content (Content is inlined as text by the request transform).
+    public enum AttachmentKind { Text, Image, Pdf }
+
     public sealed class AttachedFile
     {
         public string FileName { get; set; }
-        public string Content { get; set; }
+        public string Content { get; set; }   // extracted TEXT (text files; also PDFs)
+
+        // New multimodal fields. All omitted from the transcript via NullValueHandling.Ignore
+        // when null, so legacy files and text-only attachments keep their compact shape.
+        // Kind serializes as a string ("Image"/"Pdf") - readable in the transcript and stable
+        // across enum reordering. Null Kind => legacy attachment, inferred as Text.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public AttachmentKind? Kind { get; set; }
+        public string MediaType { get; set; }  // e.g. "image/png", "application/pdf"
+        public string Data { get; set; }        // base64 of the (normalized) bytes
+        public int? Width { get; set; }          // images, for the viewer/UX
+        public int? Height { get; set; }
+
+        // Convenience: the kind to act on, treating a null (legacy) Kind as Text. Not persisted.
+        [JsonIgnore]
+        public AttachmentKind EffectiveKind
+        {
+            get { return Kind.HasValue ? Kind.Value : AttachmentKind.Text; }
+        }
 
         public AttachedFile() { }
         public AttachedFile(string fileName, string content)
@@ -14,13 +39,31 @@ namespace GxPT
             FileName = fileName ?? string.Empty;
             Content = content ?? string.Empty;
         }
+
+        // Deep copy of ALL fields. Strings and value types are immutable, so a member-wise copy
+        // is a true deep copy. Use this wherever an attachment is carried to a new message
+        // (e.g. the edit/resend path) so the binary payload and kind are never dropped.
+        public AttachedFile Clone()
+        {
+            return new AttachedFile
+            {
+                FileName = FileName,
+                Content = Content,
+                Kind = Kind,
+                MediaType = MediaType,
+                Data = Data,
+                Width = Width,
+                Height = Height
+            };
+        }
     }
 
     internal sealed class ChatMessage
     {
         public string Role; // "user" | "assistant" | "system" | "tool"
         public string Content;
-        // Internal-only: attachments are kept in-memory for UI; not serialized in ConversationStore
+        // Attachments are kept in-memory for UI and persisted structured by ConversationStore
+        // (ToMessageDto -> MessageDto.Attachments); the request transform re-inlines/emits them.
         public List<AttachedFile> Attachments;
         // Tool-call loop (phase 4): set on assistant messages that request tool calls.
         public List<ToolCall> ToolCalls;
