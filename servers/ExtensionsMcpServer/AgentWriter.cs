@@ -39,7 +39,7 @@ namespace ExtensionsMcpServer
 
         // create_agent: a NEW agent (refuses if it exists); assembles a guaranteed-loadable <slug>.md.
         public string CreateAgent(string scope, string slugIn, string name, string description,
-            string[] tools, string maxTier, string model, int maxTurns)
+            string[] tools, string maxTier, string model, int maxTurns, string body)
         {
             string root = RootFor(scope);
             string slug = RequireSlug(slugIn);
@@ -57,7 +57,7 @@ namespace ExtensionsMcpServer
             if (File.Exists(file))
                 throw new AgentWriteException("agent '" + slug + "' already exists; use update_agent to change it");
 
-            AtomicWrite(file, BuildAgentMd(name, description, toolsValue, tierValue, modelValue, turnsValue, null));
+            AtomicWrite(file, BuildAgentMd(name, description, toolsValue, tierValue, modelValue, turnsValue, body));
             return "Created agent '" + slug + "'. It will be available on your next message.";
         }
 
@@ -359,24 +359,45 @@ namespace ExtensionsMcpServer
             for (int i = 0; i < roots.Length; i++)
             {
                 if (string.IsNullOrEmpty(roots[i])) continue;
-                string file = Path.Combine(roots[i], slug + ".md");
-                if (File.Exists(file)) { source = labels[i]; return file; }
+                // Resolve the same way the host catalog does: the slug is the file name normalized via
+                // SkillSlug.Make, NOT the raw file name - so a hand-placed "Code Explorer.md" resolves under
+                // "code-explorer" exactly as the host dispatches it (not only the canonical "<slug>.md").
+                Dictionary<string, string> bySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                CollectRootFiles(roots[i], bySlug);
+                string file;
+                if (bySlug.TryGetValue(slug, out file)) { source = labels[i]; return file; }
             }
             return null;
         }
 
-        // Adds each <slug>.md in root to the map under the given source label, overwriting any prior label
+        // Adds each agent in root to the map under the given source label, overwriting any prior label
         // (callers add least-specific first so the most-specific source wins).
         private static void AddRootSlugs(string root, string label, Dictionary<string, string> bySlug)
+        {
+            Dictionary<string, string> files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            CollectRootFiles(root, files);
+            foreach (string slug in files.Keys) bySlug[slug] = label;
+        }
+
+        // Enumerate a single root's agents as slug -> file path, normalized exactly like the host
+        // AgentCatalog: only files whose extension is exactly ".md" (guarding the Win32 "*.md" wildcard
+        // quirk), with the slug derived from the file name via SkillSlug.Make (not the raw name), and the
+        // file list sorted ordinal so a same-root slug collision ("Foo.md" vs "foo.md") resolves
+        // deterministically (last wins) - the same rule AgentCatalog.Build uses. Keeping these in lockstep
+        // is what makes read_agent/list_agents agree with what the host actually dispatches.
+        private static void CollectRootFiles(string root, Dictionary<string, string> bySlug)
         {
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
             string[] files;
             try { files = Directory.GetFiles(root, "*.md"); }
-            catch { files = new string[0]; }
+            catch { return; }
+            Array.Sort(files, StringComparer.Ordinal);
             foreach (string f in files)
             {
-                string nm = Path.GetFileNameWithoutExtension(f);
-                if (!string.IsNullOrEmpty(nm)) bySlug[nm] = label;
+                string ext = Path.GetExtension(f);
+                if (ext == null || !ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
+                string slug = SkillSlug.Make(Path.GetFileNameWithoutExtension(f));
+                if (!string.IsNullOrEmpty(slug)) bySlug[slug] = f;
             }
         }
 

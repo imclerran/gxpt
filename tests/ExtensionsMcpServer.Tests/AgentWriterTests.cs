@@ -180,6 +180,17 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void ReadAgent_NormalizesNonKebabFilename()
+        {
+            // A hand-placed file with a non-kebab name resolves under its normalized slug, matching the host
+            // catalog (which derives the slug via SkillSlug.Make), not only the canonical "<slug>.md".
+            File.WriteAllText(Path.Combine(_bundled, "Code Explorer.md"),
+                "---\nname: Code Explorer\ndescription: d\n---\nthe body\n");
+            Assert.Contains("the body", _writer.ReadAgent("code-explorer"));
+            Assert.Contains("- code-explorer (bundled)", _writer.ListAgents());
+        }
+
+        [Fact]
         public void ReadAgent_MissingEverywhere_Throws()
         {
             Assert.Throws<AgentWriteException>(() => _writer.ReadAgent("nope"));

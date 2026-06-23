@@ -244,7 +244,7 @@ namespace ExtensionsMcpServer
                         return ToolResults.Text(agents.CreateAgent(
                             Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "name"), Str(ctx, "description"),
                             StrArrayOrNull(ctx, "tools"), Str(ctx, "max_tier"), Str(ctx, "model"),
-                            IntArg(ctx, "max_turns", 0, 0, 100000)));
+                            IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
                     }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
