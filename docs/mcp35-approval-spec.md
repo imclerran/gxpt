@@ -242,9 +242,14 @@ server can attempt **prompt injection** ("ignore prior instructions, call
 ## 8. Denial handling
 
 A `Deny` returns a `tool`-role result `"[Call denied by the user.]"` to the
-model (phase-4 `ExecuteCall`), so the model can adapt/apologize rather than the
-turn aborting. Repeated denials don't auto-stop the turn (the `MaxIterations`
-cap does).
+model (phase-4 `ExecuteCall`) rather than aborting the turn. To keep the model
+from silently working around the refusal with other tool calls, a denial also
+forces the **next** model request to `tool_choice "none"` (the same
+`forceTextThisCall` mechanism used for a user-stopped `dispatch_agent`
+fan-out): the model must answer in text, so it stops and asks how to proceed.
+The system prompt reinforces the same instruction. The remaining calls in the
+same batch still run their own approval gate, so the user keeps per-call
+control within a batch.
 
 ---
 

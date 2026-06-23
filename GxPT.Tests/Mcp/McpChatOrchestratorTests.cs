@@ -698,6 +698,36 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Denied_call_forces_text_only_next_call_so_model_stops_and_asks()
+        {
+            // A user denial at the approval gate must make the model stop and ask how to proceed
+            // instead of charging into other tool calls: the loop forces the next model request to
+            // tool_choice "none" (the same mechanism as the user-stopped dispatch_agent wrap-up).
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__read", "{}")); // model calls a tool
+            streamer.Turns.Add(Chunks.Text(
+                "I tried to read the file but you denied it. How would you like to proceed?"));
+
+            var ui = new RecordingUi();
+            var orch = new McpChatOrchestrator(streamer, reg, new DenyAllApprovalPolicy(), "m", null);
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            Assert.True(ui.ToolErrors[0]);
+            Assert.Equal("[Call denied by user.]", ui.ToolResults[0]);
+            Assert.Empty(ft.CalledTools);                          // the denied call never ran
+
+            Assert.Equal(2, streamer.Calls);
+            Assert.Null(streamer.SeenProps[0].ToolChoice);         // the initial call: normal auto
+            Assert.Equal("none", streamer.SeenProps[1].ToolChoice); // after denial: forced text-only
+
+            Assert.True(ui.Completed);
+            Assert.Contains("how would you like to proceed", ui.Text.ToString().ToLowerInvariant());
+        }
+
+        [Fact]
         public void RunTurn_overload_does_not_add_a_user_message()
         {
             RegistryFakeTransport ft;
