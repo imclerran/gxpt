@@ -278,7 +278,7 @@ namespace GxPT
                     if (ImageAttachmentExtractor.IsImageFile(p)) { droppedGatedImage = true; break; }
             }
 
-            List<string> skipped = new List<string>();
+            List<SkippedAttachment> skipped = new List<SkippedAttachment>();
             var extracted = (_attachmentService != null) ? _attachmentService.ExtractMany(paths, out skipped) : new List<AttachedFile>();
             if (extracted != null && extracted.Count > 0)
             {
@@ -303,25 +303,36 @@ namespace GxPT
                 // Drop image entries from the generic skipped list so they aren't reported twice.
                 if (skipped != null && skipped.Count > 0)
                 {
-                    var filtered = new List<string>();
+                    var filtered = new List<SkippedAttachment>();
                     foreach (var s in skipped)
-                        if (!ImageAttachmentExtractor.IsImageFile(s)) filtered.Add(s);
+                        if (s != null && !ImageAttachmentExtractor.IsImageFile(s.DisplayName)) filtered.Add(s);
                     skipped = filtered;
                 }
             }
 
-            if (skipped != null && skipped.Count > 0)
+            ShowSkippedAttachmentsMessage(skipped);
+        }
+
+        // Report files that couldn't be attached, including each extractor's reason when it has
+        // one (e.g. the image size-cap message) instead of a bare "unsupported item".
+        private void ShowSkippedAttachmentsMessage(List<SkippedAttachment> skipped)
+        {
+            if (skipped == null || skipped.Count == 0) return;
+            try
             {
-                try
+                var sb = new StringBuilder();
+                sb.Append("Some files could not be attached:");
+                for (int i = 0; i < skipped.Count; i++)
                 {
-                    MessageBox.Show(this,
-                        "Skipped unsupported items:\n - " + string.Join("\n - ", skipped.ToArray()),
-                        "Attach Files",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    var s = skipped[i];
+                    if (s == null) continue;
+                    sb.Append("\n - ").Append(s.DisplayName ?? string.Empty);
+                    if (!string.IsNullOrEmpty(s.Reason)) sb.Append(": ").Append(s.Reason);
                 }
-                catch { }
+                MessageBox.Show(this, sb.ToString(), "Attach Files",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+            catch { }
         }
 
         // Persist and restore open tabs (conversation IDs and active tab)
@@ -3954,25 +3965,14 @@ namespace GxPT
                 ofd.Filter = (_attachmentService != null) ? _attachmentService.BuildOpenFileDialogFilter() : "All Files|*.*";
                 ofd.CheckFileExists = true;
                 if (ofd.ShowDialog(this) != DialogResult.OK) return;
-                List<string> skipped = new List<string>();
+                List<SkippedAttachment> skipped = new List<SkippedAttachment>();
                 var extracted = (_attachmentService != null) ? _attachmentService.ExtractMany(ofd.FileNames, out skipped) : new List<AttachedFile>();
                 if (extracted != null && extracted.Count > 0)
                 {
                     if (ctx.PendingAttachments == null) ctx.PendingAttachments = new List<AttachedFile>();
                     ctx.PendingAttachments.AddRange(extracted);
                 }
-                if (skipped != null && skipped.Count > 0)
-                {
-                    try
-                    {
-                        MessageBox.Show(this,
-                            "Skipped unsupported items:\n - " + string.Join("\n - ", skipped.ToArray()),
-                            "Attach Files",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information);
-                    }
-                    catch { }
-                }
+                ShowSkippedAttachmentsMessage(skipped);
                 RebuildAttachmentsBanner();
             }
         }

@@ -18,6 +18,20 @@ namespace GxPT
         string GetCategoryLabel();
     }
 
+    // A file that could not be attached, plus an optional human-readable reason. Reason is null
+    // for a plain unsupported type (the UI then shows just the name); set to an extractor's
+    // exception message (e.g. the image size-cap message) when there's something useful to say.
+    internal sealed class SkippedAttachment
+    {
+        public string DisplayName { get; private set; }
+        public string Reason { get; private set; }
+        public SkippedAttachment(string displayName, string reason)
+        {
+            DisplayName = displayName ?? string.Empty;
+            Reason = reason;
+        }
+    }
+
     // Coordinator that routes files to the appropriate extractor and builds dialog filters
     internal sealed class AttachmentService
     {
@@ -162,9 +176,13 @@ namespace GxPT
             return sb.ToString();
         }
 
-        public List<AttachedFile> ExtractMany(IEnumerable<string> paths, out List<string> skippedDisplayNames)
+        // Extract each path; files that can't be attached are reported in `skipped` with an
+        // optional human-readable reason (e.g. the image size-cap message thrown by an extractor).
+        // Reason is null when there's nothing useful to say beyond "unsupported" (no extractor, or
+        // an extractor that returned null) so the UI can fall back to just the name.
+        public List<AttachedFile> ExtractMany(IEnumerable<string> paths, out List<SkippedAttachment> skipped)
         {
-            skippedDisplayNames = new List<string>();
+            skipped = new List<SkippedAttachment>();
             var results = new List<AttachedFile>();
             if (paths == null) return results;
             foreach (var path in paths)
@@ -172,16 +190,17 @@ namespace GxPT
                 if (string.IsNullOrEmpty(path)) continue;
                 try
                 {
-                    if (Directory.Exists(path)) { skippedDisplayNames.Add(Path.GetFileName(path) + " (folder)"); continue; }
+                    if (Directory.Exists(path)) { skipped.Add(new SkippedAttachment(Path.GetFileName(path) + " (folder)", null)); continue; }
                     IAttachmentExtractor ex = FindExtractor(path);
-                    if (ex == null) { skippedDisplayNames.Add(Path.GetFileName(path)); continue; }
+                    if (ex == null) { skipped.Add(new SkippedAttachment(Path.GetFileName(path), null)); continue; }
                     var af = ex.Extract(path);
                     if (af != null) results.Add(af);
-                    else skippedDisplayNames.Add(Path.GetFileName(path));
+                    else skipped.Add(new SkippedAttachment(Path.GetFileName(path), null));
                 }
-                catch (Exception)
+                catch (Exception exc)
                 {
-                    skippedDisplayNames.Add(Path.GetFileName(path));
+                    // Surface the extractor's reason (e.g. "Image is too large...") to the caller.
+                    skipped.Add(new SkippedAttachment(Path.GetFileName(path), exc.Message));
                 }
             }
             return results;
