@@ -567,26 +567,6 @@
             "IsDependency" = "11:FALSE"
             "IsolateTo" = "8:"
             }
-            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_9C4B7E21F0A8456DBE13C5097A2D6F38"
-            {
-            "SourcePath" = "8:..\\skills\\agent-writer\\SKILL.md"
-            "TargetName" = "8:SKILL.md"
-            "Tag" = "8:"
-            "Folder" = "8:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:FALSE"
-            "IsolateTo" = "8:"
-            }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_2A8F0D63E4B1497CA5F2086B1D7E3C90"
             {
             "SourcePath" = "8:..\\skills\\agent-writer\\writing-agents.md"
@@ -837,6 +817,26 @@
             "TargetName" = "8:general-purpose.md"
             "Tag" = "8:"
             "Folder" = "8:_0B0AC2A83AD1489C8B1E8F5E1410070B"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_9C4B7E21F0A8456DBE13C5097A2D6F38"
+            {
+            "SourcePath" = "8:..\\skills\\agent-writer\\SKILL.md"
+            "TargetName" = "8:SKILL.md"
+            "Tag" = "8:"
+            "Folder" = "8:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
             "Condition" = "8:"
             "Transitive" = "11:FALSE"
             "Vital" = "11:TRUE"
@@ -1201,17 +1201,6 @@
                     "Property" = "8:_8529735EB21F434F8AB3ED266DBC6DFF"
                         "Folders"
                         {
-                            "{9EF0B969-E518-4E46-987F-47570745A589}:_AA812549F7C74E0BB5EA0EC9B751D2EA"
-                            {
-                            "Name" = "8:skill-writer"
-                            "AlwaysCreate" = "11:FALSE"
-                            "Condition" = "8:"
-                            "Transitive" = "11:FALSE"
-                            "Property" = "8:_05251BA566C9478185185AF12C880EAB"
-                                "Folders"
-                                {
-                                }
-                            }
                             "{9EF0B969-E518-4E46-987F-47570745A589}:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
                             {
                             "Name" = "8:agent-writer"
@@ -1219,6 +1208,17 @@
                             "Condition" = "8:"
                             "Transitive" = "11:FALSE"
                             "Property" = "8:_6D2E8B40A1F34C97B5E0C8A7D31F9E25"
+                                "Folders"
+                                {
+                                }
+                            }
+                            "{9EF0B969-E518-4E46-987F-47570745A589}:_AA812549F7C74E0BB5EA0EC9B751D2EA"
+                            {
+                            "Name" = "8:skill-writer"
+                            "AlwaysCreate" = "11:FALSE"
+                            "Condition" = "8:"
+                            "Transitive" = "11:FALSE"
+                            "Property" = "8:_05251BA566C9478185185AF12C880EAB"
                                 "Folders"
                                 {
                                 }
@@ -1243,14 +1243,14 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:GxPT"
-        "ProductCode" = "8:{B23675C9-C902-4072-A182-DFEC08B49141}"
-        "PackageCode" = "8:{09E2AA42-D370-43FD-9FE1-47F634595A15}"
+        "ProductCode" = "8:{E8BBF207-02AB-4CAA-AC34-79A3C1B8A528}"
+        "PackageCode" = "8:{0280AF64-2164-4B48-9792-23C97363C97A}"
         "UpgradeCode" = "8:{18C05863-8BD9-4273-B9E8-061F771066DF}"
         "RestartWWWService" = "11:FALSE"
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:TRUE"
-        "ProductVersion" = "8:0.20.0"
+        "ProductVersion" = "8:0.20.1"
         "Manufacturer" = "8:IFM Innovations"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
