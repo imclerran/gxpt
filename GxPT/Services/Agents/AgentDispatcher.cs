@@ -258,35 +258,50 @@ namespace GxPT
             return true;
         }
 
-        // Runs the runnable slots concurrently in waves of at most MaxParallelAgents, each child writing
-        // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
-        // is valid here; no lock is held across the join, so the fan-out cannot deadlock.
+        // Runs the runnable slots concurrently with a sliding concurrency window of at most
+        // MaxParallelAgents: every child is queued up front, but a Semaphore gates how many run at once, so
+        // the moment one child finishes the next queued child starts (no wave barrier - a slow child no
+        // longer holds back the rest of its group). Each child writes its own result slot.
+        // WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it is valid here; no lock
+        // is held across the join, so the fan-out cannot deadlock. The batch is bounded by MaxAgentsPerCall
+        // (<= 8), well under WaitAll's 64-handle limit.
         private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results,
                                  AgentTranscript[] transcripts)
         {
-            int pos = 0;
-            while (pos < runnable.Count)
+            int count = runnable.Count;
+            System.Threading.Semaphore gate =
+                new System.Threading.Semaphore(MaxParallelAgents, MaxParallelAgents);
+            System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[count];
+            try
             {
-                int groupSize = Math.Min(MaxParallelAgents, runnable.Count - pos);
-                System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[groupSize];
-                for (int g = 0; g < groupSize; g++)
+                for (int r = 0; r < count; r++)
                 {
-                    int row = pos + g;          // panel row index (position among runnable)
+                    int row = r;                // panel row index (position among runnable)
                     int slot = runnable[row];   // entry slot (position in the full agents/tasks arrays)
                     Agent agent = agents[slot];
                     string task = tasks[slot];
                     System.Threading.ManualResetEvent done = new System.Threading.ManualResetEvent(false);
-                    dones[g] = done;
+                    dones[row] = done;
                     System.Threading.ThreadPool.QueueUserWorkItem(delegate
                     {
-                        try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
-                        catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                        // done.Set() is the outermost finally so WaitAll can never hang, even if acquiring
+                        // the gate throws. The gate is released only on the path where it was acquired.
+                        try
+                        {
+                            gate.WaitOne();   // block until a concurrency slot frees up
+                            try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
+                            catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                            finally { gate.Release(); }
+                        }
                         finally { done.Set(); }
                     });
                 }
                 System.Threading.WaitHandle.WaitAll(dones);
-                for (int g = 0; g < groupSize; g++) dones[g].Close();
-                pos += groupSize;
+            }
+            finally
+            {
+                for (int r = 0; r < count; r++) if (dones[r] != null) dones[r].Close();
+                gate.Close();
             }
         }
 
