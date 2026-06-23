@@ -26,7 +26,7 @@ A native chatbot client and coding agent for Windows XP. GxPT aims to provide a 
 - **Usage Status Bar**: Live per-conversation telemetry at the bottom of the window: a context meter showing how full the model's context window is, plus running cost and cache-savings totals reconciled against OpenRouter's billed usage.
 - **Slash Commands**: Type `/` for quick actions with autocomplete, including `/model` (switch models), `/tool` (toggle MCP servers), `/new`, `/export` (conversations, or a single skill as a shareable `.gxsk` archive), `/import`, and `/compact`.
 - **Recent Workspaces**: Quickly reattach to the workspaces you used most recently, with a workspace strip showing the active folder at a glance.
-- **File Attachments**: Attach text files, **images**, and **PDFs**. Images go to vision-capable models and PDFs use fast local text extraction (with full-document escalation where supported); attachments are saved with the conversation and stay viewable even after the original file is gone.
+- **File Attachments**: Attach text files, **images**, and **PDFs**. Images go to vision-capable models and PDFs use fast local text extraction (with full-document escalation where supported).
 - **Conversation Editing**: Don't like the response a model gave you? Go back and edit your message and get a new response.
 - **Privacy & Local Storage**: Conversations are stored locally and can be exported/imported to migrate across machines. Enforce **Zero Data Retention (ZDR)** per conversation to route only to providers that won't store your prompts or responses.
 - **Frontier Model Support**: Support for a huge range of AI models, including frontier models, from the OpenRouter.ai API. 
