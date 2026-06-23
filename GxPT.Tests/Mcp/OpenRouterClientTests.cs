@@ -403,8 +403,8 @@ namespace GxPT.Tests.Mcp
             var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
                 null, new ClientProperties());
 
-            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
-            var lastPart = content[content.Count() - 1];
+            var content = (JArray)((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            var lastPart = content[content.Count - 1];
             // cache_control lands on the image part (last), not the text part.
             Assert.Equal("image_url", (string)lastPart["type"]);
             Assert.Equal("ephemeral", (string)lastPart["cache_control"]["type"]);
@@ -426,8 +426,8 @@ namespace GxPT.Tests.Mcp
             var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
                 null, new ClientProperties());
 
-            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
-            Assert.Equal(3, content.Count()); // text + 2 images
+            var content = (JArray)((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(3, content.Count); // text + 2 images
             Assert.Equal("image_url", (string)content[1]["type"]);
             Assert.Contains("QQ==", (string)content[1]["image_url"]["url"]);
             Assert.Equal("image_url", (string)content[2]["type"]);
@@ -487,8 +487,8 @@ namespace GxPT.Tests.Mcp
             var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
                 null, new ClientProperties());
 
-            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
-            Assert.Equal(3, content.Count()); // text + image + file
+            var content = (JArray)((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(3, content.Count); // text + image + file
             Assert.Equal("image_url", (string)content[1]["type"]);
             Assert.Equal("file", (string)content[2]["type"]);
         }
@@ -506,8 +506,8 @@ namespace GxPT.Tests.Mcp
             var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
                 null, new ClientProperties());
 
-            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
-            var lastPart = content[content.Count() - 1];
+            var content = (JArray)((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            var lastPart = content[content.Count - 1];
             Assert.Equal("file", (string)lastPart["type"]);
             Assert.Equal("ephemeral", (string)lastPart["cache_control"]["type"]);
         }
