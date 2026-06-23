@@ -306,12 +306,15 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
-        public void EditAgent_ToleratesSurroundingWhitespaceInOldString()
+        public void EditAgent_MatchesExactly_PaddedOldStringFailsCleanly()
         {
-            // The stored body is trimmed, so an old_string copied with body-edge whitespace still matches its
-            // trimmed core rather than failing with "not found".
             _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "You are X.");
-            _writer.EditAgent(null, "a", "\n  You are X.  \n", "You are Y.", false);
+            // edit_agent matches the body exactly: a whitespace-padded copy does NOT fuzzy-match (it throws
+            // rather than silently editing the wrong span).
+            Assert.Throws<AgentWriteException>(
+                () => _writer.EditAgent(null, "a", "\n  You are X.  \n", "You are Y.", false));
+            // The exact interior span still edits fine.
+            _writer.EditAgent(null, "a", "You are X.", "You are Y.", false);
             string text = File.ReadAllText(AgentFile("a"));
             Assert.Contains("You are Y.", text);
             Assert.DoesNotContain("You are X.", text);

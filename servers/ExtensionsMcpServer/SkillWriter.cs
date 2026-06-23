@@ -161,15 +161,10 @@ namespace ExtensionsMcpServer
 
                 int bodyCount = CountOccurrences(body, oldB);
                 if (bodyCount == 0)
-                {
-                    // The stored body is trimmed, so an old_string copied with body-edge whitespace can't
-                    // match; retry against the trimmed core (that outer whitespace never matched the body).
-                    string oldTrim = oldB.Trim();
-                    if (oldTrim.Length > 0 && oldTrim != oldB) { oldB = oldTrim; bodyCount = CountOccurrences(body, oldB); }
-                }
-                if (bodyCount == 0)
-                    throw new SkillWriteException("old_string not found in SKILL.md's body (the body is what "
-                        + "edit_skill_file changes; use update_skill for the name/description)");
+                    throw new SkillWriteException("old_string not found in SKILL.md's body. edit_skill_file "
+                        + "matches the body exactly, and the body is stored trimmed (no leading/trailing blank "
+                        + "lines, no frontmatter) - copy an interior span verbatim, or use update_skill to "
+                        + "replace the whole body or change the name/description");
                 if (bodyCount > 1 && !replaceAll)
                     throw new SkillWriteException("old_string is not unique in SKILL.md's body (" + bodyCount
                         + " matches); make it unique or set replace_all");

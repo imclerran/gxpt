@@ -123,16 +123,10 @@ namespace ExtensionsMcpServer
 
             int count = CountOccurrences(bodyText, oldB);
             if (count == 0)
-            {
-                // The stored body is trimmed (no leading/trailing whitespace), so an old_string copied from
-                // read_agent's raw file that carried body-edge blank lines can't match. Retry against the
-                // trimmed core - that outer whitespace could never have matched the body anyway.
-                string oldTrim = oldB.Trim();
-                if (oldTrim.Length > 0 && oldTrim != oldB) { oldB = oldTrim; count = CountOccurrences(bodyText, oldB); }
-            }
-            if (count == 0)
-                throw new AgentWriteException("old_string not found in agent '" + slug + "''s body (edit_agent "
-                    + "changes the body; use update_agent for the name/description/tools/max_tier)");
+                throw new AgentWriteException("old_string not found in agent '" + slug + "''s body. edit_agent "
+                    + "matches the system-prompt body exactly, and the body is stored trimmed (no leading/"
+                    + "trailing blank lines, no frontmatter) - copy an interior span verbatim, use update_agent "
+                    + "to replace the whole body, or update_agent for the name/description/tools/max_tier");
             if (count > 1 && !replaceAll)
                 throw new AgentWriteException("old_string is not unique in the body (" + count
                     + " matches); make it unique or set replace_all");
