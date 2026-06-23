@@ -511,27 +511,49 @@ namespace GxPT
                 assistantMsg.ToolCalls = asm.Calls;
                 history.Add(assistantMsg);
 
-                // Serial execution (phase 4): one call fully handled before the next.
+                // Serial execution (phase 4): one call fully handled before the next. Once the user
+                // denies a call, every remaining call in the SAME batch is auto-denied - not prompted,
+                // not executed, including read-only ones - so a single denial halts the whole fan-out
+                // immediately instead of leaving the user to reject each queued call (and instead of
+                // read-only calls quietly running after the user has signalled stop).
+                bool batchDenied = false;
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
                     if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson, call.Id);
 
                     bool isError;
-                    bool denied;
-                    string result = ExecuteCall(call, turnId, out isError, out denied);
+                    string result;
+                    if (batchDenied)
+                    {
+                        // A prior call in this batch was denied by the user: auto-deny this one without
+                        // prompting or executing it. Each tool_call still needs a matching tool result for
+                        // the next request to be valid, so feed back the standard denial text; the model
+                        // never sees the call run.
+                        isError = true;
+                        result = DeniedResultText;
+                        _log.Log("mcp", "[turn " + turnId + "] '" + call.Name
+                            + "' auto-denied (earlier denial in same batch)");
+                    }
+                    else
+                    {
+                        bool denied;
+                        result = ExecuteCall(call, turnId, out isError, out denied);
+                        if (denied)
+                        {
+                            // The user denied this call at the approval gate. Halt the rest of the batch
+                            // (auto-deny above) and force the next model call to text only, so the model
+                            // stops and asks how to proceed rather than silently working around the denial
+                            // with more tool calls.
+                            batchDenied = true;
+                            forceTextThisCall = true;
+                        }
+                    }
 
                     if (ui != null) ui.OnToolResult(call.Name, result, isError, call.Id);
                     ChatMessage toolMsg = new ChatMessage("tool", result);
                     toolMsg.ToolCallId = call.Id;
                     history.Add(toolMsg);
-
-                    // The user denied this call at the approval gate: force the next model call to text
-                    // only so it stops and asks how to proceed rather than silently working around the
-                    // denial with other tool calls. The remaining calls in this batch (if any) still run
-                    // their own approval gate, so the user keeps per-call control within the batch.
-                    if (denied)
-                        forceTextThisCall = true;
 
                     // If the user stopped this dispatch_agent fan-out, force the next model call to text
                     // only so it wraps up (summary + ask) per the directive in the tool result, rather than

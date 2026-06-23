@@ -728,6 +728,45 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Denial_auto_denies_the_rest_of_the_same_batch()
+        {
+            // The model fans out three calls in one turn; the user denies the first. The remaining two
+            // must be auto-denied - never executed - even though the policy would otherwise allow them
+            // (proving they were halted by the prior denial, not run). The next model call is forced to
+            // text-only so the model stops and asks.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"), new ToolDef("list"), new ToolDef("write"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("r:" + name); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(new[]
+            {
+                Chunks.ToolChunk(0, "c1", "files__read", "{}", null),
+                Chunks.ToolChunk(1, "c2", "files__list", "{}", null),
+                Chunks.ToolChunk(2, "c3", "files__write", "{}", "tool_calls")
+            });
+            streamer.Turns.Add(Chunks.Text("You denied the first call. How would you like to proceed?"));
+
+            var ui = new RecordingUi();
+            // Denies only the first call it sees; would allow the rest. With auto-deny, the rest never
+            // reach the policy at all, so nothing hits the transport.
+            var orch = new McpChatOrchestrator(streamer, reg, new DenyFirstThenAllowPolicy(), "m", null);
+            var history = new List<ChatMessage>();
+            orch.RunTurn(history, "go", ui);
+
+            Assert.Empty(ft.CalledTools);                              // first denied, rest auto-denied
+            Assert.Equal(3, ui.ToolResults.Count);
+            foreach (var r in ui.ToolResults)
+                Assert.Equal("[Call denied by user.]", r);            // every call surfaced as denied
+            foreach (var e in ui.ToolErrors)
+                Assert.True(e);
+
+            Assert.Equal(2, streamer.Calls);
+            Assert.Equal("none", streamer.SeenProps[1].ToolChoice);   // next call forced text-only
+            Assert.True(ui.Completed);
+        }
+
+        [Fact]
         public void RunTurn_overload_does_not_add_a_user_message()
         {
             RegistryFakeTransport ft;
@@ -793,5 +832,17 @@ namespace GxPT.Tests.Mcp
     internal sealed class DenyAllApprovalPolicy : IToolApprovalPolicy
     {
         public ApprovalDecision Check(string functionName, JObject args) { return ApprovalDecision.Deny; }
+    }
+
+    // Denies the first call it is asked about and allows every later one. Used to prove that a denial
+    // auto-denies the rest of a batch: if auto-deny works, the policy is only ever consulted once (the
+    // later calls are halted before reaching it), so none of them execute.
+    internal sealed class DenyFirstThenAllowPolicy : IToolApprovalPolicy
+    {
+        private int _seen;
+        public ApprovalDecision Check(string functionName, JObject args)
+        {
+            return (_seen++ == 0) ? ApprovalDecision.Deny : ApprovalDecision.Allow;
+        }
     }
 }
