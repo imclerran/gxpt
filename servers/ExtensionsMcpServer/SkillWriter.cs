@@ -24,19 +24,29 @@ namespace ExtensionsMcpServer
 
         private readonly string _projectRoot; // <workdir>/.gxpt/skills, or null when no workspace
         private readonly string _userRoot;    // %AppData%/GxPT/skills, or null if no user root is configured
+        private readonly string _bundledRoot; // <exe>/skills - shipped skills, READ-ONLY; used only to make
+                                              // the "can't edit a bundled skill" error accurate (never written)
         private readonly string _defaultScope; // scope used when a call omits it ("project" or "user")
 
         public SkillWriter(string projectRoot, string userRoot)
-            : this(projectRoot, userRoot, "project")
+            : this(projectRoot, userRoot, null, "project")
+        {
+        }
+
+        public SkillWriter(string projectRoot, string userRoot, string defaultScope)
+            : this(projectRoot, userRoot, null, defaultScope)
         {
         }
 
         // defaultScope is the scope applied when a tool call omits `scope`. The workdir instance defaults
-        // to "project"; the workdir-less instance defaults to "user" (project isn't reachable there).
-        public SkillWriter(string projectRoot, string userRoot, string defaultScope)
+        // to "project"; the workdir-less instance defaults to "user" (project isn't reachable there). The
+        // bundled root is a read-only reference (writes still target project/user only) so a write/edit/
+        // delete against a bundled skill reports it as bundled rather than a bare "does not exist".
+        public SkillWriter(string projectRoot, string userRoot, string bundledRoot, string defaultScope)
         {
             _projectRoot = projectRoot;
             _userRoot = userRoot;
+            _bundledRoot = bundledRoot;
             _defaultScope = string.IsNullOrEmpty(defaultScope) ? "project" : defaultScope;
         }
 
@@ -65,7 +75,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist yet; create_skill first");
+                throw NotWritable(slug, false);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -92,7 +102,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (!File.Exists(file))
-                throw new SkillWriteException("skill '" + slug + "' does not exist; create_skill first");
+                throw NotWritable(slug, false);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -120,7 +130,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist; create_skill first");
+                throw NotWritable(slug, false);
             if (IsBlank(oldString)) throw new SkillWriteException("old_string is required");
             if (newString == null) throw new SkillWriteException("new_string is required");
 
@@ -218,7 +228,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist");
+                throw NotWritable(slug, true);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -240,7 +250,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist");
+                throw NotWritable(slug, true);
 
             try { Directory.Delete(dir, true); }
             catch (Exception ex) { throw new SkillWriteException("could not delete skill '" + slug + "': " + ex.Message); }
@@ -271,6 +281,23 @@ namespace ExtensionsMcpServer
         }
 
         // ---- internals ----
+
+        // The "not in a writable scope" error for a write/edit/delete: when the skill's SKILL.md isn't in
+        // the target writable root. If the slug names a bundled (shipped, read-only) skill, say so and point
+        // at create_skill to override it - the bare "does not exist" is misleading when the model can see and
+        // read that bundled skill. forDelete tailors the verb (a bundled skill is overridden, not deleted).
+        private SkillWriteException NotWritable(string slug, bool forDelete)
+        {
+            if (!string.IsNullOrEmpty(_bundledRoot)
+                && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md")))
+                return new SkillWriteException("skill '" + slug + "' is a bundled skill (shipped with the app) "
+                    + (forDelete
+                        ? "and can't be deleted; bundled skills are read-only"
+                        : "and can't be edited in place; create a project/user copy with create_skill (same slug) to override it"));
+            return new SkillWriteException(forDelete
+                ? "skill '" + slug + "' does not exist"
+                : "skill '" + slug + "' does not exist; create_skill first");
+        }
 
         private string RootFor(string scope)
         {

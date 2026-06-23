@@ -389,5 +389,36 @@ namespace ExtensionsMcpServer.Tests
         {
             Assert.Throws<SkillWriteException>(() => _writer.ValidateSkill(null, "nope"));
         }
+
+        [Fact]
+        public void UpdateSkill_BundledOnly_ReportsBundledNotMissing()
+        {
+            // A bundled (shipped, read-only) skill the writer can't edit in place: the error should name it
+            // as bundled and point at create_skill, not the bare "does not exist".
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(
+                () => w.UpdateSkill(null, "shipped", null, "new desc", null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("create_skill", ex.Message);
+        }
+
+        [Fact]
+        public void DeleteSkill_BundledOnly_ReportsBundledReadOnly()
+        {
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() => w.DeleteSkill(null, "shipped"));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("read-only", ex.Message);
+        }
     }
 }

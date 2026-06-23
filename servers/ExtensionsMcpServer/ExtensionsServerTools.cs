@@ -36,7 +36,7 @@ namespace ExtensionsMcpServer
                 ? "'project' (default, this workspace's .gxpt/agents) or 'user' (this machine's global agents)."
                 : "'user' (default; this conversation has no project folder). 'project' is unavailable here.";
 
-            SkillWriter writer = new SkillWriter(config.ProjectRoot, config.UserRoot, defaultScope);
+            SkillWriter writer = new SkillWriter(config.ProjectRoot, config.UserRoot, config.BundledRoot, defaultScope);
             AgentWriter agents = new AgentWriter(config.AgentProjectRoot, config.AgentUserRoot,
                 config.AgentBundledRoot, defaultScope);
 

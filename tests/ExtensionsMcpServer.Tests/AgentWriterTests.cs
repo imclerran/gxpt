@@ -204,6 +204,26 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void UpdateAgent_BundledOnly_ReportsBundledNotMissing()
+        {
+            MakeBundled("explore", "bundled body");
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(
+                () => _writer.UpdateAgent(null, "explore", null, "new desc", null, null, null, 0, null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("create_agent", ex.Message); // points at the override path
+        }
+
+        [Fact]
+        public void DeleteAgent_BundledOnly_ReportsBundledReadOnly()
+        {
+            MakeBundled("explore", "bundled body");
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(
+                () => _writer.DeleteAgent(null, "explore"));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("read-only", ex.Message);
+        }
+
+        [Fact]
         public void DeleteAgent_RemovesFile()
         {
             _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "body");

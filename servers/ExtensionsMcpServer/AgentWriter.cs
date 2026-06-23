@@ -71,7 +71,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw new AgentWriteException("agent '" + slug + "' does not exist; create_agent first");
+                throw NotWritable(slug, false);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -104,7 +104,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw new AgentWriteException("agent '" + slug + "' does not exist; create_agent first");
+                throw NotWritable(slug, false);
             if (IsBlank(oldString)) throw new AgentWriteException("old_string is required");
             if (newString == null) throw new AgentWriteException("new_string is required");
 
@@ -178,7 +178,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw new AgentWriteException("agent '" + slug + "' does not exist");
+                throw NotWritable(slug, true);
 
             try { File.Delete(file); }
             catch (Exception ex) { throw new AgentWriteException("could not delete agent '" + slug + "': " + ex.Message); }
@@ -331,6 +331,22 @@ namespace ExtensionsMcpServer
                 return _userRoot;
             }
             throw new AgentWriteException("unknown scope '" + scope + "' (use 'project' or 'user')");
+        }
+
+        // The "not in a writable scope" error for a write/edit/delete: when <slug>.md isn't in the target
+        // writable root. If the slug names a bundled (shipped, read-only) agent, say so and point at
+        // create_agent to override it - the bare "does not exist" is misleading when the model can see and
+        // read that bundled agent. forDelete tailors the verb (a bundled agent is overridden, not deleted).
+        private AgentWriteException NotWritable(string slug, bool forDelete)
+        {
+            if (!string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md")))
+                return new AgentWriteException("agent '" + slug + "' is a bundled agent (shipped with the app) "
+                    + (forDelete
+                        ? "and can't be deleted; bundled agents are read-only"
+                        : "and can't be edited in place; create a project/user copy with create_agent (same slug) to override it"));
+            return new AgentWriteException(forDelete
+                ? "agent '" + slug + "' does not exist"
+                : "agent '" + slug + "' does not exist; create_agent first");
         }
 
         // Read-side resolution: find <slug>.md across all roots, newest-wins (project > user > bundled),
