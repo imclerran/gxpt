@@ -10,6 +10,13 @@ namespace GxPT
 {
     internal sealed class OpenRouterClient : IChatStreamer
     {
+        // OpenRouter app-attribution headers, sent on every model request. HTTP-Referer is the
+        // primary identifier for rankings; X-OpenRouter-Title sets the display name; and
+        // X-OpenRouter-Categories assigns marketplace categories (comma-separated, lowercase).
+        private const string AttributionReferer = "https://www.imclerran.com/gxpt/";
+        private const string AttributionTitle = "GxPT";
+        private const string AttributionCategories = "general-chat";
+
         private readonly string _apiKey;
         private readonly string _curlPath;
 
@@ -848,6 +855,10 @@ namespace GxPT
             // -sS: silent but still show errors; --fail-with-body: fail on HTTP errors but keep body on stdout
             sb.Append("-sS --fail-with-body https://openrouter.ai/api/v1/chat/completions ");
             sb.Append("-H \"Content-Type: application/json\" ");
+            // OpenRouter app-attribution headers (rankings, display name, marketplace categories).
+            sb.Append("-H \"HTTP-Referer: ").Append(AttributionReferer).Append("\" ");
+            sb.Append("-H \"X-OpenRouter-Title: ").Append(AttributionTitle).Append("\" ");
+            sb.Append("-H \"X-OpenRouter-Categories: ").Append(AttributionCategories).Append("\" ");
             if (configWritten)
             {
                 // -K/--config reads the Authorization header from the temp file (off the command line).
