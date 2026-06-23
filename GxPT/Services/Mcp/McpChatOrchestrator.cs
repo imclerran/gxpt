@@ -56,8 +56,10 @@ namespace GxPT
         // (this orchestrator runs solely when at least one tool is available). Kept short to
         // limit token cost. Reinforces five things: act through the tools, don't return a null/
         // evasive answer when a tool could resolve the question, keep working through multi-step
-        // tasks instead of stopping to narrate while work remains, treat a denial as scoped to that
-        // one call rather than a permanent ban, and don't volunteer a rundown of tools unasked.
+        // tasks instead of stopping to narrate while work remains, stop and ask when the user
+        // denies a call rather than working around it, and don't volunteer a rundown of tools
+        // unasked. The denial guidance is also enforced mechanically: the loop forces the model's
+        // next call to tool_choice "none" after a denial (see forceTextThisCall in RunTurn).
         internal const string AgentSystemPrompt =
             "You are an AI assistant operating as an agent with access to tools. Use them "
             + "proactively to accomplish the user's request instead of asking the user to do what "
@@ -73,9 +75,11 @@ namespace GxPT
             + "tool call for when the task is genuinely finished or you need the user to decide "
             + "something. This is not a push to over-call: once the request is satisfied, give your "
             + "final answer and stop rather than making needless calls.\n\n"
-            + "When a tool call is denied or cancelled, treat it as a refusal of that specific "
-            + "call in that specific moment, not a permanent ban on the tool. You may try the same "
-            + "tool again later with adjusted arguments or once the situation changes.\n\n"
+            + "When you call a tool and the user denies it, stop and ask the user how they would "
+            + "like to proceed. Do not silently switch to a different tool, retry with different "
+            + "arguments, or otherwise work around the denial - a denial means the user wants to "
+            + "take control of that step. Briefly say what you were attempting and wait for their "
+            + "direction.\n\n"
             + "Do not list or describe your tools or capabilities unless the user asks. Reply to "
             + "greetings and casual messages naturally and briefly, and bring up what you can do "
             + "only when it is relevant to the user's request.\n\n"
@@ -321,9 +325,12 @@ namespace GxPT
             // The cap is a budget rather than a fixed loop bound so the user can grant another batch
             // when it's reached (ContinuationDecider) instead of dead-ending the turn.
             int budget = _maxIterations;
-            // Set after a dispatch_agent the user stopped: the next model call is forced to tool_choice
-            // "none" so the model must produce a text answer (a summary + "how should I proceed?") instead
-            // of charging ahead with more tool calls. Reset each iteration once consumed.
+            // Set after a tool call the user stopped or denied: the next model call is forced to
+            // tool_choice "none" so the model must produce a text answer (a summary + "how should I
+            // proceed?") instead of charging ahead with more tool calls. Two triggers feed it - a
+            // user-stopped dispatch_agent fan-out, and a user denial at the approval gate - both of
+            // which mean the user wants to take control rather than have the model work around them.
+            // Reset each iteration once consumed.
             bool forceTextThisCall = false;
             for (int iter = 0; ; iter++)
             {
@@ -504,14 +511,44 @@ namespace GxPT
                 assistantMsg.ToolCalls = asm.Calls;
                 history.Add(assistantMsg);
 
-                // Serial execution (phase 4): one call fully handled before the next.
+                // Serial execution (phase 4): one call fully handled before the next. Once the user
+                // denies a call, every remaining call in the SAME batch is auto-denied - not prompted,
+                // not executed, including read-only ones - so a single denial halts the whole fan-out
+                // immediately instead of leaving the user to reject each queued call (and instead of
+                // read-only calls quietly running after the user has signalled stop).
+                bool batchDenied = false;
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
                     if (ui != null) ui.OnToolCall(call.Name, call.ArgumentsJson, call.Id);
 
                     bool isError;
-                    string result = ExecuteCall(call, turnId, out isError);
+                    string result;
+                    if (batchDenied)
+                    {
+                        // A prior call in this batch was denied by the user: auto-deny this one without
+                        // prompting or executing it. Each tool_call still needs a matching tool result for
+                        // the next request to be valid, so feed back the standard denial text; the model
+                        // never sees the call run.
+                        isError = true;
+                        result = DeniedResultText;
+                        _log.Log("mcp", "[turn " + turnId + "] '" + call.Name
+                            + "' auto-denied (earlier denial in same batch)");
+                    }
+                    else
+                    {
+                        bool denied;
+                        result = ExecuteCall(call, turnId, out isError, out denied);
+                        if (denied)
+                        {
+                            // The user denied this call at the approval gate. Halt the rest of the batch
+                            // (auto-deny above) and force the next model call to text only, so the model
+                            // stops and asks how to proceed rather than silently working around the denial
+                            // with more tool calls.
+                            batchDenied = true;
+                            forceTextThisCall = true;
+                        }
+                    }
 
                     if (ui != null) ui.OnToolResult(call.Name, result, isError, call.Id);
                     ChatMessage toolMsg = new ChatMessage("tool", result);
@@ -792,10 +829,14 @@ namespace GxPT
 
         // Executes one tool call, returning the text to feed back as the tool message content.
         // Failures are returned as content (not thrown) so the model can recover; isError flags the
-        // UI marker. reveal_tools is handled locally without an MCP round-trip.
-        private string ExecuteCall(ToolCall call, string turnId, out bool isError)
+        // UI marker. denied is set only when the user refuses the call at the approval gate (so the
+        // loop can force the next model call to stop and ask, rather than work around the denial);
+        // it stays false for every other isError outcome. reveal_tools is handled locally without an
+        // MCP round-trip.
+        private string ExecuteCall(ToolCall call, string turnId, out bool isError, out bool denied)
         {
             isError = false;
+            denied = false;
 
             if (_registry != null && _registry.IsRevealTools(call.Name))
             {
@@ -878,6 +919,7 @@ namespace GxPT
             if (decision == ApprovalDecision.Deny)
             {
                 isError = true;
+                denied = true;
                 _log.Log("mcp", "[turn " + turnId + "] '" + call.Name + "' denied by approval policy");
                 return DeniedResultText;
             }
