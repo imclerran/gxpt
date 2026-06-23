@@ -2396,16 +2396,29 @@ namespace GxPT
                                     && !string.IsNullOrEmpty(af.Data);
                     if (nativeOk) continue;
 
-                    string why = zdr
-                        ? "full-document reading is disabled in Zero-Data-Retention conversations"
-                        : (!supportsFile
-                            ? "the selected model can't read full PDF documents"
-                            : "full-document sending isn't enabled for this attachment");
+                    // Tailor both the cause and the remedy to the actual reason so the text never
+                    // mentions ZDR when the cause is model support, or vice versa.
+                    string why, remedy;
+                    if (zdr)
+                    {
+                        why = "full-document reading is disabled in Zero-Data-Retention conversations";
+                        remedy = "Remove the attachment, or start a new conversation without "
+                               + "Zero-Data-Retention.";
+                    }
+                    else if (!supportsFile)
+                    {
+                        why = "the selected model can't read full PDF documents";
+                        remedy = "Remove the attachment, or switch to a model that supports full PDF "
+                               + "documents.";
+                    }
+                    else
+                    {
+                        why = "full-document sending isn't enabled for this attachment";
+                        remedy = "Remove the attachment, or enable full-document sending for it.";
+                    }
                     MessageBox.Show(this,
                         "\"" + af.FileName + "\" has no extractable text and can't be sent as a full "
-                        + "document - " + why + ".\n\nRemove the attachment, switch to a model that "
-                        + "supports full PDF documents, or start a new conversation without "
-                        + "Zero-Data-Retention.",
+                        + "document - " + why + ".\n\n" + remedy,
                         "Cannot Send PDF", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
