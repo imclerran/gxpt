@@ -52,6 +52,17 @@
           <dd>A huge range of frontier and open models through the OpenRouter.ai API &mdash;
             you choose which model to use per conversation.</dd>
 
+          <dt>Can I attach images and files?</dt>
+          <dd>Yes &mdash; attach text files, images, and PDFs to any message. Images are
+            sent to vision-capable models (automatically normalized and downscaled so they
+            stay within wire limits), and PDFs default to fast, token-light local text
+            extraction, escalating to full-document sending on models that support it
+            &mdash; scanned PDFs switch over automatically. Attachments are saved with the
+            conversation, so they stay viewable in-app and replay to the model even after
+            you delete the original file. GxPT enforces model-capability and Zero Data
+            Retention rules for you, and trims older images/PDFs oldest-first on long
+            conversations to stay within the context window (the files remain viewable).</dd>
+
           <dt>Is my data private?</dt>
           <dd>Conversations are stored locally on your machine. You can enforce Zero Data
             Retention (ZDR) on a per-conversation basis so prompts aren't retained upstream.</dd>
