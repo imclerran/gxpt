@@ -4156,57 +4156,16 @@ namespace GxPT
             return ctx.Conversation.Zdr || ConvIsZdrLatched(ctx);
         }
 
-        // Scanned PDFs (no extractable text layer) can't be read via the text path. When the model
-        // supports native file input and ZDR is off, auto-escalate them to the full-document path
-        // (no prompt). Otherwise surface a one-time note explaining why the PDF can't be read here.
+        // Scanned PDFs (no extractable text layer) always request full-document sending. If the
+        // current model/ZDR state doesn't support it the send-time guard will block and explain.
         private void HandleScannedPdfs(List<AttachedFile> extracted)
         {
             if (extracted == null || extracted.Count == 0) return;
-            bool supportsFile = CurrentModelSupportsFile();
-            bool zdr = ActiveConversationIsZdr();
-            var blockedZdr = new List<string>();
-            var blockedNoFile = new List<string>();
-
             for (int i = 0; i < extracted.Count; i++)
             {
                 var af = extracted[i];
                 if (af == null || af.EffectiveKind != AttachmentKind.Pdf || !af.IsLikelyScanned) continue;
-
-                if (supportsFile && !zdr && !string.IsNullOrEmpty(af.Data))
-                    af.SendNativePdf = true; // auto-escalate, no prompt
-                else if (zdr)
-                    blockedZdr.Add(af.FileName);
-                else
-                    blockedNoFile.Add(af.FileName);
-            }
-
-            if (blockedZdr.Count > 0)
-            {
-                try
-                {
-                    MessageBox.Show(this,
-                        "This PDF appears to be scanned (no extractable text):\n - "
-                        + string.Join("\n - ", blockedZdr.ToArray())
-                        + "\n\nReading it requires sending the full document, which routes through a "
-                        + "third-party processor whose data-retention policy can't be confirmed - so it "
-                        + "is disabled in Zero-Data-Retention conversations. To read this document, start "
-                        + "a new conversation without ZDR.",
-                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch { }
-            }
-            if (blockedNoFile.Count > 0)
-            {
-                try
-                {
-                    MessageBox.Show(this,
-                        "This PDF appears to be scanned (no extractable text):\n - "
-                        + string.Join("\n - ", blockedNoFile.ToArray())
-                        + "\n\nThe selected model can't read full PDF documents. Switch to a model with "
-                        + "document support to read it.",
-                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch { }
+                af.SendNativePdf = true;
             }
         }
 
@@ -4361,13 +4320,28 @@ namespace GxPT
                 cms.Opening += (s, e) =>
                 {
                     if (afRef == null) return;
+                    bool hasText = !string.IsNullOrEmpty(afRef.Content) && afRef.Content.Trim().Length > 0;
                     bool isNative = (afRef.SendNativePdf == true);
                     bool nativeEligible = CurrentModelSupportsFile() && !ActiveConversationIsZdr()
                                           && !string.IsNullOrEmpty(afRef.Data);
-                    miText.Checked = !isNative;
-                    miFull.Checked = isNative;
-                    // Allow switching to Full only when eligible; always allow switching back to text.
-                    miFull.Enabled = nativeEligible || isNative;
+                    if (!hasText)
+                    {
+                        // No text layer: extracted-text path is unavailable; full PDF is always selected.
+                        miText.Enabled = false;
+                        miText.Checked = false;
+                        miText.ToolTipText = "No extractable text available";
+                        miFull.Checked = true;
+                        miFull.Enabled = nativeEligible;
+                    }
+                    else
+                    {
+                        miText.Enabled = true;
+                        miText.Checked = !isNative;
+                        miText.ToolTipText = string.Empty;
+                        miFull.Checked = isNative;
+                        // Allow switching to Full only when eligible; always allow switching back to text.
+                        miFull.Enabled = nativeEligible || isNative;
+                    }
                     miFull.ToolTipText = miFull.Enabled
                         ? string.Empty
                         : (ActiveConversationIsZdr()
