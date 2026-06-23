@@ -38,6 +38,7 @@
     <Compile Include="..\GxPT\Data\ConversationStore.cs" Link="Linked\ConversationStore.cs" />
     <Compile Include="..\GxPT\Models\Conversation.cs" Link="Linked\Conversation.cs" />
     <Compile Include="..\GxPT\Models\ChatModels.cs" Link="Linked\ChatModels.cs" />
+    <Compile Include="..\GxPT\Services\AttachmentPruner.cs" Link="Linked\AttachmentPruner.cs" />
     <Compile Include="..\GxPT\Services\OpenRouterClient.cs" Link="Linked\OpenRouterClient.cs" />
     <Compile Include="..\GxPT\Services\RequestCancellation.cs" Link="Linked\RequestCancellation.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolCallAssembler.cs" Link="Linked\Mcp\ToolCallAssembler.cs" />

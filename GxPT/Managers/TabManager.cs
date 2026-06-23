@@ -807,7 +807,9 @@ namespace GxPT
                             {
                                 var af = msg.Attachments[i];
                                 if (af == null) continue;
-                                list.Add(new AttachedFile(af.FileName, af.Content));
+                                // Clone so editing a message keeps image/PDF bytes and Kind
+                                // (an image's Content is empty, so a name/content copy drops it).
+                                list.Add(af.Clone());
                             }
                         }
                         ctx.PendingAttachments = list;

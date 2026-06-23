@@ -18,20 +18,52 @@ namespace GxPT
         string GetCategoryLabel();
     }
 
+    // A file that could not be attached, plus an optional human-readable reason. Reason is null
+    // for a plain unsupported type (the UI then shows just the name); set to an extractor's
+    // exception message (e.g. the image size-cap message) when there's something useful to say.
+    internal sealed class SkippedAttachment
+    {
+        public string DisplayName { get; private set; }
+        public string Reason { get; private set; }
+        public SkippedAttachment(string displayName, string reason)
+        {
+            DisplayName = displayName ?? string.Empty;
+            Reason = reason;
+        }
+    }
+
     // Coordinator that routes files to the appropriate extractor and builds dialog filters
     internal sealed class AttachmentService
     {
         private readonly List<IAttachmentExtractor> _extractors;
         private readonly TextFileAttachmentExtractor _textExtractor;
+        private readonly ImageAttachmentExtractor _imageExtractor;
+
+        // Hard capability gate: when false, the image extractor is skipped everywhere (dialog
+        // filter, IsSupported, extraction) so images cannot be attached to a non-vision model.
+        // The caller (MainForm) sets this from the selected model before each attach operation.
+        public bool ImageAttachmentsEnabled { get; set; }
 
         public AttachmentService()
         {
+            ImageAttachmentsEnabled = true;
             _extractors = new List<IAttachmentExtractor>();
-            // Register built-in extractors (order matters only for dialog filter composition)
+            // Register built-in extractors (order matters only for dialog filter composition).
+            // Images before text: the text extractor's byte-sniffer rejects binary files anyway,
+            // but explicit ordering makes the intent clear.
+            _imageExtractor = new ImageAttachmentExtractor();
+            _extractors.Add(_imageExtractor);
             _textExtractor = new TextFileAttachmentExtractor(null);
             _extractors.Add(_textExtractor);
             _extractors.Add(new PdfAttachmentExtractor());
             _extractors.Add(new DocxAttachmentExtractor());
+        }
+
+        // An extractor is active unless it's the image extractor while images are gated off.
+        private bool IsActive(IAttachmentExtractor ex)
+        {
+            if (!ImageAttachmentsEnabled && ReferenceEquals(ex, _imageExtractor)) return false;
+            return true;
         }
 
         public AttachmentService(IEnumerable<string> additionalTextFilePatterns)
@@ -60,6 +92,7 @@ namespace GxPT
             if (Directory.Exists(filePath)) return false; // folders not supported
             for (int i = 0; i < _extractors.Count; i++)
             {
+                if (!IsActive(_extractors[i])) continue;
                 try { if (_extractors[i].CanHandle(filePath)) return true; }
                 catch { }
             }
@@ -74,6 +107,7 @@ namespace GxPT
             for (int i = 0; i < _extractors.Count; i++)
             {
                 var ex = _extractors[i];
+                if (!IsActive(ex)) continue; // images gated off -> omit the Image Files category
                 IList<string> pats = null; string label = null;
                 try { pats = ex.GetFileDialogPatterns(); }
                 catch { }
@@ -142,9 +176,13 @@ namespace GxPT
             return sb.ToString();
         }
 
-        public List<AttachedFile> ExtractMany(IEnumerable<string> paths, out List<string> skippedDisplayNames)
+        // Extract each path; files that can't be attached are reported in `skipped` with an
+        // optional human-readable reason (e.g. the image size-cap message thrown by an extractor).
+        // Reason is null when there's nothing useful to say beyond "unsupported" (no extractor, or
+        // an extractor that returned null) so the UI can fall back to just the name.
+        public List<AttachedFile> ExtractMany(IEnumerable<string> paths, out List<SkippedAttachment> skipped)
         {
-            skippedDisplayNames = new List<string>();
+            skipped = new List<SkippedAttachment>();
             var results = new List<AttachedFile>();
             if (paths == null) return results;
             foreach (var path in paths)
@@ -152,16 +190,17 @@ namespace GxPT
                 if (string.IsNullOrEmpty(path)) continue;
                 try
                 {
-                    if (Directory.Exists(path)) { skippedDisplayNames.Add(Path.GetFileName(path) + " (folder)"); continue; }
+                    if (Directory.Exists(path)) { skipped.Add(new SkippedAttachment(Path.GetFileName(path) + " (folder)", null)); continue; }
                     IAttachmentExtractor ex = FindExtractor(path);
-                    if (ex == null) { skippedDisplayNames.Add(Path.GetFileName(path)); continue; }
+                    if (ex == null) { skipped.Add(new SkippedAttachment(Path.GetFileName(path), null)); continue; }
                     var af = ex.Extract(path);
                     if (af != null) results.Add(af);
-                    else skippedDisplayNames.Add(Path.GetFileName(path));
+                    else skipped.Add(new SkippedAttachment(Path.GetFileName(path), null));
                 }
-                catch (Exception)
+                catch (Exception exc)
                 {
-                    skippedDisplayNames.Add(Path.GetFileName(path));
+                    // Surface the extractor's reason (e.g. "Image is too large...") to the caller.
+                    skipped.Add(new SkippedAttachment(Path.GetFileName(path), exc.Message));
                 }
             }
             return results;
@@ -178,6 +217,7 @@ namespace GxPT
         {
             for (int i = 0; i < _extractors.Count; i++)
             {
+                if (!IsActive(_extractors[i])) continue;
                 try { if (_extractors[i].CanHandle(path)) return _extractors[i]; }
                 catch { }
             }

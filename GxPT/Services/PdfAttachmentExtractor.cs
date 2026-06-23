@@ -22,8 +22,30 @@ namespace GxPT
 
         public AttachedFile Extract(string filePath)
         {
-            string text = ExtractText(filePath) ?? string.Empty;
-            return new AttachedFile(Path.GetFileName(filePath), text);
+            int pageCount;
+            string text = ExtractText(filePath, out pageCount) ?? string.Empty;
+            byte[] bytes = null;
+            try { bytes = File.ReadAllBytes(filePath); }
+            catch { bytes = null; }
+
+            // Scanned/image-only PDF: has pages but no extractable text layer. The text path can't
+            // represent it, so flag it for the attach-time native-PDF prompt.
+            bool likelyScanned = pageCount > 0 && string.IsNullOrEmpty(text.Trim());
+
+            var af = new AttachedFile
+            {
+                FileName = Path.GetFileName(filePath),
+                Content = text,                 // dual-representation: cheap text path (default)
+                Kind = AttachmentKind.Pdf,
+                IsLikelyScanned = likelyScanned
+            };
+            // Retain original bytes so the PDF can be escalated to a native `file` block later.
+            if (bytes != null && bytes.Length > 0)
+            {
+                af.MediaType = "application/pdf";
+                af.Data = Convert.ToBase64String(bytes);
+            }
+            return af;
         }
 
         public IList<string> GetFileDialogPatterns()
@@ -36,14 +58,16 @@ namespace GxPT
             return "PDF Files";
         }
 
-        private static string ExtractText(string filePath)
+        private static string ExtractText(string filePath, out int pageCount)
         {
+            pageCount = 0;
             try
             {
                 var sb = new StringBuilder(4096);
                 using (var reader = new PdfReader(filePath))
                 {
                     int n = reader.NumberOfPages;
+                    pageCount = n;
                     for (int page = 1; page <= n; page++)
                     {
                         Parser.ITextExtractionStrategy strategy = new Parser.LocationTextExtractionStrategy();
