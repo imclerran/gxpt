@@ -259,39 +259,42 @@ namespace GxPT
         }
 
         // Runs the runnable slots concurrently with a sliding concurrency window of at most
-        // MaxParallelAgents: every child is queued up front, but a Semaphore gates how many run at once, so
-        // the moment one child finishes the next queued child starts (no wave barrier - a slow child no
-        // longer holds back the rest of its group). Each child writes its own result slot.
-        // WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it is valid here; no lock
-        // is held across the join, so the fan-out cannot deadlock. The batch is bounded by MaxAgentsPerCall
-        // (<= 8), well under WaitAll's 64-handle limit.
+        // MaxParallelAgents: a small pool of worker threads pulls the next row from a shared cursor, so the
+        // moment one child finishes that worker starts the next-in-order child (no wave barrier - a slow
+        // child no longer holds back the rest of its group). Interlocked.Increment hands out row indices in
+        // strict order, so the lowest-numbered queued row is always the next to start (FIFO start order, so
+        // the panel never shows a later row running while an earlier one is still queued). Each child writes
+        // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
+        // is valid here; no lock is held across the join, so the fan-out cannot deadlock. At most
+        // MaxParallelAgents worker handles are joined, well under WaitAll's 64-handle limit.
         private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results,
                                  AgentTranscript[] transcripts)
         {
             int count = runnable.Count;
-            System.Threading.Semaphore gate =
-                new System.Threading.Semaphore(MaxParallelAgents, MaxParallelAgents);
-            System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[count];
+            int workerCount = Math.Min(MaxParallelAgents, count);
+            int next = -1;   // shared cursor; Interlocked.Increment yields 0,1,2,... in order across workers
+            System.Threading.ManualResetEvent[] dones = new System.Threading.ManualResetEvent[workerCount];
             try
             {
-                for (int r = 0; r < count; r++)
+                for (int w = 0; w < workerCount; w++)
                 {
-                    int row = r;                // panel row index (position among runnable)
-                    int slot = runnable[row];   // entry slot (position in the full agents/tasks arrays)
-                    Agent agent = agents[slot];
-                    string task = tasks[slot];
                     System.Threading.ManualResetEvent done = new System.Threading.ManualResetEvent(false);
-                    dones[row] = done;
+                    dones[w] = done;
                     System.Threading.ThreadPool.QueueUserWorkItem(delegate
                     {
-                        // done.Set() is the outermost finally so WaitAll can never hang, even if acquiring
-                        // the gate throws. The gate is released only on the path where it was acquired.
+                        // done.Set() is the outermost finally so WaitAll can never hang, even on an
+                        // unexpected throw. Each worker loops, claiming the next row until the batch is drained.
                         try
                         {
-                            gate.WaitOne();   // block until a concurrency slot frees up
-                            try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
-                            catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
-                            finally { gate.Release(); }
+                            int row;
+                            while ((row = System.Threading.Interlocked.Increment(ref next)) < count)
+                            {
+                                int slot = runnable[row];   // entry slot (position in the agents/tasks arrays)
+                                Agent agent = agents[slot];
+                                string task = tasks[slot];
+                                try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
+                                catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
+                            }
                         }
                         finally { done.Set(); }
                     });
@@ -300,8 +303,7 @@ namespace GxPT
             }
             finally
             {
-                for (int r = 0; r < count; r++) if (dones[r] != null) dones[r].Close();
-                gate.Close();
+                for (int w = 0; w < workerCount; w++) if (dones[w] != null) dones[w].Close();
             }
         }
 
