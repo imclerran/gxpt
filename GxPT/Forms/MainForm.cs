@@ -2380,6 +2380,37 @@ namespace GxPT
                 }
             }
 
+            // Guard: a PDF with no extractable text that won't be sent as a full document would only
+            // produce an empty placeholder. Block the send and explain, rather than sending nothing.
+            if (ctx.PendingAttachments != null && ctx.PendingAttachments.Count > 0)
+            {
+                bool supportsFile = CurrentModelSupportsFile();
+                bool zdr = ActiveConversationIsZdr();
+                for (int i = 0; i < ctx.PendingAttachments.Count; i++)
+                {
+                    var af = ctx.PendingAttachments[i];
+                    if (af == null || af.EffectiveKind != AttachmentKind.Pdf) continue;
+                    bool hasText = !string.IsNullOrEmpty(af.Content) && af.Content.Trim().Length > 0;
+                    if (hasText) continue;
+                    bool nativeOk = (af.SendNativePdf == true) && supportsFile && !zdr
+                                    && !string.IsNullOrEmpty(af.Data);
+                    if (nativeOk) continue;
+
+                    string why = zdr
+                        ? "full-document reading is disabled in Zero-Data-Retention conversations"
+                        : (!supportsFile
+                            ? "the selected model can't read full PDF documents"
+                            : "full-document sending isn't enabled for this attachment");
+                    MessageBox.Show(this,
+                        "\"" + af.FileName + "\" has no extractable text and can't be sent as a full "
+                        + "document - " + why + ".\n\nRemove the attachment, switch to a model that "
+                        + "supports full PDF documents, or start a new conversation without "
+                        + "Zero-Data-Retention.",
+                        "Cannot Send PDF", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
             // If editing a prior user message, compare text+attachments+model; confirm only if changed
             bool isEditResend = false;
             if (ctx.PendingEditActive && ctx.PendingEditIndex >= 0)
@@ -4324,17 +4355,25 @@ namespace GxPT
                 var miText = new ToolStripMenuItem("Send as extracted text");
                 var miFull = new ToolStripMenuItem("Send as full PDF");
 
-                bool isNative = (afRef.SendNativePdf == true);
-                bool nativeEligible = CurrentModelSupportsFile() && !ActiveConversationIsZdr()
-                                      && !string.IsNullOrEmpty(afRef.Data);
-                miText.Checked = !isNative;
-                miFull.Checked = isNative;
-                // Allow switching to Full only when eligible; always allow switching back to text.
-                miFull.Enabled = nativeEligible || isNative;
-                if (!miFull.Enabled)
-                    miFull.ToolTipText = ActiveConversationIsZdr()
-                        ? "Disabled in Zero-Data-Retention conversations"
-                        : "The selected model can't read full PDF documents";
+                // Recompute checked/enabled/tooltip each time the menu opens. The model or ZDR state
+                // can change after the chip is built (e.g. user switches to a file-capable model), so
+                // computing once at creation time would leave "Send as full PDF" stale (still disabled).
+                cms.Opening += (s, e) =>
+                {
+                    if (afRef == null) return;
+                    bool isNative = (afRef.SendNativePdf == true);
+                    bool nativeEligible = CurrentModelSupportsFile() && !ActiveConversationIsZdr()
+                                          && !string.IsNullOrEmpty(afRef.Data);
+                    miText.Checked = !isNative;
+                    miFull.Checked = isNative;
+                    // Allow switching to Full only when eligible; always allow switching back to text.
+                    miFull.Enabled = nativeEligible || isNative;
+                    miFull.ToolTipText = miFull.Enabled
+                        ? string.Empty
+                        : (ActiveConversationIsZdr()
+                            ? "Disabled in Zero-Data-Retention conversations"
+                            : "The selected model can't read full PDF documents");
+                };
 
                 miText.Click += (s, e) => { if (afRef != null) { afRef.SendNativePdf = false; RebuildAttachmentsBanner(); } };
                 miFull.Click += (s, e) => { if (afRef != null) { afRef.SendNativePdf = true; RebuildAttachmentsBanner(); } };
