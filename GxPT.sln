@@ -23,7 +23,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MSBuildMcpServer", "servers
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MemoryMcpServer", "servers\MemoryMcpServer\MemoryMcpServer.csproj", "{C9F5BB61-E5AA-49B3-955E-E410A635888A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkillsMcpServer", "servers\SkillsMcpServer\SkillsMcpServer.csproj", "{B0E7C3F2-9A41-4D6E-8B2C-5F1A3E7D9C04}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExtensionsMcpServer", "servers\ExtensionsMcpServer\ExtensionsMcpServer.csproj", "{B0E7C3F2-9A41-4D6E-8B2C-5F1A3E7D9C04}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

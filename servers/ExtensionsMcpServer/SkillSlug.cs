@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace SkillsMcpServer
+namespace ExtensionsMcpServer
 {
     // Normalizes a caller-supplied slug into kebab-case (lowercase [a-z0-9] runs joined by single
     // hyphens, boundaries at non-alphanumerics and lower/digit->Upper transitions). Same algorithm as

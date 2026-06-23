@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using SkillsMcpServer;
+using ExtensionsMcpServer;
 using Xunit;
 
-namespace SkillsMcpServer.Tests
+namespace ExtensionsMcpServer.Tests
 {
     // Covers the pure parts of run_skill_script: slug+relpath resolution across roots, the .bat/.cmd
     // allowlist and sandbox, and literal-argument quoting. The actual process spawn (RunResolved) is
@@ -35,8 +35,8 @@ namespace SkillsMcpServer.Tests
 
         private SkillScriptRunner Runner(bool withWorkspace)
         {
-            SkillsConfig cfg = SkillsConfig.ForTesting(
-                withWorkspace ? _workspace : null, _project, null, _bundled, "cmd.exe");
+            ExtensionsConfig cfg = ExtensionsConfig.ForTesting(
+                withWorkspace ? _workspace : null, _project, null, _bundled, "cmd.exe", null, null, null);
             return new SkillScriptRunner(cfg);
         }
 

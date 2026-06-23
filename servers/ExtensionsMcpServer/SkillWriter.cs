@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using Mcp35.Core.Security;
 
-namespace SkillsMcpServer
+namespace ExtensionsMcpServer
 {
     /// <summary>A tool-level failure (relayed to the model as isError), never an exception out of a handler.</summary>
     internal sealed class SkillWriteException : Exception
@@ -20,23 +20,31 @@ namespace SkillsMcpServer
     /// </summary>
     internal sealed class SkillWriter
     {
-        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
-
         private readonly string _projectRoot; // <workdir>/.gxpt/skills, or null when no workspace
         private readonly string _userRoot;    // %AppData%/GxPT/skills, or null if no user root is configured
+        private readonly string _bundledRoot; // <exe>/skills - shipped skills, READ-ONLY; used only to make
+                                              // the "can't edit a bundled skill" error accurate (never written)
         private readonly string _defaultScope; // scope used when a call omits it ("project" or "user")
 
         public SkillWriter(string projectRoot, string userRoot)
-            : this(projectRoot, userRoot, "project")
+            : this(projectRoot, userRoot, null, "project")
+        {
+        }
+
+        public SkillWriter(string projectRoot, string userRoot, string defaultScope)
+            : this(projectRoot, userRoot, null, defaultScope)
         {
         }
 
         // defaultScope is the scope applied when a tool call omits `scope`. The workdir instance defaults
-        // to "project"; the workdir-less instance defaults to "user" (project isn't reachable there).
-        public SkillWriter(string projectRoot, string userRoot, string defaultScope)
+        // to "project"; the workdir-less instance defaults to "user" (project isn't reachable there). The
+        // bundled root is a read-only reference (writes still target project/user only) so a write/edit/
+        // delete against a bundled skill reports it as bundled rather than a bare "does not exist".
+        public SkillWriter(string projectRoot, string userRoot, string bundledRoot, string defaultScope)
         {
             _projectRoot = projectRoot;
             _userRoot = userRoot;
+            _bundledRoot = bundledRoot;
             _defaultScope = string.IsNullOrEmpty(defaultScope) ? "project" : defaultScope;
         }
 
@@ -65,7 +73,7 @@ namespace SkillsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist yet; create_skill first");
+                throw NotWritable(slug, scope, false);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -92,19 +100,21 @@ namespace SkillsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (!File.Exists(file))
-                throw new SkillWriteException("skill '" + slug + "' does not exist; create_skill first");
+                throw NotWritable(slug, scope, false);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
             catch (Exception ex) { throw new SkillWriteException("could not read SKILL.md: " + ex.Message); }
 
-            if (name != null) RequireSingleLine(name, "name");
-            if (description != null) RequireSingleLine(description, "description");
+            if (!IsBlank(name)) RequireSingleLine(name, "name");
+            if (!IsBlank(description)) RequireSingleLine(description, "description");
 
             SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
-            string newName = name != null ? name : fm.Name; // may stay null -> name line omitted (no slug forced)
-            string newDesc = description != null ? description : fm.Description;
-            string newBody = body != null ? body : fm.Body;
+            // A present-but-blank scalar means "keep" (same as omitting it): passing "" never silently wipes
+            // an existing name/description/body. Mirrors update_agent.
+            string newName = !IsBlank(name) ? name : fm.Name; // may stay null -> name line omitted (no slug forced)
+            string newDesc = !IsBlank(description) ? description : fm.Description;
+            string newBody = !IsBlank(body) ? body : fm.Body;
             if (IsBlank(newDesc)) throw new SkillWriteException("description is required");
 
             AtomicWrite(file, BuildSkillMd(newName, newDesc, newBody));
@@ -120,7 +130,7 @@ namespace SkillsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist; create_skill first");
+                throw NotWritable(slug, scope, false);
             if (IsBlank(oldString)) throw new SkillWriteException("old_string is required");
             if (newString == null) throw new SkillWriteException("new_string is required");
 
@@ -151,8 +161,10 @@ namespace SkillsMcpServer
 
                 int bodyCount = CountOccurrences(body, oldB);
                 if (bodyCount == 0)
-                    throw new SkillWriteException("old_string not found in SKILL.md's body (the body is what "
-                        + "edit_skill_file changes; use update_skill for the name/description)");
+                    throw new SkillWriteException("old_string not found in SKILL.md's body. edit_skill_file "
+                        + "matches the body exactly, and the body is stored trimmed (no leading/trailing blank "
+                        + "lines, no frontmatter) - copy an interior span verbatim, or use update_skill to "
+                        + "replace the whole body or change the name/description");
                 if (bodyCount > 1 && !replaceAll)
                     throw new SkillWriteException("old_string is not unique in SKILL.md's body (" + bodyCount
                         + " matches); make it unique or set replace_all");
@@ -218,7 +230,7 @@ namespace SkillsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist");
+                throw NotWritable(slug, scope, true);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -240,7 +252,7 @@ namespace SkillsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw new SkillWriteException("skill '" + slug + "' does not exist");
+                throw NotWritable(slug, scope, true);
 
             try { Directory.Delete(dir, true); }
             catch (Exception ex) { throw new SkillWriteException("could not delete skill '" + slug + "': " + ex.Message); }
@@ -272,6 +284,26 @@ namespace SkillsMcpServer
 
         // ---- internals ----
 
+        // The "not in a writable scope" error for a write/edit/delete: when the skill's SKILL.md isn't in
+        // the target writable root. If the slug names a bundled (shipped, read-only) skill, say so and point
+        // at create_skill to override it - the bare "does not exist" is misleading when the model can see and
+        // read that bundled skill. forDelete tailors the verb (a bundled skill is overridden, not deleted).
+        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
+        // writable scope, or it truly doesn't exist. Probes use the skill file shape (<slug>/SKILL.md); the
+        // wording is shared with AgentWriter via WriterIo so the two can't drift.
+        private SkillWriteException NotWritable(string slug, string targetScope, bool forDelete)
+        {
+            bool bundled = !string.IsNullOrEmpty(_bundledRoot)
+                && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md"));
+            string eff = WriterIo.NormalizeScope(targetScope, _defaultScope);
+            string otherRoot = eff == "project" ? _userRoot : _projectRoot;
+            string otherLabel = eff == "project" ? "user" : "project";
+            bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
+                && File.Exists(Path.Combine(Path.Combine(otherRoot, slug), "SKILL.md"));
+            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", forDelete,
+                bundled, inOther ? otherLabel : null, eff));
+        }
+
         private string RootFor(string scope)
         {
             string s = (scope == null ? _defaultScope : scope.Trim().ToLowerInvariant());
@@ -298,11 +330,11 @@ namespace SkillsMcpServer
             return slug;
         }
 
-        // Frontmatter values are single-line by design: a CR/LF would close the "---" block early or
-        // inject keys, producing a forged/unloadable SKILL.md (the very thing these tools exist to prevent).
+        // Frontmatter values are single-line by design (the CR/LF guard lives in WriterIo so it can't drift
+        // from the agent writer's copy).
         private static void RequireSingleLine(string value, string field)
         {
-            if (value != null && (value.IndexOf('\n') >= 0 || value.IndexOf('\r') >= 0))
+            if (WriterIo.HasLineBreak(value))
                 throw new SkillWriteException(field + " must be a single line (no line breaks)");
         }
 
@@ -338,36 +370,11 @@ namespace SkillsMcpServer
             return s.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
         }
 
-        private static string DetectNewline(string text)
-        {
-            return text.IndexOf("\r\n", StringComparison.Ordinal) >= 0 ? "\r\n" : "\n";
-        }
-
-        private static string NormalizeNewlines(string s, string nl)
-        {
-            if (s == null) return null;
-            string lf = s.Replace("\r\n", "\n").Replace("\r", "\n");
-            return nl == "\n" ? lf : lf.Replace("\n", nl);
-        }
-
-        private static int CountOccurrences(string text, string sub)
-        {
-            if (string.IsNullOrEmpty(sub)) return 0;
-            int count = 0, idx = 0;
-            while ((idx = text.IndexOf(sub, idx, StringComparison.Ordinal)) >= 0)
-            {
-                count++;
-                idx += sub.Length;
-            }
-            return count;
-        }
-
-        private static string ReplaceFirst(string text, string oldS, string newS)
-        {
-            int idx = text.IndexOf(oldS, StringComparison.Ordinal);
-            if (idx < 0) return text;
-            return text.Substring(0, idx) + newS + text.Substring(idx + oldS.Length);
-        }
+        // Newline/edit-matching primitives delegate to WriterIo so they can't drift from AgentWriter's copy.
+        private static string DetectNewline(string text) { return WriterIo.DetectNewline(text); }
+        private static string NormalizeNewlines(string s, string nl) { return WriterIo.NormalizeNewlines(s, nl); }
+        private static int CountOccurrences(string text, string sub) { return WriterIo.CountOccurrences(text, sub); }
+        private static string ReplaceFirst(string text, string oldS, string newS) { return WriterIo.ReplaceFirst(text, oldS, newS); }
 
         private static void CollectFiles(string baseDir, string dir, List<string> rels)
         {
@@ -395,38 +402,7 @@ namespace SkillsMcpServer
             return s == null || s.Trim().Length == 0;
         }
 
-        // Atomic write (mirrors MemoryStore): temp file then replace/move; creates parent dirs.
-        // Write content to a temp file, then swap it into place so a failed write never leaves a
-        // half-written or destroyed target. A leaked temp is cleaned up in finally (it would otherwise
-        // surface in list_skill_files). The fallback path moves the original aside FIRST and restores it
-        // if the swap fails, so the original is never deleted before the new content has landed.
-        private static void AtomicWrite(string path, string content)
-        {
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            string tmp = path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp";
-            try
-            {
-                File.WriteAllText(tmp, content, Utf8NoBom);
-
-                if (!File.Exists(path)) { File.Move(tmp, path); return; }
-
-                // Prefer a true atomic replace.
-                try { File.Replace(tmp, path, null); return; }
-                catch { }
-
-                // Replace can fail (cross-volume, AV, lock). Move the original aside, swap in the new
-                // file, and restore the original if that swap fails - so a failed write never loses data.
-                string bak = path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".bak";
-                File.Move(path, bak); // throws here => original untouched
-                try { File.Move(tmp, path); }
-                catch { File.Move(bak, path); throw; } // restore the original, then surface the failure
-                try { File.Delete(bak); } catch { }
-            }
-            finally
-            {
-                if (File.Exists(tmp)) { try { File.Delete(tmp); } catch { } }
-            }
-        }
+        // Atomic write (the swap-and-restore logic lives in WriterIo, shared with AgentWriter).
+        private static void AtomicWrite(string path, string content) { WriterIo.AtomicWrite(path, content); }
     }
 }

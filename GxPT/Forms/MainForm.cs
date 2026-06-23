@@ -1522,10 +1522,12 @@ namespace GxPT
                 opts.MemoryEnabled = AppSettings.GetBool("mcp_memory_enabled");
                 int memMaxLines = (int)AppSettings.GetDouble("mcp_memory_max_lines", 40);
                 opts.MemoryMaxLines = memMaxLines > 0 ? memMaxLines : 40;
-                // The Skills MCP server (authoring + execution tools) follows skill enablement: it runs
-                // whenever the active conversation has at least one enabled skill, and is off when none are
-                // (so a skill-less chat pays nothing). SlashRefreshSkillsServer re-applies this when
-                // enablement changes. There is no separate server toggle - /toggle-skills is the control.
+                // The extensions MCP server (skill + agent authoring + run_skill_script) follows skill
+                // enablement: it runs whenever the active conversation has at least one enabled skill, and
+                // is off when none are (so a skill-less chat pays nothing). Because agent-writer is itself a
+                // skill, enabling it brings the server up too; the per-turn SkillToolGate then reveals the
+                // agent tools. SlashRefreshSkillsServer re-applies this when enablement changes. There is no
+                // separate server toggle - /toggle-skills is the control.
                 opts.SkillsEnabled = ActiveConversationHasEnabledSkills();
                 _skillsServerEnabled = opts.SkillsEnabled;
                 // Skill roots the server resolves scripts against: bundled (<exe>/skills, shipped with the
@@ -1533,6 +1535,13 @@ namespace GxPT
                 // GXPT_WORKDIR inside the server. These mirror the read-side roots (SkillInjection).
                 opts.SkillsBundledRoot = SkillRoots.BundledRoot(baseDir);
                 opts.SkillsUserRoot = SkillRoots.UserRoot();
+                // Agent authoring shares the same server; its user-global root (%AppData%/GxPT/agents) is
+                // injected so scope=user agent authoring has a target (the project root is derived from
+                // GXPT_WORKDIR inside the server). The bundled root (<exe>/agents) is injected too so
+                // read_agent/list_agents can see the shipped agents (e.g. explore) - reads span all roots,
+                // mirroring read_skill_file; writes stay project/user.
+                opts.AgentsUserRoot = AgentRoots.UserRoot();
+                opts.AgentsBundledRoot = AgentRoots.BundledRoot(baseDir);
                 opts.WebSearchKey = AppSettings.GetString("mcp_websearch_key");
                 opts.CurlPath = curlPath;
                 // Server exes: dev builds deploy them to a 'mcp-servers' subfolder (AfterBuild copy);
@@ -4557,7 +4566,7 @@ namespace GxPT
                     header = rel.Length > 0 ? "Read skill file " + rel : "Read skill file";
                     return true;
                 }
-                case "skills__edit_skill_file":
+                case "extensions__edit_skill_file":
                 {
                     // Mirror files__edit: a colored, collapsible line-diff. The skill file lives under the
                     // skill folder, so the header carries the slug + relpath for context.
@@ -4567,13 +4576,13 @@ namespace GxPT
                     header = "Edited " + SkillTarget(slug, rel);
                     body = diff.Body; language = "diff"; added = diff.Added; removed = diff.Removed; return true;
                 }
-                case "skills__run_skill_script":
+                case "extensions__run_skill_script":
                 {
                     string rel = Str(args, "relpath");
                     header = rel.Length > 0 ? "Ran skill script " + rel : "Ran a skill script";
                     return true;
                 }
-                case "skills__create_skill":
+                case "extensions__create_skill":
                 {
                     string slug = Str(args, "slug"); string skillName = Str(args, "name");
                     header = "Created skill " + (slug.Length > 0 ? slug : (skillName.Length > 0 ? skillName : "(skill)"));
@@ -4581,7 +4590,7 @@ namespace GxPT
                     body = FormatSkillFields(skillName, Str(args, "description"), Str(args, "body"));
                     language = "markdown"; return true;
                 }
-                case "skills__update_skill":
+                case "extensions__update_skill":
                 {
                     string slug = Str(args, "slug");
                     header = "Updated skill " + (slug.Length > 0 ? slug : "(skill)");
@@ -4589,7 +4598,7 @@ namespace GxPT
                     body = FormatSkillFields(Str(args, "name"), Str(args, "description"), Str(args, "body"));
                     language = "markdown"; return true;
                 }
-                case "skills__write_skill_file":
+                case "extensions__write_skill_file":
                 {
                     // Mirror files__write: show the file's content highlighted by its extension.
                     string rel = Str(args, "relpath");
@@ -4598,25 +4607,69 @@ namespace GxPT
                     language = (rel.Length > 0 ? SyntaxHighlighter.GetLanguageForFileName(rel) : null) ?? "text";
                     return true;
                 }
-                case "skills__delete_skill_file":
+                case "extensions__delete_skill_file":
                 {
                     string rel = Str(args, "relpath"); if (rel.Length == 0) return false;
                     header = "Deleted skill file " + SkillTarget(Str(args, "slug"), rel); return true;
                 }
-                case "skills__delete_skill":
+                case "extensions__delete_skill":
                 {
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Deleted skill " + slug; return true;
                 }
-                case "skills__list_skill_files":
+                case "extensions__list_skill_files":
                 {
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Listed skill files for " + slug; return true;
                 }
-                case "skills__validate_skill":
+                case "extensions__validate_skill":
                 {
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Validated skill " + slug; return true;
+                }
+                case "extensions__create_agent":
+                {
+                    string slug = Str(args, "slug"); string agentName = Str(args, "name");
+                    header = "Created agent " + (slug.Length > 0 ? slug : (agentName.Length > 0 ? agentName : "(agent)"));
+                    body = FormatSkillFields(agentName, Str(args, "description"), Str(args, "body"));
+                    language = "markdown"; return true;
+                }
+                case "extensions__update_agent":
+                {
+                    string slug = Str(args, "slug");
+                    header = "Updated agent " + (slug.Length > 0 ? slug : "(agent)");
+                    body = FormatSkillFields(Str(args, "name"), Str(args, "description"), Str(args, "body"));
+                    language = "markdown"; return true;
+                }
+                case "extensions__edit_agent":
+                {
+                    // Mirror edit_skill_file: a colored, collapsible line-diff of the agent's body.
+                    string slug = Str(args, "slug");
+                    LineDiffResult diff = DiffUtil.BuildLineDiff(Str(args, "old_string"), Str(args, "new_string"));
+                    header = "Edited agent " + (slug.Length > 0 ? slug : "(agent)");
+                    body = diff.Body; language = "diff"; added = diff.Added; removed = diff.Removed; return true;
+                }
+                case "extensions__read_agent":
+                {
+                    // Always render a record (mirrors read_skill_file): a slug-less call still reads as
+                    // "Read agent" rather than falling back to the raw "using extensions: read_agent" marker.
+                    string slug = Str(args, "slug");
+                    header = slug.Length > 0 ? "Read agent " + slug : "Read agent";
+                    return true;
+                }
+                case "extensions__list_agents":
+                {
+                    header = "Listed agents"; return true;
+                }
+                case "extensions__delete_agent":
+                {
+                    string slug = Str(args, "slug"); if (slug.Length == 0) return false;
+                    header = "Deleted agent " + slug; return true;
+                }
+                case "extensions__validate_agent":
+                {
+                    string slug = Str(args, "slug"); if (slug.Length == 0) return false;
+                    header = "Validated agent " + slug; return true;
                 }
                 case "memory__remember":
                 {

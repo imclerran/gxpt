@@ -5,7 +5,7 @@ using System.Text;
 using Mcp35.Core.Security;
 using Mcp35.Server.Process;
 
-namespace SkillsMcpServer
+namespace ExtensionsMcpServer
 {
     /// <summary>A run_skill_script setup failure (relayed to the model as isError), not an exception.</summary>
     internal sealed class SkillScriptException : Exception
@@ -36,10 +36,10 @@ namespace SkillsMcpServer
     /// </summary>
     internal sealed class SkillScriptRunner
     {
-        private readonly SkillsConfig _config;
+        private readonly ExtensionsConfig _config;
         private readonly ProcessRunner _runner;
 
-        public SkillScriptRunner(SkillsConfig config)
+        public SkillScriptRunner(ExtensionsConfig config)
         {
             _config = config;
             _runner = new ProcessRunner(null);

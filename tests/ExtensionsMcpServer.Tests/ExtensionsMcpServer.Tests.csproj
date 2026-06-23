@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Unit tests for SkillsMcpServer. The server targets net35 (VS2008-era); this project links its
+    Unit tests for ExtensionsMcpServer. The server targets net35 (VS2008-era); this project links its
     source files (minus Program.cs) plus the Mcp35 Core/Server sources and runs on net48 via
     'dotnet test', the same linked-source pattern as the other *McpServer.Tests projects.
     Intentionally NOT added to GxPT.sln (VS2008 cannot load SDK-style projects).
@@ -11,8 +11,8 @@
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
-    <AssemblyName>SkillsMcpServer.Tests</AssemblyName>
-    <RootNamespace>SkillsMcpServer.Tests</RootNamespace>
+    <AssemblyName>ExtensionsMcpServer.Tests</AssemblyName>
+    <RootNamespace>ExtensionsMcpServer.Tests</RootNamespace>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
   </PropertyGroup>
@@ -24,9 +24,9 @@
     <Compile Include="..\..\src\Mcp35.Server\**\*.cs"
              Exclude="..\..\src\Mcp35.Server\Properties\**\*.cs;..\..\src\Mcp35.Server\obj\**\*.cs;..\..\src\Mcp35.Server\bin\**\*.cs"
              Link="Linked\Server\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\..\servers\SkillsMcpServer\**\*.cs"
-             Exclude="..\..\servers\SkillsMcpServer\Program.cs;..\..\servers\SkillsMcpServer\Properties\**\*.cs;..\..\servers\SkillsMcpServer\obj\**\*.cs;..\..\servers\SkillsMcpServer\bin\**\*.cs"
-             Link="Linked\Skills\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\servers\ExtensionsMcpServer\**\*.cs"
+             Exclude="..\..\servers\ExtensionsMcpServer\Program.cs;..\..\servers\ExtensionsMcpServer\Properties\**\*.cs;..\..\servers\ExtensionsMcpServer\obj\**\*.cs;..\..\servers\ExtensionsMcpServer\bin\**\*.cs"
+             Link="Linked\Extensions\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

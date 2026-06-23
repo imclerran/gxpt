@@ -27,7 +27,7 @@ namespace GxPT
         }
 
         // User-global skills live under %AppData%/GxPT/skills - one set per Windows user, independent of
-        // workspace. The SkillsMcpServer writes/runs them at the same path (GXPT_SKILLS_USER_ROOT), so
+        // workspace. The extensions server writes/runs them at the same path (GXPT_SKILLS_USER_ROOT), so
         // read and write stay in sync. Returns null if %AppData% can't be resolved.
         public static string UserRoot()
         {

@@ -1,9 +1,9 @@
 using System;
 using System.IO;
-using SkillsMcpServer;
+using ExtensionsMcpServer;
 using Xunit;
 
-namespace SkillsMcpServer.Tests
+namespace ExtensionsMcpServer.Tests
 {
     public sealed class SkillWriterTests : IDisposable
     {
@@ -388,6 +388,49 @@ namespace SkillsMcpServer.Tests
         public void ValidateSkill_Nonexistent_Throws()
         {
             Assert.Throws<SkillWriteException>(() => _writer.ValidateSkill(null, "nope"));
+        }
+
+        [Fact]
+        public void UpdateSkill_BundledOnly_ReportsBundledNotMissing()
+        {
+            // A bundled (shipped, read-only) skill the writer can't edit in place: the error should name it
+            // as bundled and point at create_skill, not the bare "does not exist".
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(
+                () => w.UpdateSkill(null, "shipped", null, "new desc", null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("create_skill", ex.Message);
+        }
+
+        [Fact]
+        public void DeleteSkill_BundledOnly_ReportsBundledReadOnly()
+        {
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() => w.DeleteSkill(null, "shipped"));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("read-only", ex.Message);
+        }
+
+        [Fact]
+        public void UpdateSkill_BlankNameKeepsExisting()
+        {
+            // A present-but-blank name means "keep", not "clear" (mirrors update_agent); passing "" must not
+            // silently drop the existing name.
+            _writer.CreateSkill(null, "greeting", "Greeting", "Be a pirate.", "body");
+            _writer.UpdateSkill(null, "greeting", "", "New desc.", null); // name="" => keep
+            string text = File.ReadAllText(SkillFile("greeting"));
+            Assert.Contains("name: Greeting", text);
+            Assert.Contains("description: New desc.", text);
         }
     }
 }

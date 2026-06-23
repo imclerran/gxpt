@@ -567,6 +567,46 @@
             "IsDependency" = "11:FALSE"
             "IsolateTo" = "8:"
             }
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_9C4B7E21F0A8456DBE13C5097A2D6F38"
+            {
+            "SourcePath" = "8:..\\skills\\agent-writer\\SKILL.md"
+            "TargetName" = "8:SKILL.md"
+            "Tag" = "8:"
+            "Folder" = "8:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_2A8F0D63E4B1497CA5F2086B1D7E3C90"
+            {
+            "SourcePath" = "8:..\\skills\\agent-writer\\writing-agents.md"
+            "TargetName" = "8:writing-agents.md"
+            "Tag" = "8:"
+            "Folder" = "8:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_2AAA6C4759D147E4A13DB05D55EAC4EE"
             {
             "SourcePath" = "8:..\\GxPT\\resources\\Licenses\\LICENSE-newtonsoft-json.md"
@@ -1168,6 +1208,17 @@
                             "Condition" = "8:"
                             "Transitive" = "11:FALSE"
                             "Property" = "8:_05251BA566C9478185185AF12C880EAB"
+                                "Folders"
+                                {
+                                }
+                            }
+                            "{9EF0B969-E518-4E46-987F-47570745A589}:_3F7A1C9E2B8D4456A1E0F5C7D9B62A04"
+                            {
+                            "Name" = "8:agent-writer"
+                            "AlwaysCreate" = "11:FALSE"
+                            "Condition" = "8:"
+                            "Transitive" = "11:FALSE"
+                            "Property" = "8:_6D2E8B40A1F34C97B5E0C8A7D31F9E25"
                                 "Folders"
                                 {
                                 }
@@ -1947,7 +1998,7 @@
             }
             "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_1F515FDCDCC54A81B1A7984BE9561853"
             {
-            "SourcePath" = "8:..\\servers\\SkillsMcpServer\\obj\\Release\\SkillsMcpServer.exe"
+            "SourcePath" = "8:..\\servers\\ExtensionsMcpServer\\obj\\Release\\ExtensionsMcpServer.exe"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_A249DCF40CCD4A129F140A8AAEBBA6B7"
