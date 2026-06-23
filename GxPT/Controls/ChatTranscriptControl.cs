@@ -1089,6 +1089,11 @@ namespace GxPT
 
             h += BubblePadding; // bottom padding
 
+            // Attachment pills can be wider than the message text. Fold the widest desired pill
+            // width (clamped to the available content width) into the content width so the bubble
+            // grows to fit the pills instead of letting them overflow past its right edge.
+            wUsed = Math.Max(wUsed, MeasureAttachmentsMaxPillWidth(it, textMax));
+
             // Compute bubble width based on measured text content
             // Ensure minimum content width for visual consistency
             int wContent = Math.Max(wUsed, 100);
@@ -1126,6 +1131,23 @@ namespace GxPT
             }
             y += lineH;
             return y;
+        }
+
+        // Returns the width of the widest attachment pill, clamped to the available content width.
+        // Pill width matches DrawAttachmentPills: text width + ~16px padding. Used so the bubble's
+        // content width can grow to accommodate pills that are wider than the message text.
+        private int MeasureAttachmentsMaxPillWidth(MessageItem it, int contentWidth)
+        {
+            if (it.Attachments == null || it.Attachments.Count == 0) return 0;
+            int maxW = 0;
+            for (int i = 0; i < it.Attachments.Count; i++)
+            {
+                string name = it.Attachments[i] != null ? (it.Attachments[i].FileName ?? "(file)") : "(file)";
+                Size sz = TextRenderer.MeasureText(name, _baseFont, new Size(int.MaxValue / 4, int.MaxValue / 4), TextFormatFlags.NoPadding);
+                int pillW = Math.Min(contentWidth, sz.Width + 16);
+                if (pillW > maxW) maxW = pillW;
+            }
+            return maxW;
         }
 
         private Size MeasureBlock(Block blk, int maxWidth, Dictionary<int, int> numberedCounters)
