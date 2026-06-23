@@ -4156,16 +4156,55 @@ namespace GxPT
             return ctx.Conversation.Zdr || ConvIsZdrLatched(ctx);
         }
 
-        // Scanned PDFs (no extractable text layer) always request full-document sending. If the
-        // current model/ZDR state doesn't support it the send-time guard will block and explain.
+        // Scanned PDFs (no extractable text layer) always request full-document sending. When the
+        // current model/ZDR state doesn't support it, surface an early warning so the user knows to
+        // change settings before sending (the send-time guard will also block if they don't).
         private void HandleScannedPdfs(List<AttachedFile> extracted)
         {
             if (extracted == null || extracted.Count == 0) return;
+            bool supportsFile = CurrentModelSupportsFile();
+            bool zdr = ActiveConversationIsZdr();
+            var blockedZdr = new List<string>();
+            var blockedNoFile = new List<string>();
+
             for (int i = 0; i < extracted.Count; i++)
             {
                 var af = extracted[i];
                 if (af == null || af.EffectiveKind != AttachmentKind.Pdf || !af.IsLikelyScanned) continue;
-                af.SendNativePdf = true;
+                af.SendNativePdf = true; // always request full-document; guard blocks if state is invalid
+                if (zdr)
+                    blockedZdr.Add(af.FileName);
+                else if (!supportsFile)
+                    blockedNoFile.Add(af.FileName);
+            }
+
+            if (blockedZdr.Count > 0)
+            {
+                try
+                {
+                    MessageBox.Show(this,
+                        "This PDF appears to be scanned (no extractable text):\n - "
+                        + string.Join("\n - ", blockedZdr.ToArray())
+                        + "\n\nReading it requires sending the full document, which routes through a "
+                        + "third-party processor whose data-retention policy can't be confirmed - so it "
+                        + "is disabled in Zero-Data-Retention conversations. To read this document, start "
+                        + "a new conversation without ZDR.",
+                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+            }
+            if (blockedNoFile.Count > 0)
+            {
+                try
+                {
+                    MessageBox.Show(this,
+                        "This PDF appears to be scanned (no extractable text):\n - "
+                        + string.Join("\n - ", blockedNoFile.ToArray())
+                        + "\n\nThe selected model can't read full PDF documents. Switch to a model with "
+                        + "document support to read it.",
+                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
             }
         }
 
