@@ -39,20 +39,24 @@ cache** that drives capability-aware decisions.
 | Concern | Today |
 |---|---|
 | Attachment model | `AttachedFile { FileName, Content }` — `Content` is always extracted **text** (`Models/ChatModels.cs:6`). |
-| Extraction | Pluggable `IAttachmentExtractor` (Text / PDF via iTextSharp / DOCX via Ionic.Zip), coordinated by `AttachmentService.ExtractMany` (`Services/AttachmentService.cs:145`). |
-| Transcript | Attachments persisted structured on `MessageDto.Attachments` (`Data/ConversationStore.cs:338`); Newtonsoft JSON, `NullValueHandling.Ignore`. |
-| Request render | `BuildMessagesForModel` (`Forms/MainForm.cs:1970`) **re-inlines** attachment text into the message string with `--- Attached File: … ---` delimiters, on **every** request, via the `RequestMessageTransform` hook (`Services/Mcp/McpChatOrchestrator.cs:73`). Full history is resent each turn. |
-| Wire `content` | Always a **plain string** (`OpenRouterClient.BuildRequestBody`, `Services/OpenRouterClient.cs:30`). |
-| HTTP | Shells out to **curl** (`OpenRouterClient.BuildCurlArgs:422`) — required for TLS 1.2 on XP. |
+| Extraction | Pluggable `IAttachmentExtractor` (`CanHandle`/`Extract`/`GetFileDialogPatterns`/`GetCategoryLabel`): Text / PDF via iTextSharp (`PdfAttachmentExtractor.Extract`) / DOCX via Ionic.Zip. `AttachmentService` whitelists via `IsSupported` (`Services/AttachmentService.cs:57`) + `BuildOpenFileDialogFilter` (`:69`). Attach UI: `btnAttach_Click` (`MainForm.cs:3859`) + drag-drop (`:247`). |
+| Transcript | Attachments **are** persisted structured (`ToMessageDto:143` → `MessageDto.Attachments:413`) and restored with legacy-delimiter fallback (`FromDto:226`); Newtonsoft, `NullValueHandling.Ignore`. (The `ChatModels.cs:23` "not serialized" comment is stale.) |
+| Request render | `BuildMessagesForModel` (`Forms/MainForm.cs:3479`) **re-inlines** attachment text into the message string with `--- Attached File: … ---` delimiters, on **every** request, via the `RequestMessageTransform` hook (`McpChatOrchestrator.cs:135`, applied at `:410/:629`). Full history is resent each turn. |
+| Wire `content` | `ContentValue` (`OpenRouterClient.cs:163`) returns a plain string normally **but already emits a one-part content *array*** carrying `cache_control` when a message is flagged a cache breakpoint — the array shape exists. |
+| HTTP | Shells out to **curl**; `BuildCurlArgs` (`:715`) writes the JSON body to a temp file and sends `-d @file` (no command-line-length limit; large base64 is fine), API key off the command line via `-K`, temp files cleaned via `CleanupTempFiles` (`:794`) in `finally`. curl is required for TLS 1.2 on XP. |
 | Model info | `ModelCatalogService` (`Services/ModelCatalogService.cs`, namespace `GxPT`) fetches `GET /api/v1/models` via bundled `Lib\curl.exe` on app-open (24h staleness) and via the Settings **"Update Model Info"** button. Keeps only `id → context_length` in `%AppData%\GxPT\model-context.txt`; `TryGetContextLength` feeds the status-bar context meter (`MainForm.cs:5760`). **No modality/pricing data retained yet.** |
 | ZDR | `ConversationDto.Zdr` + `ZdrFirstMessageIndex`. **ZDR locks once the first message is sent under it** — it cannot be turned off mid-conversation. |
 
 **Key architectural insight we build on:** GxPT already separates *durable
 structured storage* (attachments on the message) from *request-time rendering*
 (`BuildMessagesForModel` re-emits them each turn). Multimodal attachments slot
-into the exact same seam — they are stored once and re-rendered every request,
-so they do **not** drop out of context. The only genuinely new wire change is
-that `content` must sometimes be an **array of parts** instead of a string.
+into the exact same seam — stored once, re-rendered every request — so they do
+**not** drop out of context. And the content-part **array** shape already exists
+in `ContentValue` (for `cache_control`), so the wire work is *extending* an
+existing array path with `image_url`/`file` parts — not inventing one. The one
+genuinely new piece of plumbing is carrying the structured `Attachments` through
+the request path into `ContentValue` (today nothing downstream reads them: the
+transform inlines their text and they're dropped). See §8.
 
 ---
 
@@ -132,6 +136,9 @@ Generalize `AttachedFile` to carry a kind and an optional binary payload, while
 staying backward-compatible with existing transcripts.
 
 ```csharp
+// Kind = wire CARRIAGE (how the attachment is sent), NOT source format.
+// A .docx extracts to text ⇒ carried as Text. Binary bytes live in Data,
+// never in Content (Content is inlined as text by the transform — see §8).
 public enum AttachmentKind { Text, Image, Pdf }
 
 public sealed class AttachedFile
@@ -145,6 +152,8 @@ public sealed class AttachedFile
     public string Data { get; set; }            // base64 of the (normalized) bytes
     public int? Width { get; set; }             // images, for the viewer/UX
     public int? Height { get; set; }
+
+    public AttachedFile Clone() { /* deep copy of ALL fields */ }
 }
 ```
 
@@ -160,9 +169,19 @@ PDFs are **dual-representation**: we keep both the cheap extracted text *and* th
 original bytes. Which one is sent is a render-time choice (§8). Images keep bytes
 only; their fallback is a placeholder note (§6.3).
 
+**Carriage, not format.** `Kind` is the wire representation, not the file type —
+DOCX (and any future extractor) extracts to text and is carried as `Text`. The
+load-bearing rule: **binary bytes go in `Data`; `Content` is text only.** If an
+image's base64 ever lands in `Content`, the transform (§8) inlines it as text.
+Provide `AttachedFile.Clone()` (deep copy of all fields) and use it wherever
+attachments are copied — notably the edit/resend path (`MainForm.cs:2376`),
+which today does `new AttachedFile(FileName, Content)` and would silently drop
+`Data`/`Kind`/`MediaType` (an image, whose `Content` is empty, would vanish on
+edit — see §12).
+
 **Backward compatibility:** old transcripts have `{FileName, Content}` with no
 `Kind` → treated as `Text`. The legacy delimiter parser
-(`ConversationStore.TryExtractAttachmentsFromContent:357`) is unchanged.
+(`ConversationStore.TryExtractAttachmentsFromContent:428`) is unchanged.
 
 ---
 
@@ -181,6 +200,12 @@ only; their fallback is a placeholder note (§6.3).
   - Oversized PDFs: prefer the text-only path; warn before embedding huge bytes.
 - **Memory discipline:** transcripts load fully into memory and re-serialize
   atomically (`FileSafe.WriteAllTextAtomic`). Caps keep this bounded.
+- **Cumulative request limits:** because every rich attachment replays each turn
+  (§2), a long conversation can accumulate enough images / PDF pages to exceed a
+  provider's per-request body-size or image-count cap (e.g. Anthropic ~100
+  images/request). Per-item caps don't bound the total — see §10 for oldest-first
+  pruning that keeps the *replayed* set within limits while the durable bytes
+  stay in the transcript.
 
 ---
 
@@ -224,6 +249,13 @@ modalities as **unsupported** — fall back to text/placeholder, with a soft not
 ("couldn't confirm this model supports images"). Never silently send a block
 that may 400.
 
+**First run:** on a fresh install the catalog is empty until the first
+background `/models` fetch completes (`RefreshIfDue` on app open, usually a few
+seconds), so `TryGetModelInfo` misses and image attach is gated off. Surface a
+brief "fetching model info…" affordance (or attach-but-warn) rather than
+silently hiding the option; the Settings "Update Model Info" button covers the
+impatient case.
+
 ---
 
 ## 7. Image normalization (attach time)
@@ -261,14 +293,41 @@ Rules:
 - **Downscale before encode** to honor the size cap (§5).
 - Transcode **once** at attach time; store the normalized bytes in `Data`. The
   viewer, transcript, and wire payload all use the same clean bytes.
+- **Encode once, reuse the exact bytes — never re-encode per request.** The
+  stored `Data` base64 must be byte-identical on every replayed turn. Re-running
+  transcode/downscale at request time would change the bytes and break the cached
+  prefix, re-billing the whole transcript on caching providers
+  (`prompt-caching-design.md:162` requires byte-deterministic transforms).
 
 ---
 
 ## 8. Request rendering (`content` as parts)
 
-The one real wire change. `BuildMessagesForModel` + `OpenRouterClient.BuildRequestBody`
-must emit an **array** when a message carries a renderable rich attachment;
-otherwise keep the plain-string form (no behavior change for text-only turns).
+This is a **two-stage seam**, not a single change — and the array machinery
+already exists (`ContentValue`, for `cache_control`). Stage 1 *decides* the
+representation; stage 2 *emits* it.
+
+**Stage 1 — decide (transform, `BuildMessagesForModel`).** The transform already
+runs per request and knows the selected model + ZDR state, so it resolves
+`ModelCatalogService.TryGetModelInfo` and picks each attachment's representation
+(§6): native block, text, or placeholder. It then:
+- inlines **text/placeholder** representations into the message `Content` string,
+  exactly as today (text files, PDF-as-text, image placeholders); and
+- leaves **binary** representations (image, native PDF) on the request-scoped
+  message's `Attachments` for stage 2 to emit.
+
+**New plumbing:** today the transform's output `Attachments` are dropped before
+`BuildRequestBody` (nothing downstream reads them). Binary attachments chosen for
+native carriage must now survive from the transform through the orchestrator into
+`BuildRequestBody`/`ContentValue`. (`WithCacheControl` already preserves
+`Attachments` on its request-scoped clone — `ChatModels.cs:52` — so the field is
+carried; verify the orchestrator passes it through, and that the transform itself
+doesn't drop it.) The transform must continue to preserve `tool_calls` /
+`tool_call_id` (`McpChatOrchestrator.cs:195`).
+
+**Stage 2 — emit (`ContentValue`, `OpenRouterClient.cs:163`).** Extend the
+existing string-or-array logic to emit a **multi-part array** when the message
+carries binary attachments:
 
 ```jsonc
 "content": [
@@ -279,15 +338,25 @@ otherwise keep the plain-string form (no behavior change for text-only turns).
 ]
 ```
 
-Implementation notes:
 - The `image_url.url` field accepts a **base64 data URL** — no hosting needed.
-- Build the parts in the `RequestMessageTransform`; it **must not drop
-  `tool_calls` / `tool_call_id`** (`McpChatOrchestrator.cs:195`).
-- Per-attachment, pick the representation from §6 (native block vs. text vs.
-  placeholder) using the resolved `ModelInfo` and ZDR state.
-- `BuildRequestBody` gains a content-shape branch: string when all parts are
-  text-only, array otherwise.
-- Cover the array shape in `OpenRouterClientTests`.
+- **Compose with `cache_control`:** `ContentValue` today emits *either* a string
+  *or* a one-part `cache_control` array. With binary parts present it must build
+  the multi-part array and, when `m.CacheControl` is set, attach `cache_control`
+  to the **last part** (so the heavy image/PDF sits inside the cached prefix),
+  respecting the 4-breakpoint cap. Plain string stays the path when there are no
+  binary parts and no cache flag — no behavior change for text-only turns.
+- Keep the existing `text.Length == 0` guard (Anthropic rejects empty text
+  parts): omit the text part when the message text is empty but binary parts
+  exist.
+
+**Auxiliary requests use text-only.** Title generation
+(`Conversation.RequestTitleWithRetry:293`) and any future summarization/compaction
+send a derived copy of the user message; these must use the **text/placeholder**
+representation only — never binary parts (cost, and some endpoints reject images
+on a title-sized request).
+
+Tests: cover the multi-part array shape, the `cache_control`-on-last-part
+composition, and text-only fallback in `OpenRouterClientTests`.
 
 ---
 
@@ -295,6 +364,14 @@ Implementation notes:
 
 ZDR risk is about **who processes the raw file**, not the transport. base64 in
 the body is the same trust boundary as text in the body.
+
+ZDR is enforced by the `provider: { zdr: true }` request flag
+(`ClientProperties.Zdr` → `BuildRequestBody`; one-way latched per `Conversation.Zdr`
+/ `ZdrFirstMessageIndex`). That flag constrains the **model endpoint** OpenRouter
+routes to — it does **not** govern OpenRouter's file-parser plugins, which is
+exactly why the `mistral-ocr` / `cloudflare-ai` engines need separate gating
+below. (The request body, including base64 bytes, transits a local temp file
+that `CleanupTempFiles` deletes in `finally` — it never persists.)
 
 | Path | Processor | ZDR |
 |---|---|---|
@@ -327,15 +404,31 @@ special handling under ZDR — only the escalations are pruned.
 
 ## 10. Context & cost management
 
-The binary is replayed every turn (like text today), so:
+The binary is replayed every turn (like text today). Both levers below **reuse
+existing machinery** rather than adding new systems.
 
-- **Prompt caching:** OpenRouter honors `cache_control` breakpoints for
-  Anthropic/Gemini. Mark heavy attachment blocks cacheable so replays cost ~0.1×.
-- **Prune-with-placeholder, never delete:** under context pressure (or beyond the
-  most-recent N rich attachments), swap the *rendered* representation for a text
-  placeholder (`[image earlier in conversation: photo.png]`) while keeping the
-  durable bytes in the transcript. The file stays viewable and re-activatable;
-  only its wire form is trimmed. Optional per-attachment "keep in context" pin.
+- **Prompt caching is already implemented — reuse it.** `ChatMessage.CacheControl`
+  + `ContentValue`'s ephemeral array, the per-provider `ModelSupportsPromptCaching`
+  gate (`OpenRouterClient.cs:184`), request-scoped `WithCacheControl` cloning, and
+  sticky provider routing (`CacheWarmProvider` / `provider.order`) already exist.
+  The only new work is the multimodal **composition** from §8 — place the
+  `cache_control` breakpoint on the last/heaviest part so the image/PDF prefix
+  caches at ~0.1× on replay. No new caching subsystem.
+- **Prune off the numbers we already have — no client tokenizer.** The context
+  meter is driven entirely by the API's `usage.prompt_tokens` (`LastPromptTokens`)
+  vs `TryGetContextLength` (`MainForm.cs:5750`); there is no client-side token
+  estimator and we won't add one. Drive pruning off those same two values: when
+  the **previous** turn's `LastPromptTokens` approaches the model's context length
+  (or the §5 cumulative request limit is near), prune before the next send. This
+  is reactive (one turn behind) but accurate and free — images/PDFs are counted by
+  the API once sent, so the meter stays correct with zero tokenizer work.
+- **Prune-with-placeholder, never delete.** When pruning, swap the *rendered*
+  representation for a text placeholder (`[image earlier in conversation:
+  photo.png]`) while keeping the durable bytes in the transcript. The file stays
+  viewable and re-activatable; only its wire form is trimmed. Prune oldest-first;
+  optional per-attachment "keep in context" pin. **Where the pin/pruned state
+  lives** is an open question (§14): persisted on `AttachedFile` (survives reload)
+  vs transient (recomputed each session).
 
 This resolves the "drops out after one question" worry: the file persists and
 replays until a deliberate budget/prune decision, and even then survives for
@@ -345,8 +438,16 @@ viewing.
 
 ## 11. In-app image viewer
 
-Click an image attachment in any past message → decode `Data` → show in a
-`Form` with a docked `PictureBox` (`SizeMode = Zoom`).
+**The click→viewer path already exists** — don't build new plumbing. Attachment
+pills render in the transcript (`ChatTranscriptControl.DrawAttachmentPills:1650`)
+and in the pending banner (`MainForm.CreateAttachmentChip`), and both already
+open `FileViewerForm` on double-click / pill hit-test (`HitTestAttachmentPill` →
+`OpenAttachmentInViewer`). Images reuse the **same** pill + click path (no inline
+thumbnail in v1 — a possible later enhancement).
+
+The only change: extend `FileViewerForm` to branch on attachment kind — when
+`Kind == Image`, decode `Data` into a docked `PictureBox` (`SizeMode = Zoom`)
+instead of the existing `RichTextBox` text view. Decode as below:
 
 ```csharp
 byte[] bytes = Convert.FromBase64String(att.Data);
@@ -371,16 +472,20 @@ GDI+ gotchas to respect:
 
 | Area | File / symbol | Change |
 |---|---|---|
-| Attachment model | `Models/ChatModels.cs` `AttachedFile` | Add `Kind`, `MediaType`, `Data`, `Width/Height` |
-| Extractors | `Services/*AttachmentExtractor.cs`, `AttachmentService` | Add image extractor (normalize/transcode); PDF extractor also retains bytes |
-| Transcript | `Data/ConversationStore.cs` `MessageDto` | New fields round-trip (Newtonsoft, ignore-null); legacy parser untouched |
-| Render | `Forms/MainForm.cs` `BuildMessagesForModel` | Emit content-parts array; choose representation per `ModelInfo`+ZDR |
-| Wire | `Services/OpenRouterClient.cs` `BuildRequestBody` | String-vs-array `content` branch; `cache_control` on heavy blocks |
+| Attachment model | `Models/ChatModels.cs` `AttachedFile` | Add `Kind`, `MediaType`, `Data`, `Width/Height`, `Clone()` |
+| Image extractor | **new** `Services/ImageAttachmentExtractor.cs` + register in `AttachmentService` | `CanHandle` png/jpeg/gif/bmp/tiff (reject webp); `Extract` → normalize/transcode to PNG, downscale, base64 into `Data` |
+| PDF extractor | `Services/PdfAttachmentExtractor.cs` | Also retain original bytes in `Data` (keep extracted text in `Content`) |
+| Transcript | `Data/ConversationStore.cs` `MessageDto` | New `AttachedFile` fields round-trip (Newtonsoft, ignore-null); legacy parser untouched |
+| Render — decide | `Forms/MainForm.cs` `BuildMessagesForModel` (`:3479`) | Choose representation per `ModelInfo`+ZDR; inline text/placeholder; **keep binary on `Attachments`** |
+| Render — passthrough | orchestrator path (`McpChatOrchestrator` → `OpenRouterClient`) | Carry transform-output `Attachments` into `BuildRequestBody` (today dropped) |
+| Wire — emit | `Services/OpenRouterClient.cs` `ContentValue` (`:163`) | Extend existing array path: multi-part (text + `image_url`/`file`); compose `cache_control` on last part |
+| Edit/resend | `Forms/MainForm.cs` (`:2370`, `AreAttachmentsEqual`) | Deep-copy via `AttachedFile.Clone()` (today drops `Data`/`Kind`); compare new fields |
+| Auxiliary requests | `Models/Conversation.cs` `RequestTitleWithRetry` (`:293`) | Use text-only representation; never send binary parts |
 | Model fetch | `Services/ModelCatalogService.cs` | **Exists** — reuse curl `GET /models`, 24h refresh, "Update Model Info" button, background thread |
 | Model cache | `Services/ModelCatalogService.cs` (**extend**) + `models.json` | Retain full model objects; add `ModelInfo` + `TryGetModelInfo` / `SupportsImageInput` / `SupportsFileInput`; keep `TryGetContextLength` |
-| Capability gate | attach UI + render | Consult `ModelCatalogService.TryGetModelInfo`; unknown → conservative |
-| Viewer | **new** image viewer `Form` | Decode `Data` → `PictureBox` |
-| Tests | `OpenRouterClientTests`, `ConversationStoreTests` | Array content shape; new-field round-trip; model-cache parse |
+| Capability gate | attach UI (`btnAttach_Click` / drag-drop) + render | Consult `ModelCatalogService.TryGetModelInfo`; unknown / first-run → conservative |
+| Viewer | `Forms/FileViewerForm.cs` (**extend**, not new) | Branch on `Kind == Image` → `PictureBox`; click path already wired |
+| Tests | `OpenRouterClientTests`, `ConversationStoreTests` | Multi-part array + `cache_control` composition; new-field round-trip; model-cache modality parse; `Clone()` / edit round-trip |
 
 ---
 
@@ -404,4 +509,7 @@ GDI+ gotchas to respect:
   entirely? (Spec default: conservative — keep local.)
 - Image downscale target (1024 vs 1568 px long edge) and per-image byte cap.
 - JPEG-for-photos heuristic, or always-PNG for simplicity?
-- Model-cache TTL and whether to expose a manual "Refresh models" UI now or later.
+- Pin / pruned-state persistence (§10): store on `AttachedFile` (survives reload)
+  or keep transient (recomputed each session)?
+- Cumulative request-limit threshold (§5/§10): what total image/PDF size or count
+  triggers oldest-first pruning, and is it per-provider?
