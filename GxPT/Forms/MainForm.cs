@@ -2704,8 +2704,14 @@ namespace GxPT
                 try
                 {
                     // Snapshot the history and log it
-                    // Build a model snapshot where attachments are appended to content on-the-fly
-                    var snapshot = BuildMessagesForModel(convo.History, modelToUse, zdrForSend);
+                    // Build a model snapshot where attachments are appended to content on-the-fly.
+                    // Pass the prior turn's prompt tokens + model context length so §10 prune-with-
+                    // placeholder can shed oldest binary when the replayed set grows too large.
+                    int ctxLenSnap = 0;
+                    if (!string.IsNullOrEmpty(modelToUse))
+                        ModelCatalogService.TryGetContextLength(modelToUse, out ctxLenSnap);
+                    int priorTokensSnap = (convo != null) ? convo.GetUsageStats().LastPromptTokens : 0;
+                    var snapshot = BuildMessagesForModel(convo.History, modelToUse, zdrForSend, priorTokensSnap, ctxLenSnap);
                     // Prompt caching: the newest message carries the cache breakpoint, so each
                     // turn re-reads the prior turn's prefix and extends it. Snapshot messages are
                     // request-local clones - the flag never lands in persisted history.
@@ -3260,11 +3266,17 @@ namespace GxPT
                     }
                     string modelForTransform = model; // capture for transform closure
                     bool zdrForTransform = zdr;       // capture ZDR for the transform closure
+                    // §10 prune inputs: captured once for the turn (LastPromptTokens only updates after
+                    // the turn completes, so it's stable across the tool loop's iterations).
+                    int ctxLenForTransform = 0;
+                    if (!string.IsNullOrEmpty(modelForTransform))
+                        ModelCatalogService.TryGetContextLength(modelForTransform, out ctxLenForTransform);
+                    int priorTokensForTransform = (convo != null) ? convo.GetUsageStats().LastPromptTokens : 0;
                     orch.RequestMessageTransform = delegate(IList<ChatMessage> h)
                     {
                         List<ChatMessage> asList = h as List<ChatMessage>;
                         if (asList == null) asList = new List<ChatMessage>(h);
-                        return BuildMessagesForModel(asList, modelForTransform, zdrForTransform);
+                        return BuildMessagesForModel(asList, modelForTransform, zdrForTransform, priorTokensForTransform, ctxLenForTransform);
                     };
                     // AGENTS.md: inject the workspace root's project instructions into the stable
                     // head (Zone A - cached, so a large file bills once per conversation). Read
@@ -3585,7 +3597,10 @@ namespace GxPT
         //   - PDF otherwise → inline extracted text (or a placeholder if it has none, e.g. scanned)
         // The model parameter may be null (first-run / catalog miss) → conservative text-only.
         // zdr forces every PDF to the local text path (native PDF is disabled under ZDR, §9).
-        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history, string model, bool zdr)
+        // priorPromptTokens/contextLength drive oldest-first prune-with-placeholder (§10); pass 0 to
+        // disable (e.g. when usage/context are unknown — the count/byte safety net still applies).
+        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history, string model, bool zdr,
+            int priorPromptTokens, int contextLength)
         {
             ModelInfo modelInfo = null;
             bool supportsImage = false;
@@ -3600,6 +3615,11 @@ namespace GxPT
                     supportsFile = modelInfo.SupportsFileInput;
                 }
             }
+
+            // Transient prune set (§10): native-eligible attachments to demote to placeholders this
+            // request, oldest-first, keeping the replayed binary within the global-conservative caps.
+            HashSet<AttachedFile> pruned = AttachmentPruner.ComputePruned(
+                history, supportsImage, supportsFile, zdr, priorPromptTokens, contextLength);
 
             var list = new List<ChatMessage>();
             if (history == null) return list;
@@ -3621,7 +3641,14 @@ namespace GxPT
 
                         if (af.EffectiveKind == AttachmentKind.Image)
                         {
-                            if (supportsImage && !string.IsNullOrEmpty(af.Data))
+                            if (supportsImage && !string.IsNullOrEmpty(af.Data) && pruned.Contains(af))
+                            {
+                                // Pruned (§10): shed the heavy bytes, leave a placeholder. The image
+                                // stays in the transcript and re-activates once it's back within budget.
+                                sb.AppendLine();
+                                sb.AppendLine("[image earlier in conversation: " + af.FileName + "]");
+                            }
+                            else if (supportsImage && !string.IsNullOrEmpty(af.Data))
                             {
                                 // Native image path: leave binary on the request-scoped message.
                                 if (nativeParts == null) nativeParts = new List<AttachedFile>();
@@ -3638,13 +3665,30 @@ namespace GxPT
                         else if (af.EffectiveKind == AttachmentKind.Pdf)
                         {
                             bool wantsNative = (af.SendNativePdf == true);
-                            if (wantsNative && supportsFile && !zdr && !string.IsNullOrEmpty(af.Data))
+                            bool hasText = !string.IsNullOrEmpty(af.Content) && af.Content.Trim().Length > 0;
+                            if (wantsNative && supportsFile && !zdr && !string.IsNullOrEmpty(af.Data) && pruned.Contains(af))
+                            {
+                                // Pruned native PDF (§10): drop the bytes. Prefer the extracted text layer
+                                // (lighter than the bytes, still faithful); placeholder only if scanned.
+                                sb.AppendLine();
+                                if (hasText)
+                                {
+                                    sb.AppendLine("--- Attached File: " + af.FileName + " ---");
+                                    sb.AppendLine(af.Content);
+                                    sb.AppendLine("--- End Attached File: " + af.FileName + " ---");
+                                }
+                                else
+                                {
+                                    sb.AppendLine("[PDF earlier in conversation: " + af.FileName + "]");
+                                }
+                            }
+                            else if (wantsNative && supportsFile && !zdr && !string.IsNullOrEmpty(af.Data))
                             {
                                 // Native PDF path: leave binary on the message (file part in §8).
                                 if (nativeParts == null) nativeParts = new List<AttachedFile>();
                                 nativeParts.Add(af);
                             }
-                            else if (!string.IsNullOrEmpty(af.Content) && !string.IsNullOrEmpty(af.Content.Trim()))
+                            else if (hasText)
                             {
                                 // Text path: inline the extracted text (default, universal, cheap).
                                 sb.AppendLine();

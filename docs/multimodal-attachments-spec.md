@@ -490,6 +490,22 @@ This resolves the "drops out after one question" worry: the file persists and
 replays until a deliberate budget/prune decision, and even then survives for
 viewing.
 
+**Implemented mechanism.** `AttachmentPruner.ComputePruned` (pure, unit-tested)
+runs inside `BuildMessagesForModel` each request and returns the reference set of
+native-eligible attachments to demote. It walks the eligible attachments
+**newest-first**, keeping each while within the active caps and demoting the rest:
+
+- *Caps:* **10 images** and **~4 MB** cumulative base64 payload normally; under
+  context pressure they tighten to **3 images / ~1 MB**. Pressure is
+  `priorPromptTokens ≥ 0.85 × contextLength` (both from the existing usage meter;
+  pass `0` to disable the token trigger — the count/byte safety net still applies).
+- *Current turn is exempt:* attachments on the newest message that carries binary
+  are never pruned, so the image/PDF the user just attached always rides native.
+- *Demotion render:* a pruned image becomes `[image earlier in conversation: name]`;
+  a pruned native PDF falls back to its **extracted text** when it has a layer
+  (lighter than the bytes, still faithful) and only to `[PDF earlier in
+  conversation: name]` when scanned. The durable bytes stay in the transcript.
+
 ---
 
 ## 11. In-app image viewer
@@ -539,7 +555,8 @@ GDI+ gotchas to respect:
 | Image extractor | **new** `Services/ImageAttachmentExtractor.cs` + register in `AttachmentService` | `CanHandle` png/jpeg/gif/bmp/tiff (reject webp); `Extract` → normalize/transcode to PNG, downscale, base64 into `Data` |
 | PDF extractor | `Services/PdfAttachmentExtractor.cs` | Also retain original bytes in `Data` (keep extracted text in `Content`) |
 | Transcript | `Data/ConversationStore.cs` `MessageDto` | New `AttachedFile` fields round-trip (Newtonsoft, ignore-null); legacy parser untouched |
-| Render — decide | `Forms/MainForm.cs` `BuildMessagesForModel` (`:3479`) | Choose representation per `ModelInfo`+ZDR; inline text/placeholder; **keep binary on `Attachments`** |
+| Render — decide | `Forms/MainForm.cs` `BuildMessagesForModel` (`:3479`) | Choose representation per `ModelInfo`+ZDR; inline text/placeholder; **keep binary on `Attachments`**; apply `AttachmentPruner` demotions |
+| Prune budgeting | **new** `Services/AttachmentPruner.cs` | Pure §10 oldest-first prune-with-placeholder; linked into the test project (`AttachmentPrunerTests`) |
 | Render — passthrough | orchestrator path (`McpChatOrchestrator` → `OpenRouterClient`) | Carry transform-output `Attachments` into `BuildRequestBody` (today dropped) |
 | Wire — emit | `Services/OpenRouterClient.cs` `ContentValue` (`:163`) | Extend existing array path: multi-part (text + `image_url`/`file`); compose `cache_control` on last part |
 | Edit/resend | `Forms/MainForm.cs` (`:2370`, `AreAttachmentsEqual`) | Deep-copy via `AttachedFile.Clone()` (today drops `Data`/`Kind`); compare new fields |
@@ -578,4 +595,4 @@ the §-reference where it is implemented.
 | Per-image byte cap | **500 KB** (configurable). | §5 |
 | Re-encode strategy | **Alpha-based:** JPEG when no alpha channel, PNG when alpha present. Deterministic from `PixelFormat`; no photo heuristic. GIF is sent as-is or converted to PNG (never JPEG). | §7 |
 | Prune/pin state | **Transient** — recomputed each session; no persisted fields. Pinning deferred to a later iteration. | §10 |
-| Pruning threshold | **Global-conservative:** 10 replayed images OR ~4 MB cumulative bytes (safety-net); primary trigger is token-meter (`LastPromptTokens` vs `TryGetContextLength`). Per-provider refinement deferred. | §5, §10 |
+| Pruning threshold | **Global-conservative:** 10 replayed images OR ~4 MB cumulative bytes (safety-net); token trigger tightens to 3 images / ~1 MB when `LastPromptTokens ≥ 0.85 × TryGetContextLength`. Newest turn exempt; pruned native PDFs fall back to extracted text. Per-provider refinement deferred. | §5, §10 |
