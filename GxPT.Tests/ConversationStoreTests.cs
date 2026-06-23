@@ -183,6 +183,50 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void ToJson_then_Load_roundtrips_pdf_send_native_flag()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            convo.History.Add(new ChatMessage("user", "read it", new List<AttachedFile>
+            {
+                new AttachedFile
+                {
+                    FileName = "scan.pdf",
+                    Content = "",                 // scanned: no extractable text
+                    Kind = AttachmentKind.Pdf,
+                    MediaType = "application/pdf",
+                    Data = "JVBERi0=",
+                    SendNativePdf = true
+                }
+            }));
+
+            string json = ConversationStore.ToJson(convo);
+            var reload = ConversationStore.LoadFromJson(null, json);
+
+            var att = reload.History[0].Attachments[0];
+            Assert.Equal(AttachmentKind.Pdf, att.Kind);
+            Assert.True(att.SendNativePdf == true);
+            Assert.Equal("JVBERi0=", att.Data);
+        }
+
+        [Fact]
+        public void Text_pdf_without_native_flag_omits_it_from_transcript()
+        {
+            var convo = new Conversation(null);
+            convo.Name = "T";
+            convo.History.Add(new ChatMessage("user", "x", new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "doc.pdf", Content = "body",
+                                   Kind = AttachmentKind.Pdf, MediaType = "application/pdf", Data = "JVBERi0=" }
+            }));
+
+            string json = ConversationStore.ToJson(convo);
+            // Null SendNativePdf is omitted (NullValueHandling.Ignore); IsLikelyScanned is [JsonIgnore].
+            Assert.DoesNotContain("SendNativePdf", json);
+            Assert.DoesNotContain("IsLikelyScanned", json);
+        }
+
+        [Fact]
         public void Kind_serializes_as_string_in_transcript()
         {
             var convo = new Conversation(null);

@@ -91,7 +91,14 @@ namespace GxPT
             if (this.rtbFileText == null) return;
 
             this.rtbFileText.Visible = true;
-            this.rtbFileText.Text = af.Content ?? string.Empty;
+            string body = af.Content ?? string.Empty;
+            // A scanned/image-only PDF has no extractable text; explain rather than show a blank box.
+            if (af.EffectiveKind == AttachmentKind.Pdf && string.IsNullOrEmpty(body.Trim()))
+            {
+                body = "[This PDF has no extractable text layer (it appears to be scanned). "
+                     + "When supported, it is sent to the model as a full document.]";
+            }
+            this.rtbFileText.Text = body;
 
             var colors = ThemeService.GetColors(dark);
             this.rtbFileText.BackColor = colors.UiBackground;

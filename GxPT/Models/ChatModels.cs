@@ -26,6 +26,17 @@ namespace GxPT
         public int? Width { get; set; }          // images, for the viewer/UX
         public int? Height { get; set; }
 
+        // PDF only: when true, the PDF is sent as a native `file` block (original bytes) instead of
+        // its extracted text. Durable per-attachment opt-in (omitted when null/false). Gated at
+        // render time by model file-input support and ZDR (native PDF is disabled under ZDR).
+        public bool? SendNativePdf { get; set; }
+
+        // Transient attach-time hint (not persisted): a PDF whose text extraction was empty while it
+        // has pages - i.e. a scanned/image-only PDF that the text path can't represent. Drives the
+        // scanned-PDF prompt; the durable decision it produces lives in SendNativePdf.
+        [JsonIgnore]
+        public bool IsLikelyScanned { get; set; }
+
         // Convenience: the kind to act on, treating a null (legacy) Kind as Text. Not persisted.
         [JsonIgnore]
         public AttachmentKind EffectiveKind
@@ -53,7 +64,9 @@ namespace GxPT
                 MediaType = MediaType,
                 Data = Data,
                 Width = Width,
-                Height = Height
+                Height = Height,
+                SendNativePdf = SendNativePdf,
+                IsLikelyScanned = IsLikelyScanned
             };
         }
     }

@@ -156,35 +156,47 @@ namespace GxPT
         // 1. No binary attachments, no cache flag → plain string (unchanged path).
         // 2. No binary attachments, cache flag set → one-part text array with cache_control.
         // 3. Binary attachments present → multi-part array: text part (if non-empty) + one
-        //    image_url part per image attachment; cache_control on the last part when flagged.
+        //    image_url part per image and one `file` part per native PDF; cache_control on the
+        //    last part when flagged.
         //
         // The array form is the OpenAI-compatible shape OpenRouter requires for cache_control.
         // Emitted for EVERY model: providers without explicit caching ignore the annotation.
         // Empty text parts are omitted — Anthropic rejects them in content arrays.
+        //
+        // The transform (BuildMessagesForModel) decides representation: it leaves only the binary
+        // parts it wants emitted on m.Attachments (images flagged for vision, PDFs flagged native)
+        // and inlines everything else into m.Content. So here we emit a part for each remaining
+        // image / PDF attachment that carries bytes.
         private static object ContentValue(ChatMessage m)
         {
             string text = m.Content != null ? m.Content : string.Empty;
 
-            // Collect image attachments that have been flagged for native carriage by the transform.
+            // Collect binary attachments left on the message for native carriage by the transform.
             List<AttachedFile> images = null;
+            List<AttachedFile> pdfs = null;
             if (m.Attachments != null)
             {
                 for (int i = 0; i < m.Attachments.Count; i++)
                 {
                     var af = m.Attachments[i];
-                    if (af == null) continue;
-                    if (af.EffectiveKind == AttachmentKind.Image && !string.IsNullOrEmpty(af.Data))
+                    if (af == null || string.IsNullOrEmpty(af.Data)) continue;
+                    if (af.EffectiveKind == AttachmentKind.Image)
                     {
                         if (images == null) images = new List<AttachedFile>();
                         images.Add(af);
                     }
+                    else if (af.EffectiveKind == AttachmentKind.Pdf)
+                    {
+                        if (pdfs == null) pdfs = new List<AttachedFile>();
+                        pdfs.Add(af);
+                    }
                 }
             }
 
-            bool hasImages = images != null && images.Count > 0;
+            bool hasBinary = (images != null && images.Count > 0) || (pdfs != null && pdfs.Count > 0);
 
-            // Case 1: plain string — no images, no cache flag, or empty text with no images.
-            if (!hasImages && (!m.CacheControl || text.Length == 0)) return text;
+            // Case 1: plain string — no binary parts, no cache flag, or empty text with no binary.
+            if (!hasBinary && (!m.CacheControl || text.Length == 0)) return text;
 
             // Build a content-parts list.
             var parts = new List<object>();
@@ -199,7 +211,7 @@ namespace GxPT
             }
 
             // Image parts.
-            if (hasImages)
+            if (images != null)
             {
                 for (int i = 0; i < images.Count; i++)
                 {
@@ -213,7 +225,23 @@ namespace GxPT
                 }
             }
 
-            // No parts built (empty text, no images) — return plain empty string.
+            // Native PDF parts: { "type": "file", "file": { "filename", "file_data": data-URL } }.
+            if (pdfs != null)
+            {
+                for (int i = 0; i < pdfs.Count; i++)
+                {
+                    var af = pdfs[i];
+                    var filePart = new Dictionary<string, object>();
+                    filePart["type"] = "file";
+                    var fileObj = new Dictionary<string, object>();
+                    fileObj["filename"] = string.IsNullOrEmpty(af.FileName) ? "document.pdf" : af.FileName;
+                    fileObj["file_data"] = "data:" + (af.MediaType ?? "application/pdf") + ";base64," + af.Data;
+                    filePart["file"] = fileObj;
+                    parts.Add(filePart);
+                }
+            }
+
+            // No parts built (empty text, no binary) — return plain empty string.
             if (parts.Count == 0) return text;
 
             // Attach cache_control to the last part so the heavy image sits inside the cached

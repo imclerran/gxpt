@@ -249,14 +249,30 @@ of model (GDI+ cannot decode it locally — a capability gate, not a model gate)
 | Condition | Sent as |
 |---|---|
 | Default | Extracted text (current behavior; token-light; universal) |
-| User opts in to "send full PDF" **and** model `SupportsFileInput` **and** not ZDR-blocked | Native `file` data-URL block (§8) |
-| Scanned PDF (extraction empty, page count > 0) | Prompt the user (§9 for ZDR wording) — offer native if allowed |
+| User opts into "Send as full PDF" **and** model `SupportsFileInput` **and** not ZDR | Native `file` data-URL block (§8) |
+| Scanned PDF (extraction empty, page count > 0), model `SupportsFileInput`, not ZDR | **Auto-escalated to native, no prompt** (the text path is useless for it) |
+| Scanned PDF, ZDR or no file support | Inline placeholder note; a one-time message explains why it can't be read here |
 
 iTextSharp stays the **default workhorse**. For a clean digital PDF, native
 gives little quality edge at much higher cost; native earns its keep only on
 scanned/visual PDFs (OCR, tables, figures) that the text layer can't represent.
 A newer iTextSharp isn't an option anyway (newer versions drop .NET 3.5 / move
 to AGPL), and wouldn't fix scanned PDFs.
+
+**Implemented mechanism.** PDFs are dual-representation: `PdfAttachmentExtractor`
+stores the extracted text in `Content` *and* the original bytes (base64) in `Data`
+with `Kind = Pdf`. A durable per-attachment `SendNativePdf` flag selects the wire
+representation; `BuildMessagesForModel` re-resolves it every request against the
+current model's `SupportsFileInput` and ZDR (native is forced off under ZDR, §9).
+
+- **Manual opt-in:** right-click a PDF chip in the pending banner → *Send as
+  extracted text / Send as full PDF*. "Full PDF" is enabled only when the model
+  supports file input and ZDR is off; the chip label shows `(full PDF)` when set.
+- **Scanned auto-escalation:** a PDF whose text extraction is empty while it has
+  pages (`IsLikelyScanned`, a transient attach-time hint) is switched to native
+  automatically when eligible — no prompt. When not eligible (ZDR, or the model
+  lacks file support) a one-time message box explains why and, under ZDR, points
+  the user to start a non-ZDR conversation.
 
 ### 6.4 Capability-unknown fallback
 

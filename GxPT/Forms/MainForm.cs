@@ -282,6 +282,7 @@ namespace GxPT
             var extracted = (_attachmentService != null) ? _attachmentService.ExtractMany(paths, out skipped) : new List<AttachedFile>();
             if (extracted != null && extracted.Count > 0)
             {
+                HandleScannedPdfs(extracted);
                 if (ctx.PendingAttachments == null) ctx.PendingAttachments = new List<AttachedFile>();
                 ctx.PendingAttachments.AddRange(extracted);
             }
@@ -2660,7 +2661,7 @@ namespace GxPT
                 {
                     // Snapshot the history and log it
                     // Build a model snapshot where attachments are appended to content on-the-fly
-                    var snapshot = BuildMessagesForModel(convo.History, modelToUse);
+                    var snapshot = BuildMessagesForModel(convo.History, modelToUse, zdrForSend);
                     // Prompt caching: the newest message carries the cache breakpoint, so each
                     // turn re-reads the prior turn's prefix and extends it. Snapshot messages are
                     // request-local clones - the flag never lands in persisted history.
@@ -3214,11 +3215,12 @@ namespace GxPT
                         orch.ContinuationDecider = delegate(int n) { return contPrompt.Ask(n); };
                     }
                     string modelForTransform = model; // capture for transform closure
+                    bool zdrForTransform = zdr;       // capture ZDR for the transform closure
                     orch.RequestMessageTransform = delegate(IList<ChatMessage> h)
                     {
                         List<ChatMessage> asList = h as List<ChatMessage>;
                         if (asList == null) asList = new List<ChatMessage>(h);
-                        return BuildMessagesForModel(asList, modelForTransform);
+                        return BuildMessagesForModel(asList, modelForTransform, zdrForTransform);
                     };
                     // AGENTS.md: inject the workspace root's project instructions into the stable
                     // head (Zone A - cached, so a large file bills once per conversation). Read
@@ -3530,20 +3532,29 @@ namespace GxPT
         }
 
         // Build request-scoped messages from persisted history, resolving per-attachment
-        // representation based on the selected model's capabilities (§6/§8):
-        //   - Text/PDF → inline extracted text into Content (unchanged path)
+        // representation based on the selected model's capabilities and ZDR state (§6/§8/§9):
+        //   - Text → inline extracted text into Content (unchanged path)
         //   - Image, model supports vision → leave binary on nm.Attachments for ContentValue
-        //   - Image, model unknown or no vision → inline placeholder text into Content
+        //   - Image, model unknown / no vision → inline placeholder text into Content
+        //   - PDF, opted into native + model supports file input + not ZDR → leave binary on
+        //     nm.Attachments (ContentValue emits a `file` part)
+        //   - PDF otherwise → inline extracted text (or a placeholder if it has none, e.g. scanned)
         // The model parameter may be null (first-run / catalog miss) → conservative text-only.
-        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history, string model)
+        // zdr forces every PDF to the local text path (native PDF is disabled under ZDR, §9).
+        private static List<ChatMessage> BuildMessagesForModel(List<ChatMessage> history, string model, bool zdr)
         {
             ModelInfo modelInfo = null;
             bool supportsImage = false;
+            bool supportsFile = false;
             if (!string.IsNullOrEmpty(model))
             {
                 try { ModelCatalogService.TryGetModelInfo(model, out modelInfo); }
                 catch { }
-                if (modelInfo != null) supportsImage = modelInfo.SupportsImageInput;
+                if (modelInfo != null)
+                {
+                    supportsImage = modelInfo.SupportsImageInput;
+                    supportsFile = modelInfo.SupportsFileInput;
+                }
             }
 
             var list = new List<ChatMessage>();
@@ -3553,7 +3564,7 @@ namespace GxPT
                 var m = history[i];
                 if (m == null) continue;
                 string content = m.Content ?? string.Empty;
-                List<AttachedFile> nativeImages = null; // images to carry as binary parts
+                List<AttachedFile> nativeParts = null; // images / PDFs to carry as binary parts
 
                 if (m.Attachments != null && m.Attachments.Count > 0)
                 {
@@ -3569,8 +3580,8 @@ namespace GxPT
                             if (supportsImage && !string.IsNullOrEmpty(af.Data))
                             {
                                 // Native image path: leave binary on the request-scoped message.
-                                if (nativeImages == null) nativeImages = new List<AttachedFile>();
-                                nativeImages.Add(af);
+                                if (nativeParts == null) nativeParts = new List<AttachedFile>();
+                                nativeParts.Add(af);
                             }
                             else
                             {
@@ -3580,9 +3591,34 @@ namespace GxPT
                                     + (supportsImage ? "" : " — current model has no vision") + "]");
                             }
                         }
+                        else if (af.EffectiveKind == AttachmentKind.Pdf)
+                        {
+                            bool wantsNative = (af.SendNativePdf == true);
+                            if (wantsNative && supportsFile && !zdr && !string.IsNullOrEmpty(af.Data))
+                            {
+                                // Native PDF path: leave binary on the message (file part in §8).
+                                if (nativeParts == null) nativeParts = new List<AttachedFile>();
+                                nativeParts.Add(af);
+                            }
+                            else if (!string.IsNullOrEmpty(af.Content) && !string.IsNullOrEmpty(af.Content.Trim()))
+                            {
+                                // Text path: inline the extracted text (default, universal, cheap).
+                                sb.AppendLine();
+                                sb.AppendLine("--- Attached File: " + af.FileName + " ---");
+                                sb.AppendLine(af.Content);
+                                sb.AppendLine("--- End Attached File: " + af.FileName + " ---");
+                            }
+                            else
+                            {
+                                // No text layer and native not available here: placeholder note.
+                                sb.AppendLine();
+                                sb.AppendLine("[PDF attached: " + af.FileName
+                                    + " — no extractable text" + (zdr ? "; full-document reading is disabled in Zero-Data-Retention conversations" : "") + "]");
+                            }
+                        }
                         else
                         {
-                            // Text / PDF: inline extracted text content (unchanged path).
+                            // Text attachment: inline extracted text content (unchanged path).
                             sb.AppendLine();
                             sb.AppendLine("--- Attached File: " + af.FileName + " ---");
                             sb.AppendLine(af.Content ?? string.Empty);
@@ -3596,8 +3632,8 @@ namespace GxPT
                 // Preserve tool-call linkage so this is safe as the orchestrator's request transform.
                 nm.ToolCalls = m.ToolCalls;
                 nm.ToolCallId = m.ToolCallId;
-                // Native images travel on Attachments; ContentValue emits them as image_url parts.
-                if (nativeImages != null) nm.Attachments = nativeImages;
+                // Native images / PDFs travel on Attachments; ContentValue emits the wire parts.
+                if (nativeParts != null) nm.Attachments = nativeParts;
                 list.Add(nm);
             }
             return list;
@@ -3969,6 +4005,7 @@ namespace GxPT
                 var extracted = (_attachmentService != null) ? _attachmentService.ExtractMany(ofd.FileNames, out skipped) : new List<AttachedFile>();
                 if (extracted != null && extracted.Count > 0)
                 {
+                    HandleScannedPdfs(extracted);
                     if (ctx.PendingAttachments == null) ctx.PendingAttachments = new List<AttachedFile>();
                     ctx.PendingAttachments.AddRange(extracted);
                 }
@@ -4063,6 +4100,85 @@ namespace GxPT
             return false;
         }
 
+        // True only when the catalog confirms the selected model accepts native file/PDF input.
+        // Conservative on a miss (unknown model / first-run) -> false (spec §6.4).
+        private bool CurrentModelSupportsFile()
+        {
+            try
+            {
+                string model = GetSelectedModel();
+                if (string.IsNullOrEmpty(model)) return false;
+                ModelInfo info;
+                if (ModelCatalogService.TryGetModelInfo(model, out info) && info != null)
+                    return info.SupportsFileInput;
+            }
+            catch { }
+            return false;
+        }
+
+        // Read-only effective ZDR for the active conversation (does NOT engage the latch the way
+        // ResolveZdrForSend does). Used for attach-time gating of native PDF.
+        private bool ActiveConversationIsZdr()
+        {
+            var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
+            if (ctx == null || ctx.Conversation == null) return false;
+            return ctx.Conversation.Zdr || ConvIsZdrLatched(ctx);
+        }
+
+        // Scanned PDFs (no extractable text layer) can't be read via the text path. When the model
+        // supports native file input and ZDR is off, auto-escalate them to the full-document path
+        // (no prompt). Otherwise surface a one-time note explaining why the PDF can't be read here.
+        private void HandleScannedPdfs(List<AttachedFile> extracted)
+        {
+            if (extracted == null || extracted.Count == 0) return;
+            bool supportsFile = CurrentModelSupportsFile();
+            bool zdr = ActiveConversationIsZdr();
+            var blockedZdr = new List<string>();
+            var blockedNoFile = new List<string>();
+
+            for (int i = 0; i < extracted.Count; i++)
+            {
+                var af = extracted[i];
+                if (af == null || af.EffectiveKind != AttachmentKind.Pdf || !af.IsLikelyScanned) continue;
+
+                if (supportsFile && !zdr && !string.IsNullOrEmpty(af.Data))
+                    af.SendNativePdf = true; // auto-escalate, no prompt
+                else if (zdr)
+                    blockedZdr.Add(af.FileName);
+                else
+                    blockedNoFile.Add(af.FileName);
+            }
+
+            if (blockedZdr.Count > 0)
+            {
+                try
+                {
+                    MessageBox.Show(this,
+                        "This PDF appears to be scanned (no extractable text):\n - "
+                        + string.Join("\n - ", blockedZdr.ToArray())
+                        + "\n\nReading it requires sending the full document, which routes through a "
+                        + "third-party processor whose data-retention policy can't be confirmed - so it "
+                        + "is disabled in Zero-Data-Retention conversations. To read this document, start "
+                        + "a new conversation without ZDR.",
+                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+            }
+            if (blockedNoFile.Count > 0)
+            {
+                try
+                {
+                    MessageBox.Show(this,
+                        "This PDF appears to be scanned (no extractable text):\n - "
+                        + string.Join("\n - ", blockedNoFile.ToArray())
+                        + "\n\nThe selected model can't read full PDF documents. Switch to a model with "
+                        + "document support to read it.",
+                        "Scanned PDF", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+            }
+        }
+
         private void RebuildAttachmentsBanner()
         {
             try
@@ -4072,6 +4188,13 @@ namespace GxPT
                 this.pnlAttachmentsBanner.SuspendLayout();
                 try
                 {
+                    // Dispose old chips first - Controls.Clear() detaches but doesn't dispose, and
+                    // PDF chips own a ContextMenuStrip (disposed via the chip's Disposed handler).
+                    for (int ci = this.pnlAttachmentsBanner.Controls.Count - 1; ci >= 0; ci--)
+                    {
+                        try { this.pnlAttachmentsBanner.Controls[ci].Dispose(); }
+                        catch { }
+                    }
                     this.pnlAttachmentsBanner.Controls.Clear();
                     if (ctx == null || ctx.PendingAttachments == null || ctx.PendingAttachments.Count == 0)
                     {
@@ -4117,6 +4240,9 @@ namespace GxPT
             panel.Cursor = Cursors.Hand;
 
             string text = afRef != null ? (afRef.FileName ?? string.Empty) : string.Empty;
+            // PDF escalated to native full-document: surface the mode on the chip label.
+            if (afRef != null && afRef.EffectiveKind == AttachmentKind.Pdf && afRef.SendNativePdf == true)
+                text += "  (full PDF)";
             panel.Font = (this.txtMessage != null ? this.txtMessage.Font : this.Font);
 
             // Measure and set size so FlowLayout can lay out correctly
@@ -4189,6 +4315,35 @@ namespace GxPT
             // Double-click opens a preview
             EventHandler onDoubleClick = (s, e) => { if (afRef != null) OpenAttachmentInViewer(afRef); };
             panel.DoubleClick += onDoubleClick;
+
+            // PDF attachments: right-click to choose extracted-text vs native full-PDF carriage.
+            // (Left-click still removes; double-click still previews - the menu is right-click only.)
+            if (afRef != null && afRef.EffectiveKind == AttachmentKind.Pdf)
+            {
+                var cms = new ContextMenuStrip();
+                var miText = new ToolStripMenuItem("Send as extracted text");
+                var miFull = new ToolStripMenuItem("Send as full PDF");
+
+                bool isNative = (afRef.SendNativePdf == true);
+                bool nativeEligible = CurrentModelSupportsFile() && !ActiveConversationIsZdr()
+                                      && !string.IsNullOrEmpty(afRef.Data);
+                miText.Checked = !isNative;
+                miFull.Checked = isNative;
+                // Allow switching to Full only when eligible; always allow switching back to text.
+                miFull.Enabled = nativeEligible || isNative;
+                if (!miFull.Enabled)
+                    miFull.ToolTipText = ActiveConversationIsZdr()
+                        ? "Disabled in Zero-Data-Retention conversations"
+                        : "The selected model can't read full PDF documents";
+
+                miText.Click += (s, e) => { if (afRef != null) { afRef.SendNativePdf = false; RebuildAttachmentsBanner(); } };
+                miFull.Click += (s, e) => { if (afRef != null) { afRef.SendNativePdf = true; RebuildAttachmentsBanner(); } };
+                cms.Items.Add(miText);
+                cms.Items.Add(miFull);
+                panel.ContextMenuStrip = cms;
+                // ContextMenuStrip isn't owned by the panel; dispose it when the chip goes away.
+                panel.Disposed += (s, e) => { try { cms.Dispose(); } catch { } };
+            }
 
             return panel;
         }

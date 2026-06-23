@@ -445,5 +445,71 @@ namespace GxPT.Tests.Mcp
             Assert.Equal(JTokenType.String, content.Type);
             Assert.Equal("hello", (string)content);
         }
+
+        // ---- native PDF `file` content parts (phase 4) ----
+
+        [Fact]
+        public void Pdf_attachment_emits_file_part_with_data_url()
+        {
+            var msg = new ChatMessage("user", "summarize this");
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "report.pdf", Kind = AttachmentKind.Pdf,
+                                   MediaType = "application/pdf", Data = "JVBERi0=" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("vendor/docs", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(JTokenType.Array, content.Type);
+
+            var textPart = content[0];
+            Assert.Equal("text", (string)textPart["type"]);
+            Assert.Equal("summarize this", (string)textPart["text"]);
+
+            var filePart = content[1];
+            Assert.Equal("file", (string)filePart["type"]);
+            Assert.Equal("report.pdf", (string)filePart["file"]["filename"]);
+            Assert.Equal("data:application/pdf;base64,JVBERi0=", (string)filePart["file"]["file_data"]);
+        }
+
+        [Fact]
+        public void Pdf_and_image_attachments_emit_both_part_types()
+        {
+            var msg = new ChatMessage("user", "look at both");
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "a.png", Kind = AttachmentKind.Image,
+                                   MediaType = "image/png", Data = "QQ==" },
+                new AttachedFile { FileName = "b.pdf", Kind = AttachmentKind.Pdf,
+                                   MediaType = "application/pdf", Data = "Qg==" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            Assert.Equal(3, content.Count()); // text + image + file
+            Assert.Equal("image_url", (string)content[1]["type"]);
+            Assert.Equal("file", (string)content[2]["type"]);
+        }
+
+        [Fact]
+        public void Pdf_attachment_with_cache_flag_puts_cache_control_on_file_part()
+        {
+            var msg = new ChatMessage("user", "doc");
+            msg.CacheControl = true;
+            msg.Attachments = new List<AttachedFile>
+            {
+                new AttachedFile { FileName = "b.pdf", Kind = AttachmentKind.Pdf,
+                                   MediaType = "application/pdf", Data = "Qg==" }
+            };
+            var body = OpenRouterClient.BuildRequestBody("v/m", new List<ChatMessage> { msg },
+                null, new ClientProperties());
+
+            var content = ((JArray)JObject.Parse(body)["messages"])[1]["content"];
+            var lastPart = content[content.Count() - 1];
+            Assert.Equal("file", (string)lastPart["type"]);
+            Assert.Equal("ephemeral", (string)lastPart["cache_control"]["type"]);
+        }
     }
 }
