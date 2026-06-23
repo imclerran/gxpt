@@ -15,7 +15,9 @@ namespace GxPT
         // X-OpenRouter-Categories assigns marketplace categories (comma-separated, lowercase).
         private const string AttributionReferer = "https://www.imclerran.com/gxpt/";
         private const string AttributionTitle = "GxPT";
-        private const string AttributionCategories = "general-chat";
+
+        // Up to 2 marketplace categories (comma-separated, lowercase) per OpenRouter's limit.
+        private const string AttributionCategories = "programming-app,personal-agent";
 
         private readonly string _apiKey;
         private readonly string _curlPath;
