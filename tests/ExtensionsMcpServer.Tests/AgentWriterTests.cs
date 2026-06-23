@@ -287,6 +287,25 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void ReadAgent_DescriptionlessDraftDoesNotShadowBundled()
+        {
+            // A description-less project draft must not shadow a valid bundled agent of the same slug -
+            // read_agent and list_agents resolve to what the host actually dispatches (the bundled one).
+            MakeBundled("explore", "bundled body");                                   // valid (has description)
+            File.WriteAllText(AgentFile("explore"), "---\nname: Explore\n---\ndraft body\n"); // project, NO description
+            Assert.Contains("bundled body", _writer.ReadAgent("explore"));
+            Assert.Contains("- explore (bundled)", _writer.ListAgents());
+        }
+
+        [Fact]
+        public void ValidateAgent_LoneDescriptionlessDraft_ReportsInvalid()
+        {
+            // When NO root has a described copy, the lone draft is still found so validate can diagnose it.
+            File.WriteAllText(AgentFile("draft"), "---\nname: Draft\n---\nbody\n"); // project-only, no description
+            Assert.StartsWith("INVALID", _writer.ValidateAgent("draft"));
+        }
+
+        [Fact]
         public void EditAgent_ToleratesSurroundingWhitespaceInOldString()
         {
             // The stored body is trimmed, so an old_string copied with body-edge whitespace still matches its

@@ -106,13 +106,15 @@ namespace ExtensionsMcpServer
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
             catch (Exception ex) { throw new SkillWriteException("could not read SKILL.md: " + ex.Message); }
 
-            if (name != null) RequireSingleLine(name, "name");
-            if (description != null) RequireSingleLine(description, "description");
+            if (!IsBlank(name)) RequireSingleLine(name, "name");
+            if (!IsBlank(description)) RequireSingleLine(description, "description");
 
             SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
-            string newName = name != null ? name : fm.Name; // may stay null -> name line omitted (no slug forced)
-            string newDesc = description != null ? description : fm.Description;
-            string newBody = body != null ? body : fm.Body;
+            // A present-but-blank scalar means "keep" (same as omitting it): passing "" never silently wipes
+            // an existing name/description/body. Mirrors update_agent.
+            string newName = !IsBlank(name) ? name : fm.Name; // may stay null -> name line omitted (no slug forced)
+            string newDesc = !IsBlank(description) ? description : fm.Description;
+            string newBody = !IsBlank(body) ? body : fm.Body;
             if (IsBlank(newDesc)) throw new SkillWriteException("description is required");
 
             AtomicWrite(file, BuildSkillMd(newName, newDesc, newBody));

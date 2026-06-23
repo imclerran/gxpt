@@ -420,5 +420,17 @@ namespace ExtensionsMcpServer.Tests
             Assert.Contains("bundled", ex.Message);
             Assert.Contains("read-only", ex.Message);
         }
+
+        [Fact]
+        public void UpdateSkill_BlankNameKeepsExisting()
+        {
+            // A present-but-blank name means "keep", not "clear" (mirrors update_agent); passing "" must not
+            // silently drop the existing name.
+            _writer.CreateSkill(null, "greeting", "Greeting", "Be a pirate.", "body");
+            _writer.UpdateSkill(null, "greeting", "", "New desc.", null); // name="" => keep
+            string text = File.ReadAllText(SkillFile("greeting"));
+            Assert.Contains("name: Greeting", text);
+            Assert.Contains("description: New desc.", text);
+        }
     }
 }

@@ -163,19 +163,23 @@ namespace ExtensionsMcpServer
         // is not scope-confined - the author needs to see the shipped agents (e.g. explore) to model on them.
         public string ListAgents()
         {
-            // Add least-specific first so a more-specific root overwrites the source label (newest wins).
-            Dictionary<string, string> bySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            AddRootSlugs(_bundledRoot, "bundled", bySlug);
-            AddRootSlugs(_userRoot, "user", bySlug);
-            AddRootSlugs(_projectRoot, "project", bySlug);
+            // Per slug, show the source the host would dispatch: a described file outranks an undescribed
+            // draft, and within that the most-specific root wins (project > user > bundled). Undescribed-only
+            // slugs (drafts) are still listed - tagged with their source - so the author can see and fix them.
+            Dictionary<string, string> sourceBySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, bool> describedBySlug = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            string[] roots = new string[] { _projectRoot, _userRoot, _bundledRoot }; // most-specific first
+            string[] labels = new string[] { "project", "user", "bundled" };
+            for (int i = 0; i < roots.Length; i++)
+                AddRootSlugs(roots[i], labels[i], sourceBySlug, describedBySlug);
 
-            List<string> slugs = new List<string>(bySlug.Keys);
+            List<string> slugs = new List<string>(sourceBySlug.Keys);
             slugs.Sort(StringComparer.OrdinalIgnoreCase);
 
             StringBuilder sb = new StringBuilder();
             sb.Append("Agents:");
             if (slugs.Count == 0) sb.Append("\n(none)");
-            foreach (string s in slugs) sb.Append('\n').Append("- ").Append(s).Append(" (").Append(bySlug[s]).Append(')');
+            foreach (string s in slugs) sb.Append('\n').Append("- ").Append(s).Append(" (").Append(sourceBySlug[s]).Append(')');
             return sb.ToString();
         }
 
@@ -380,56 +384,99 @@ namespace ExtensionsMcpServer
         // Convenience for callers (read_agent) that only need the path, not which scope it came from.
         private string ResolveExistingFile(string slug) { string source; return ResolveExistingFile(slug, out source); }
 
-        // Read-side resolution: find <slug>.md across all roots, newest-wins (project > user > bundled),
-        // matching the host catalog's precedence. Returns the file path (and the source label) or null.
+        // Read-side resolution: the file the HOST would dispatch for this slug - the most-specific root
+        // (project > user > bundled) whose <slug>.md declares a non-empty description. A description-less
+        // file (a draft) does NOT claim the slug, so it can't shadow a valid agent in a less-specific root
+        // (matching AgentCatalog.TryLoad, which skips description-less files). If NO root has a described
+        // copy, the most-specific file is returned anyway (a lone/broken draft) so the author can still read
+        // it and validate_agent can report why it won't load. `source` is the winning scope label.
         private string ResolveExistingFile(string slug, out string source)
         {
             source = null;
             string[] roots = new string[] { _projectRoot, _userRoot, _bundledRoot };
             string[] labels = new string[] { "project", "user", "bundled" };
+            string anyFile = null, anyLabel = null;
             for (int i = 0; i < roots.Length; i++)
             {
-                if (string.IsNullOrEmpty(roots[i])) continue;
-                // Resolve the same way the host catalog does: the slug is the file name normalized via
-                // SkillSlug.Make, NOT the raw file name - so a hand-placed "Code Explorer.md" resolves under
-                // "code-explorer" exactly as the host dispatches it (not only the canonical "<slug>.md").
-                Dictionary<string, string> bySlug = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                CollectRootFiles(roots[i], bySlug);
-                string file;
-                if (bySlug.TryGetValue(slug, out file)) { source = labels[i]; return file; }
+                string file = FindInRoot(roots[i], slug);
+                if (file == null) continue;
+                if (anyFile == null) { anyFile = file; anyLabel = labels[i]; }
+                if (HasDescription(file)) { source = labels[i]; return file; }
             }
-            return null;
+            source = anyLabel;
+            return anyFile;
         }
 
-        // Adds each agent in root to the map under the given source label, overwriting any prior label
-        // (callers add least-specific first so the most-specific source wins).
-        private static void AddRootSlugs(string root, string label, Dictionary<string, string> bySlug)
+        // The file in `root` whose normalized slug matches, by the host's filename rule: the canonical
+        // "<slug>.md" fast-path (the common case - tool-written names are already canonical and
+        // SkillSlug.Make is idempotent, so this avoids enumerating the directory), else a normalized scan
+        // (SkillSlug.Make per file, exact ".md" guard, ordinal last-wins) for a hand-placed non-canonical
+        // name like "Code Explorer.md". Returns the path or null.
+        private static string FindInRoot(string root, string slug)
         {
-            Dictionary<string, string> files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            CollectRootFiles(root, files);
-            foreach (string slug in files.Keys) bySlug[slug] = label;
-        }
-
-        // Enumerate a single root's agents as slug -> file path, normalized exactly like the host
-        // AgentCatalog: only files whose extension is exactly ".md" (guarding the Win32 "*.md" wildcard
-        // quirk), with the slug derived from the file name via SkillSlug.Make (not the raw name), and the
-        // file list sorted ordinal so a same-root slug collision ("Foo.md" vs "foo.md") resolves
-        // deterministically (last wins) - the same rule AgentCatalog.Build uses. Keeping these in lockstep
-        // is what makes read_agent/list_agents agree with what the host actually dispatches.
-        private static void CollectRootFiles(string root, Dictionary<string, string> bySlug)
-        {
-            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+            if (string.IsNullOrEmpty(root)) return null;
+            string canonical = Path.Combine(root, slug + ".md");
+            if (File.Exists(canonical)) return canonical;
+            if (!Directory.Exists(root)) return null;
             string[] files;
             try { files = Directory.GetFiles(root, "*.md"); }
-            catch { return; }
+            catch { return null; }
+            Array.Sort(files, StringComparer.Ordinal);
+            string match = null;
+            foreach (string f in files)
+            {
+                string ext = Path.GetExtension(f);
+                if (ext == null || !ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(SkillSlug.Make(Path.GetFileNameWithoutExtension(f)), slug, StringComparison.Ordinal))
+                    match = f; // ordinal last-wins within the root, matching the host catalog
+            }
+            return match;
+        }
+
+        // True if the file's frontmatter declares a non-empty description - what makes the host dispatch it.
+        private static bool HasDescription(string file)
+        {
+            try { return !IsBlank(AgentFrontmatter.Parse(File.ReadAllText(file, Encoding.UTF8)).Description); }
+            catch { return false; }
+        }
+
+        // Merge one root's agents into the list maps. The most-specific root is added first; a slug is taken
+        // if not yet seen, or if this file is described and the stored one isn't (a described file in a
+        // less-specific root still outranks a draft above it - matching dispatch). Within a root, last-wins.
+        private static void AddRootSlugs(string root, string label,
+            Dictionary<string, string> sourceBySlug, Dictionary<string, bool> describedBySlug)
+        {
+            Dictionary<string, bool> rootMap = ScanRoot(root);
+            foreach (KeyValuePair<string, bool> kv in rootMap)
+            {
+                if (!sourceBySlug.ContainsKey(kv.Key) || (kv.Value && !describedBySlug[kv.Key]))
+                {
+                    sourceBySlug[kv.Key] = label;
+                    describedBySlug[kv.Key] = kv.Value;
+                }
+            }
+        }
+
+        // Scan one root into slug -> hasDescription, normalized exactly like the host AgentCatalog: only
+        // files whose extension is exactly ".md" (guarding the Win32 "*.md" wildcard quirk), slug derived
+        // via SkillSlug.Make (not the raw name), file list sorted ordinal so a same-root slug collision
+        // resolves deterministically (last wins) - the rule AgentCatalog.Build/TryLoad use.
+        private static Dictionary<string, bool> ScanRoot(string root)
+        {
+            Dictionary<string, bool> map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return map;
+            string[] files;
+            try { files = Directory.GetFiles(root, "*.md"); }
+            catch { return map; }
             Array.Sort(files, StringComparer.Ordinal);
             foreach (string f in files)
             {
                 string ext = Path.GetExtension(f);
                 if (ext == null || !ext.Equals(".md", StringComparison.OrdinalIgnoreCase)) continue;
                 string slug = SkillSlug.Make(Path.GetFileNameWithoutExtension(f));
-                if (!string.IsNullOrEmpty(slug)) bySlug[slug] = f;
+                if (!string.IsNullOrEmpty(slug)) map[slug] = HasDescription(f);
             }
+            return map;
         }
 
         private static string RequireSlug(string slugIn)
