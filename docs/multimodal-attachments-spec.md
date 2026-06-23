@@ -440,9 +440,16 @@ viewing.
 
 **The click→viewer path already exists** — don't build new plumbing. Attachment
 pills render in the transcript (`ChatTranscriptControl.DrawAttachmentPills:1650`)
-and in the pending banner (`MainForm.CreateAttachmentChip`), and both already
-open `FileViewerForm` on double-click / pill hit-test (`HitTestAttachmentPill` →
-`OpenAttachmentInViewer`). Images reuse the **same** pill + click path (no inline
+and in the pending banner (`MainForm.CreateAttachmentChip`). The two surfaces use
+different interaction models:
+
+- **Transcript pills** — **single left-click**: `OnMouseDown` (`ChatTranscriptControl.cs:2873`)
+  sets the pressed visual state; `OnMouseUp` (`:2789`) calls `OpenAttachmentInViewer`.
+  `HitTestAttachmentPill` provides the pill→attachment index mapping.
+- **Pending-banner chips** — **double-click**: `panel.DoubleClick` in
+  `MainForm.CreateAttachmentChip`.
+
+Images reuse the **same** transcript-pill + single-click path (no inline
 thumbnail in v1 — a possible later enhancement).
 
 The only change: extend `FileViewerForm` to branch on attachment kind — when
