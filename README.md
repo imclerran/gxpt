@@ -2,7 +2,7 @@
 
 ![Windows XP Goes Agentic!](GxPT-banner.png)
 
-A native chatbot client and coding agent for Windows XP. GxPT aims to provide a modern and user-friendly chat interface on legacy Windows systems, with robust Markdown and code syntax highlighting support. It also brings agentic workflows to the era of Luna and Aero - autonomously chaining tools for agentic coding and web search via the Model Context Protocol (MCP), with per-conversation privacy controls.
+An agentic AI harness and coding agent for Windows XP. GxPT aims to provide modern agentic coding and AI chat features in a period-appropriate interface on legacy Windows systems. GxPT brings agentic web search, tool calling, custom skills, and sub-agent dispatching to the era of Luna and Aero, along with per-conversation privacy controls to keep your data safe.
 
 ## Screenshot
 
