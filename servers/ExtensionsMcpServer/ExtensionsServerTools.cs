@@ -62,20 +62,14 @@ namespace ExtensionsMcpServer
 
             server.AddTool("create_skill",
                 "Create a NEW skill: writes its SKILL.md from the given fields (the server assembles valid "
-                + "frontmatter). A skill is REUSABLE instructions that teach a future model how to do a task - "
-                + "not a place to store the RESULT of doing that task once. Only call this when the user wants "
-                + "to author a skill. If you are instead carrying out a task (even one a skill told you to do), "
-                + "produce that deliverable for the user with the file tools in their workspace; do not create a "
-                + "skill to hold it. Refuses if the skill already exists - use update_skill to change one. The "
+                + "frontmatter). Refuses if the skill already exists - use update_skill to change one. The "
                 + "skill becomes available on the user's next message.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "Kebab-case handle (lowercase words joined by single hyphens, e.g. "
                         + "release-notes); normalized automatically. This is the skill's folder name and handle.")
                     .Str("name", true, "Human-readable name (Title Case).")
                     .Str("description", true, "Single line shown in the skills list - phrase it as 'use this when ...'.")
-                    .Str("body", true, "The skill's REUSABLE instructions (markdown): tell a future model HOW to "
-                        + "do the task, every time. This is not the output of doing the task once - never paste a "
-                        + "produced deliverable (a finished review, report, or document) in here.")
+                    .Str("body", true, "The skill's instructions (markdown). Tell the model how to do the task.")
                     .Str("scope", false, scopeDesc)
                     .Build(),
                 ToolAnnotations.Write(),
@@ -95,10 +89,10 @@ namespace ExtensionsMcpServer
                 + "itself reads or runs - into an existing skill's folder, by a path relative to the skill "
                 + "folder (subdirs allowed). For SKILL.md use create_skill / update_skill instead. Scripts "
                 + "should be .bat/.cmd; they are written with CRLF line endings. This is ONLY for authoring a "
-                + "skill's own reusable parts. It is NOT where the OUTPUT of running a skill goes: if you are "
-                + "performing a task a skill describes (writing a vendor review, a report, generated code, any "
-                + "deliverable), that result is for the user and belongs in their workspace via the file tools "
-                + "(files__write) - never write a task's output into a skill folder.",
+                + "skill's own reusable parts. It is NOT where a task's OUTPUT goes: if you are carrying out a "
+                + "task (even one a skill describes) and producing a deliverable for the user, that result "
+                + "belongs in their workspace via the file tools (files__write) - never write a task's output "
+                + "into a skill folder.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The skill's slug (it must already exist).")
                     .Str("relpath", true, "Path relative to the skill folder, e.g. scripts/gen.bat or examples/foo.md.")
