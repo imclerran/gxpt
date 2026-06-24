@@ -1,89 +1,160 @@
 using System;
-using System.Reflection;
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace GxPT
 {
-    // Stops the status-bar tooltips from flickering after the strip is clicked, while keeping the
-    // normal (native) ToolStrip tooltips that work fine the rest of the time.
+    // Replaces the StatusStrip's native item tooltips with manually driven ones to stop the flicker.
     //
-    // Clicking a ToolStrip/StatusStrip latches it into the framework's "modal menu" navigation mode
-    // (ToolStripManager.ModalMenuFilter) -- the same state a menu bar uses. A status bar has nothing
-    // to navigate, but while it is stuck there the strip continuously re-tracks the mouse; combined
-    // with the well-known bottom-docked-ToolStrip tooltip quirk (the native tip is positioned under
-    // the cursor, which the strip then reads as a mouse-leave and immediately re-shows), that churn
-    // produces the rapid on/off/on/off flashing. The mode only ends when a mouse-down lands on some
-    // other window (e.g. the chat transcript) -- exactly the user-visible "click elsewhere to fix it".
+    // Root cause: the native ToolStrip tooltip is positioned just under the cursor. With the strip at
+    // the very bottom of the screen the tip lands on/over the Windows taskbar and under the cursor;
+    // the strip then registers a mouse-leave, hides the tip, and immediately re-shows it -- the rapid
+    // on/off/on/off loop. The framework's positioning (UpdateToolTip) is internal and cannot be
+    // overridden or corrected in place.
     //
-    // We replay that teardown ourselves: after each mouse-down on the strip we exit menu mode through
-    // the framework's own ModalMenuFilter.ExitMenuMode(). It is internal, so we reach it by
-    // reflection; if the lookup ever fails the call degrades to a no-op (the pre-existing flicker),
-    // never a throw.
+    // The fix turns the native tooltips off and shows a plain ToolTip ourselves, with the three
+    // things that make the loop impossible:
+    //   1. Triggered by per-item MouseHover/MouseEnter (NOT MouseMove). MouseMove fires constantly and
+    //      re-shows the tip under the cursor on every pixel of movement, which is itself a flicker
+    //      source; hover fires once when the pointer settles on an item.
+    //   2. Shown ABOVE the status bar, where it can never overlap the cursor or the taskbar.
+    //   3. Shown at most once per item (guarded), and hidden only on a real MouseLeave/MouseDown.
     //
-    // Why MouseDOWN, not MouseUp: once menu mode is active its message filter swallows the mouse-up
-    // before the strip can raise a MouseUp event, so a MouseUp handler would never run. The mouse-down
-    // that ENTERS menu mode still raises normally; we BeginInvoke the exit so it runs after the strip
-    // has finished entering menu mode for that click.
-    internal static class StatusStripTooltipFix
+    // ToolTip.Show prerequisites that the earlier attempts got wrong and that are required for it to
+    // display at all: Active and ShowAlways true, a positive duration (AutoPopDelay defaults to 0 on a
+    // code-created ToolTip, which suppresses display), and on-screen client coordinates.
+    internal sealed class StatusStripTooltipFix
     {
-        private static bool _resolved;
-        private static MethodInfo _exitMenuMode;
+        private readonly ToolStrip _strip;
+        private readonly ToolTip _toolTip;
+        private readonly Timer _hoverTimer;
+
+        private ToolStripItem _hotItem;    // item the pointer is currently over
+        private ToolStripItem _shownItem;  // item the tip is currently displayed for
+        private Control _tipOwner;         // window Show()/Hide() are anchored to
 
         internal static void Apply(ToolStrip strip)
         {
             if (strip == null) return;
+            // The instance keeps itself alive through the event subscriptions below.
+            new StatusStripTooltipFix(strip);
+        }
 
-            // Keep the native item tooltips; only their post-click flicker is the problem.
-            strip.ShowItemToolTips = true;
+        private StatusStripTooltipFix(ToolStrip strip)
+        {
+            _strip = strip;
 
-            // Defer past the current click so menu mode is fully established before we drop it.
-            MouseEventHandler onDown = delegate
-            {
-                if (!strip.IsHandleCreated) return;
-                try { strip.BeginInvoke((MethodInvoker)ExitMenuMode); }
-                catch { }
-            };
+            // Turn off the buggy native tooltips; everything below replaces them.
+            _strip.ShowItemToolTips = false;
 
-            // Hook the strip AND every item: a click that lands directly on a ToolStripItem is
-            // routed to the item and does not reliably raise the strip's own MouseDown, so hooking
-            // only the strip would miss clicks on the labels (the common case) and leave them
-            // flickering. Items are static here, but ItemAdded keeps it correct if that changes.
-            strip.MouseDown += onDown;
-            foreach (ToolStripItem item in strip.Items)
-                item.MouseDown += onDown;
+            _toolTip = new ToolTip();
+            _toolTip.Active = true;
+            _toolTip.ShowAlways = true;
+            _toolTip.UseAnimation = false;
+            _toolTip.UseFading = false;
+            _toolTip.AutoPopDelay = 5000;
+            _toolTip.InitialDelay = 500;
+            _toolTip.ReshowDelay = 100;
+
+            // Fallback delay timer in case a given item doesn't raise MouseHover; MouseEnter always
+            // fires, so this guarantees the tip appears after the system hover delay regardless.
+            _hoverTimer = new Timer();
+            _hoverTimer.Interval = Math.Max(1, SystemInformation.MouseHoverTime);
+            _hoverTimer.Tick += HoverTimer_Tick;
+
+            foreach (ToolStripItem item in strip.Items) HookItem(item);
             strip.ItemAdded += delegate(object sender, ToolStripItemEventArgs e)
             {
-                if (e != null && e.Item != null) e.Item.MouseDown += onDown;
+                if (e != null && e.Item != null) HookItem(e.Item);
+            };
+            strip.Disposed += delegate
+            {
+                try { _hoverTimer.Dispose(); } catch { }
+                try { _toolTip.Dispose(); } catch { }
             };
         }
 
-        private static void ExitMenuMode()
+        private void HookItem(ToolStripItem item)
         {
-            try
-            {
-                MethodInfo m = ResolveExitMenuMode();
-                if (m != null) m.Invoke(null, null);
-            }
-            catch { }
+            item.MouseEnter += Item_MouseEnter;
+            item.MouseHover += Item_MouseHover;
+            item.MouseLeave += Item_MouseLeave;
+            item.MouseDown += Item_MouseDown;
         }
 
-        private static MethodInfo ResolveExitMenuMode()
+        private void Item_MouseEnter(object sender, EventArgs e)
         {
-            if (_resolved) return _exitMenuMode;
-            _resolved = true;
-            try
+            _hotItem = sender as ToolStripItem;
+            _hoverTimer.Stop();
+            if (HasTip(_hotItem)) _hoverTimer.Start();
+        }
+
+        // Either trigger (the system hover event, or our fallback timer) shows the tip; the
+        // once-per-item guard inside ShowTipFor keeps them from fighting.
+        private void Item_MouseHover(object sender, EventArgs e)
+        {
+            ShowTipFor(sender as ToolStripItem);
+        }
+
+        private void HoverTimer_Tick(object sender, EventArgs e)
+        {
+            _hoverTimer.Stop();
+            ShowTipFor(_hotItem);
+        }
+
+        private void ShowTipFor(ToolStripItem item)
+        {
+            if (!HasTip(item) || item != _hotItem || item == _shownItem) return;
+            if (!_strip.IsHandleCreated || !_strip.Visible) return;
+
+            Control owner = _strip.FindForm();
+            if (owner == null) owner = _strip;
+            _tipOwner = owner;
+
+            // Anchor above the item: convert the item's top-left to screen, lift it clear of the bar
+            // by the tip height, then express it in the owner's client space. Positive, on-screen
+            // coordinates above the status bar -- never under the cursor, never over the taskbar.
+            Size sz = TextRenderer.MeasureText(item.ToolTipText, SystemFonts.DefaultFont);
+            Point onScreen = _strip.PointToScreen(item.Bounds.Location);
+            onScreen.Y -= sz.Height + 12;
+            Point pt = owner.PointToClient(onScreen);
+            if (pt.X < 0) pt.X = 0;
+            if (pt.Y < 0) pt.Y = 0;
+
+            _toolTip.Show(item.ToolTipText, owner, pt, 5000);
+            _shownItem = item;
+        }
+
+        private void Item_MouseLeave(object sender, EventArgs e)
+        {
+            ToolStripItem item = sender as ToolStripItem;
+            if (item == _hotItem)
             {
-                Type filter = typeof(ToolStripManager).GetNestedType(
-                    "ModalMenuFilter", BindingFlags.NonPublic);
-                if (filter != null)
-                {
-                    _exitMenuMode = filter.GetMethod("ExitMenuMode",
-                        BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public,
-                        null, Type.EmptyTypes, null);
-                }
+                _hoverTimer.Stop();
+                _hotItem = null;
             }
-            catch { _exitMenuMode = null; }
-            return _exitMenuMode;
+            HideTip();
+        }
+
+        private void Item_MouseDown(object sender, MouseEventArgs e)
+        {
+            // A click shouldn't strand a tip on screen.
+            _hoverTimer.Stop();
+            HideTip();
+        }
+
+        private static bool HasTip(ToolStripItem item)
+        {
+            return item != null && !string.IsNullOrEmpty(item.ToolTipText);
+        }
+
+        private void HideTip()
+        {
+            if (_shownItem != null)
+            {
+                _toolTip.Hide(_tipOwner != null ? _tipOwner : _strip);
+                _shownItem = null;
+            }
         }
     }
 }
