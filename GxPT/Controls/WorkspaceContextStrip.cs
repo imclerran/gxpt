@@ -91,8 +91,10 @@ namespace GxPT
             _text.AutoEllipsis = true;
             _text.TextAlign = ContentAlignment.MiddleLeft;
             // ForeColor is set per state in SetWorkingDir (dark green when set, brown when unset).
-            // Small gap between the icon and the text.
-            _text.Margin = new Padding(6, 0, 0, 0);
+            // The small gap between the icon and the text is the label's left *padding* (not a margin)
+            // so it lives inside the label and stays part of the clickable open-workspace region.
+            _text.Margin = new Padding(0);
+            _text.Padding = new Padding(6, 0, 0, 0);
 
             // When a workspace is set, the icon and path text act as a single click target that opens
             // the folder in Explorer. They darken / swap to the open-folder glyph on hover and show a
@@ -199,13 +201,14 @@ namespace GxPT
             _text.ForeColor = on ? SetTextHover : SetText;
         }
 
-        // The path label fills its column; this is the rendered width of the text within it, so we can
-        // tell a click/hover over the text apart from one over the trailing blank space. Capped to the
-        // label width so a long (ellipsized) path counts its whole visible extent.
-        private int TextWidth()
+        // The path label fills its column; this is the right edge (within the label) of the clickable
+        // open-workspace region: the left-padding gap after the icon plus the rendered text, capped to
+        // the label width. A click/hover left of this opens the workspace (icon, gap, and text); the
+        // trailing blank space after the text does not.
+        private int TextRightEdge()
         {
             Size sz = TextRenderer.MeasureText(_text.Text, _text.Font);
-            return Math.Min(sz.Width, _text.Width);
+            return Math.Min(_text.Padding.Left + sz.Width, _text.Width);
         }
 
         // Track + apply the hover affordance only while the pointer is over the actual text (the blank
@@ -213,7 +216,7 @@ namespace GxPT
         private void OnTextMouseMove(object sender, MouseEventArgs e)
         {
             if (string.IsNullOrEmpty(_dir)) return;
-            bool over = e.X <= TextWidth();
+            bool over = e.X <= TextRightEdge();
             if (over == _overText) return;
             _overText = over;
             _text.Cursor = over ? Cursors.Hand : Cursors.Default;
@@ -234,7 +237,7 @@ namespace GxPT
         private void OnTextMouseClick(object sender, MouseEventArgs e)
         {
             if (string.IsNullOrEmpty(_dir)) return;
-            if (e.X > TextWidth()) return;
+            if (e.X > TextRightEdge()) return;
             OnOpenWorkspaceClicked(sender, e);
         }
 
