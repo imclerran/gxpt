@@ -270,6 +270,20 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Response_usage_carries_the_producing_model()
+        {
+            // The model is stamped onto the usage record so a consumer judges caching from the model
+            // that ACTUALLY produced the request - a sub-agent may override the parent turn's model,
+            // and the discount reconcile must follow the child's model, not the parent's.
+            var u = new ChatCompletionChunk.UsageInfo { prompt_tokens = 100, completion_tokens = 10, cost = 0.002m };
+            var usage = OpenRouterClient.BuildResponseUsage("gen-1", "deepseek/deepseek-v4-flash", "DeepSeek", u, null);
+            Assert.Equal("deepseek/deepseek-v4-flash", usage.Model);
+            Assert.Equal("gen-1", usage.Id);
+            Assert.Equal("DeepSeek", usage.Provider);
+            Assert.Equal(0.002m, usage.Cost);
+        }
+
+        [Fact]
         public void Extracts_generation_stats_for_cost_reconciliation()
         {
             var stats = OpenRouterClient.ExtractGenerationStats(JObject.Parse(
