@@ -5939,9 +5939,9 @@ namespace GxPT
                     this.ssMain.AutoSize = false;
                     this.ssMain.Height = oneRowHeight;
 
-                    // Clicking the strip latches it into the framework's modal-menu navigation
-                    // mode, which makes the item tooltips flicker on every mouse move until a click
-                    // lands elsewhere. Replay that teardown after each click so tooltips stay sane.
+                    // The native ToolStrip tooltips flash on/off over a bottom-docked strip (the
+                    // tip gets placed under the cursor, which the strip reads as a mouse-leave and
+                    // re-shows in a loop). Drive the tooltips manually instead.
                     StatusStripTooltipFix.Apply(this.ssMain);
                 }
 

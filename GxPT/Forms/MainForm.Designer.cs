@@ -573,7 +573,9 @@
             this.tslSavedValue});
             this.ssMain.Location = new System.Drawing.Point(0, 744);
             this.ssMain.Name = "ssMain";
-            this.ssMain.ShowItemToolTips = true;
+            // Item tooltips are driven manually by StatusStripTooltipFix; the native ones flicker on
+            // a bottom-docked strip (see that class). Keep this false so they never engage.
+            this.ssMain.ShowItemToolTips = false;
             this.ssMain.Size = new System.Drawing.Size(892, 22);
             this.ssMain.SizingGrip = false;
             this.ssMain.TabIndex = 3;
