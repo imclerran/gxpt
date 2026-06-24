@@ -60,6 +60,40 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void Dispatch_PropagatesParentPrivacyToChildRequests()
+        {
+            // A ZDR conversation must stay ZDR inside its sub-agents: the child orchestrator would
+            // otherwise default to no ZDR and leak the conversation's data to a non-ZDR endpoint.
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.Zdr = true;
+            d.ProviderDataCollectionAllowed = false;
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.True(streamer.SeenProps.Count > 0);
+            Assert.Equal(true, streamer.SeenProps[0].Zdr);
+            Assert.Equal(false, streamer.SeenProps[0].ProviderDataCollectionAllowed);
+        }
+
+        [Fact]
+        public void Dispatch_LeavesChildPrivacyUnsetByDefault()
+        {
+            // No parent privacy settings -> the child request carries neither (provider default).
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            Dispatcher(streamer, a).Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.True(streamer.SeenProps.Count > 0);
+            Assert.Null(streamer.SeenProps[0].Zdr);
+            Assert.Null(streamer.SeenProps[0].ProviderDataCollectionAllowed);
+        }
+
+        [Fact]
         public void UnknownAgent_ReturnsNote_KnownStillRuns()
         {
             Agent a = WriteAgent("explorer", "Explore.", "You explore.");

@@ -3354,6 +3354,12 @@ namespace GxPT
                                     LoggerSink.Instance, tierOf,
                                     McpChatOrchestrator.DefaultMaxIterations, McpChatOrchestrator.DefaultCallTimeoutMs);
                                 dispatcher.Cancellation = ctx.Cancellation;
+                                // Propagate the parent turn's privacy posture to every child request: a ZDR
+                                // conversation must stay ZDR inside its sub-agents (the context firewall
+                                // isolates the transcript, not the data-retention guarantee). Mirrors what
+                                // the parent orchestrator was configured with above.
+                                dispatcher.Zdr = orch.Zdr;
+                                dispatcher.ProviderDataCollectionAllowed = orch.ProviderDataCollectionAllowed;
                                 // Child usage adds to cost/token totals but must NOT move the parent's context
                                 // gauge (the child has its own isolated context) - so it routes through the
                                 // updateContextGauge=false overload, not orch.UsageReported.

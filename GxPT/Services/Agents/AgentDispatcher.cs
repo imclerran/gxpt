@@ -42,6 +42,14 @@ namespace GxPT
         public Action<ResponseUsage> UsageReported { get; set; }
         public RequestCancellation Cancellation { get; set; }
 
+        // The parent turn's privacy settings, propagated to every child request (set by the host). A
+        // sub-agent runs in a fresh orchestrator that would otherwise default to no ZDR / provider
+        // default - so without this, a child would send the conversation's data to a non-ZDR endpoint
+        // even when the user enabled Zero Data Retention. Inheriting the parent's settings keeps the
+        // privacy guarantee across the firewall. Null leaves the provider default (the headless default).
+        public bool? Zdr { get; set; }
+        public bool? ProviderDataCollectionAllowed { get; set; }
+
         // Optional observability hooks (design sec.14): the dispatcher reports fan-out / per-child lifecycle
         // so the host can show the activity panel and relabel the Stop button. Null => headless.
         public IAgentActivityUi ActivityUi { get; set; }
@@ -360,6 +368,12 @@ namespace GxPT
             // host hasn't set one, fall back to the parent turn's handle so a plain Stop still cancels.
             child.Cancellation = GroupCancellation != null ? GroupCancellation : Cancellation;
             child.UsageReported = UsageReported;
+            // Inherit the parent turn's privacy posture: a ZDR conversation must stay ZDR inside its
+            // sub-agents (A3's firewall isolates the transcript, not the data-handling guarantee). If
+            // the child's model has no ZDR-capable endpoint the request fails rather than silently
+            // downgrading - the correct, safe failure for a retention guarantee.
+            child.Zdr = Zdr;
+            child.ProviderDataCollectionAllowed = ProviderDataCollectionAllowed;
 
             // Restrict the child to the agent's effective tool set by hiding everything else the parent can
             // call (no escalation, A11). Not setting an AgentDispatcher on the child means it has no
