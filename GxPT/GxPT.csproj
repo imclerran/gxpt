@@ -304,6 +304,7 @@
     <None Include="Resources\Licenses\LICENSE-gxpt.rtf" />
     <EmbeddedResource Include="Resources\Images\ExplorerDelete.png" />
     <EmbeddedResource Include="Resources\Images\WorkspaceSet.png" />
+    <EmbeddedResource Include="Resources\Images\WorkspaceSetOpen.png" />
     <EmbeddedResource Include="Resources\Images\WorkspaceUnset.png" />
     <EmbeddedResource Include="Forms\FileViewerForm.resx">
       <DependentUpon>FileViewerForm.cs</DependentUpon>
