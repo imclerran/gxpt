@@ -49,11 +49,10 @@ namespace GxPT
         // Tracked so cursor/tooltip/hover only toggle on boundary crossings.
         private bool _overText;
 
-        // Normal and underlined copies of the path font; the underline is shown on hover (trial).
-        // Captured lazily on first hover (EnsureFonts) so we copy the label's *inherited* font, not the
-        // tiny default font it has before being parented.
-        private Font _textFont;
-        private Font _textFontUnderline;
+        // Whether the hover affordance is active; when set, the path text is drawn with a painted
+        // underline (trial). Drawn manually rather than via an underlined font so changing it doesn't
+        // relayout the (ellipsized) label and flicker.
+        private bool _hoverActive;
 
         public event EventHandler ChangeRequested;
         public event EventHandler ClearRequested;
@@ -103,11 +102,10 @@ namespace GxPT
             _text.Padding = new Padding(6, 0, 0, 0);
 
             // When a workspace is set, the icon and path text act as a single click target that opens
-            // the folder in Explorer. They darken / swap to the open-folder glyph on hover and show a
-            // pointer cursor + tooltip, but are deliberately NOT styled as a link (no underline, no link
-            // color). The text label fills its column, so its handlers are position-aware: only the
-            // actual rendered text (not the blank space after it) reacts. All handlers no-op while no
-            // workspace is set (guarded by _dir).
+            // the folder in Explorer. On hover they darken / swap to the open-folder glyph, show a
+            // pointer cursor + tooltip, and (trial) underline the text. The text label fills its column,
+            // so its handlers are position-aware: only the actual rendered text (not the blank space
+            // after it) reacts. All handlers no-op while no workspace is set (guarded by _dir).
             _openTip = new ToolTip();
             _icon.Click += OnOpenWorkspaceClicked;
             _icon.MouseEnter += delegate { SetHover(true); };
@@ -115,6 +113,7 @@ namespace GxPT
             _text.MouseClick += OnTextMouseClick;
             _text.MouseMove += OnTextMouseMove;
             _text.MouseLeave += OnTextMouseLeave;
+            _text.Paint += OnTextPaint; // draws the hover underline (trial)
 
             // A single-row table deterministically centers each cell's content vertically, which
             // dock/anchor/autosize alone did not do reliably (the links and text hugged the top).
@@ -203,19 +202,27 @@ namespace GxPT
         private void SetHover(bool on)
         {
             if (string.IsNullOrEmpty(_dir)) return;
-            EnsureFonts();
+            _hoverActive = on;
             _icon.Image = on ? (SetIconHover ?? SetIcon) : SetIcon;
             _text.ForeColor = on ? SetTextHover : SetText;
-            _text.Font = on ? _textFontUnderline : _textFont;
+            _text.Invalidate(); // repaint to add/remove the underline
         }
 
-        // Capture the label's currently displayed (inherited) font and an underlined copy, once. Done
-        // lazily because the label inherits its real font only after it has been parented.
-        private void EnsureFonts()
+        // Draw the link-style underline under the path text while hovering (trial). Done here, with the
+        // font unchanged, so toggling it never relayouts the ellipsized label (which is what flickered).
+        private void OnTextPaint(object sender, PaintEventArgs e)
         {
-            if (_textFontUnderline != null) return;
-            _textFont = _text.Font;
-            _textFontUnderline = new Font(_textFont, _textFont.Style | FontStyle.Underline);
+            if (!_hoverActive || string.IsNullOrEmpty(_dir)) return;
+            int left = _text.Padding.Left;          // text starts after the icon gap padding
+            int right = TextRightEdge();             // end of the rendered text (capped to width)
+            if (right <= left) return;
+            Size sz = TextRenderer.MeasureText(_text.Text, _text.Font);
+            int top = (_text.ClientSize.Height - sz.Height) / 2;
+            int y = top + sz.Height - 3;             // sit just under the glyphs
+            using (var pen = new Pen(_text.ForeColor))
+            {
+                e.Graphics.DrawLine(pen, left, y, right - 1, y);
+            }
         }
 
         // The path label fills its column; this is the right edge (within the label) of the clickable
