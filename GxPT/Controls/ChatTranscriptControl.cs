@@ -1533,6 +1533,64 @@ namespace GxPT
                             int partWidth = (int)Math.Ceiling(szF.Width);
                             int partHeight = (int)Math.Ceiling(szF.Height);
 
+                            // A single token wider than the available width (e.g. a long URL with no
+                            // spaces) cannot be placed on one line. Break it at character boundaries so
+                            // it word-wraps instead of overflowing the bubble. Normal-sized tokens take
+                            // the cheap path below and are never re-measured per character.
+                            if (maxWidth > 0 && partWidth > maxWidth)
+                            {
+                                int idx = 0;
+                                while (idx < text.Length)
+                                {
+                                    // If the current line already has content and not even a single
+                                    // character fits in the remaining space, wrap to a fresh line first.
+                                    int oneW = (int)Math.Ceiling(g.MeasureString(text.Substring(idx, 1), f, PointF.Empty, fmt).Width);
+                                    if (x > 0 && x + oneW > maxWidth)
+                                    {
+                                        yield return new LayoutSeg { IsNewLine = true, LineWidth = lineWidth, IsHardBreak = false };
+                                        x = 0; lineWidth = 0; lineHeight = baseFont.Height;
+                                    }
+
+                                    // Greedily grow the chunk to fill the available width (at least one
+                                    // character so we always make progress, even in a very narrow bubble).
+                                    int count = 1;
+                                    int chunkWidth = oneW;
+                                    while (idx + count < text.Length)
+                                    {
+                                        int wNext = (int)Math.Ceiling(g.MeasureString(text.Substring(idx, count + 1), f, PointF.Empty, fmt).Width);
+                                        if (x + wNext > maxWidth) break;
+                                        count++;
+                                        chunkWidth = wNext;
+                                    }
+
+                                    string chunk = text.Substring(idx, count);
+                                    int chunkHeight = (int)Math.Ceiling(g.MeasureString(chunk, f, PointF.Empty, fmt).Height);
+                                    yield return new LayoutSeg
+                                    {
+                                        IsNewLine = false,
+                                        Font = f,
+                                        Text = chunk,
+                                        Rect = new Rectangle(x, 0, chunkWidth, chunkHeight),
+                                        IsInlineCode = isCode,
+                                        IsLink = isLink,
+                                        LinkUrl = isLink ? r.LinkUrl : null
+                                    };
+
+                                    x += chunkWidth;
+                                    lineWidth += chunkWidth;
+                                    lineHeight = Math.Max(lineHeight, chunkHeight);
+                                    idx += count;
+
+                                    // Wrap before placing the remainder of the token on the next line.
+                                    if (idx < text.Length)
+                                    {
+                                        yield return new LayoutSeg { IsNewLine = true, LineWidth = lineWidth, IsHardBreak = false };
+                                        x = 0; lineWidth = 0; lineHeight = baseFont.Height;
+                                    }
+                                }
+                                continue;
+                            }
+
                             bool needsBreak = (x > 0 && x + partWidth > maxWidth);
                             if (needsBreak)
                             {
