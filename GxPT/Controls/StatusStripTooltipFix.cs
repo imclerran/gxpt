@@ -36,12 +36,24 @@ namespace GxPT
             // Keep the native item tooltips; only their post-click flicker is the problem.
             strip.ShowItemToolTips = true;
 
-            strip.MouseDown += delegate
+            // Defer past the current click so menu mode is fully established before we drop it.
+            MouseEventHandler onDown = delegate
             {
                 if (!strip.IsHandleCreated) return;
-                // Defer past the current click so menu mode is fully established before we drop it.
                 try { strip.BeginInvoke((MethodInvoker)ExitMenuMode); }
                 catch { }
+            };
+
+            // Hook the strip AND every item: a click that lands directly on a ToolStripItem is
+            // routed to the item and does not reliably raise the strip's own MouseDown, so hooking
+            // only the strip would miss clicks on the labels (the common case) and leave them
+            // flickering. Items are static here, but ItemAdded keeps it correct if that changes.
+            strip.MouseDown += onDown;
+            foreach (ToolStripItem item in strip.Items)
+                item.MouseDown += onDown;
+            strip.ItemAdded += delegate(object sender, ToolStripItemEventArgs e)
+            {
+                if (e != null && e.Item != null) e.Item.MouseDown += onDown;
             };
         }
 
