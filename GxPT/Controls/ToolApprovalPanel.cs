@@ -100,7 +100,11 @@ namespace GxPT
 
             _buttons = new FlowLayoutPanel();
             _buttons.Dock = DockStyle.Bottom;
-            _buttons.FlowDirection = FlowDirection.RightToLeft;
+            // LeftToRight flow (the buttons are inserted in reverse so the visual order is still
+            // Allow…Deny left-to-right; see AddButton). A FlowLayoutPanel always wraps the control at
+            // the END of its flow first, so LeftToRight makes the RIGHT-most buttons (Deny side) drop
+            // to the new row when the window is too narrow, rather than the left-most ones.
+            _buttons.FlowDirection = FlowDirection.LeftToRight;
             // Wrap onto extra rows when the window is too narrow to fit every button on one line, and
             // AutoSize so the strip grows upward (shrinking the preview above) to keep them all
             // visible. The old fixed-height, no-wrap, AutoScroll setup let a horizontal scrollbar
@@ -238,15 +242,16 @@ namespace GxPT
             catch { }
         }
 
-        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Deny->Allow).
-        // The strip flows RightToLeft, so a button's visual left-to-right position is the reverse of its
-        // index in the Controls collection; assign TabIndex to follow the visual order.
+        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Allow->Deny).
+        // Buttons are inserted front-first (see AddButton), so with the LeftToRight flow a button's
+        // index in the Controls collection already matches its visual left-to-right position; assign
+        // TabIndex to follow that order.
         private void SetButtonTabOrder()
         {
             if (_buttons == null) return;
             int n = _buttons.Controls.Count;
             for (int i = 0; i < n; i++)
-                _buttons.Controls[i].TabIndex = n - 1 - i;
+                _buttons.Controls[i].TabIndex = i;
         }
 
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
@@ -551,7 +556,7 @@ namespace GxPT
 
             _buttons.Controls.Clear();
             _defaultButton = null;
-            // Deny is always present (added first => rightmost in RightToLeft flow). Auto-focused on the
+            // Deny is always present (added first => rightmost; see AddButton). Auto-focused on the
             // Destructive tier so the keyboard default is the safe choice (it shows the focused flat
             // button's heavier border).
             AddButton("Deny", ApprovalChoice.Deny, tier == ToolTier.Destructive);
@@ -623,7 +628,7 @@ namespace GxPT
 
             _buttons.Controls.Clear();
             _defaultButton = null;
-            // Added first => rightmost in the RightToLeft flow.
+            // Added first => rightmost (see AddContinuationButton).
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
             SetButtonTabOrder();
@@ -853,7 +858,11 @@ namespace GxPT
             };
             b.GotFocus += OnButtonFocusChanged;
             b.LostFocus += OnButtonFocusChanged;
+            // Insert at the front: the LeftToRight strip lays controls out in collection order, so
+            // adding Deny first then prepending each later button keeps Deny right-most (and makes it
+            // the first to wrap onto a new row when space runs out).
             _buttons.Controls.Add(b);
+            _buttons.Controls.SetChildIndex(b, 0);
             if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
             {
                 try { _toolTip.SetToolTip(b, tooltip); }
@@ -876,7 +885,9 @@ namespace GxPT
             };
             b.GotFocus += OnButtonFocusChanged;
             b.LostFocus += OnButtonFocusChanged;
+            // Front-insert (matching AddButton) so Stop stays right-most under the LeftToRight flow.
             _buttons.Controls.Add(b);
+            _buttons.Controls.SetChildIndex(b, 0);
             if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
