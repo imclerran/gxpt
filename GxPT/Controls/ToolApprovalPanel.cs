@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -98,12 +99,14 @@ namespace GxPT
             _diffPanel.Dock = DockStyle.Fill;
             _diffPanel.Visible = false;
 
-            _buttons = new FlowLayoutPanel();
+            _buttons = new RightAlignedFlowLayoutPanel();
             _buttons.Dock = DockStyle.Bottom;
             // LeftToRight flow (the buttons are inserted in reverse so the visual order is still
             // Allow…Deny left-to-right; see AddButton). A FlowLayoutPanel always wraps the control at
             // the END of its flow first, so LeftToRight makes the RIGHT-most buttons (Deny side) drop
-            // to the new row when the window is too narrow, rather than the left-most ones.
+            // to the new row when the window is too narrow, rather than the left-most ones. The
+            // RightAlignedFlowLayoutPanel then shifts every row flush to the right edge, so the strip
+            // stays right-aligned whether it occupies one row or several.
             _buttons.FlowDirection = FlowDirection.LeftToRight;
             // Wrap onto extra rows when the window is too narrow to fit every button on one line, and
             // AutoSize so the strip grows upward (shrinking the preview above) to keep them all
@@ -720,20 +723,8 @@ namespace GxPT
                 if (avail < 1) avail = (this.Parent != null ? this.Parent.ClientSize.Width : 400) - this.Padding.Horizontal;
                 if (avail < 1) avail = 400;
 
-                // Right-align the strip when it fits on one row. A Dock=Bottom LeftToRight
-                // FlowLayoutPanel otherwise hugs the left edge; consume the leftover width as left
-                // padding so the buttons sit against the right edge (matching how the old RightToLeft
-                // flow looked). When the strip is too narrow to fit on one row, drop the padding so the
-                // full width is available and the right-most buttons (Deny side) wrap first.
-                // Measure the one-row content width excluding the panel's own padding so this doesn't
-                // feed back on itself as the padding changes.
-                int oneRowContent = _buttons.GetPreferredSize(new Size(short.MaxValue, 0)).Width - _buttons.Padding.Horizontal;
-                int padLeft = avail - oneRowContent;
-                if (padLeft < 0) padLeft = 0;
-                if (_buttons.Padding.Left != padLeft || _buttons.Padding.Right != 0)
-                    _buttons.Padding = new Padding(padLeft, 0, 0, 0);
-
-                // GetPreferredSize at the real width includes any row wrapping of the buttons.
+                // GetPreferredSize at the real width includes any row wrapping of the buttons. The strip
+                // itself (a RightAlignedFlowLayoutPanel) keeps each row flush to the right edge.
                 int buttonsH = _buttons.GetPreferredSize(new Size(avail, 0)).Height;
                 if (buttonsH < 28) buttonsH = 34; // guard against a not-yet-measured strip
 
@@ -1151,6 +1142,58 @@ namespace GxPT
             if (!string.IsNullOrEmpty(preview) && preview != args)
                 return preview + "\r\n\r\n" + args;
             return args;
+        }
+    }
+
+    // A FlowLayoutPanel that keeps each row flush against its right edge. The stock control left-aligns
+    // rows, so a horizontally-flowing strip drifts left once it wraps (a single left-padding offset
+    // can't right-align two rows of different widths). The button strip uses LeftToRight flow so the
+    // right-most buttons wrap first; this subclass then nudges each wrapped row back to the right after
+    // the base layout, so the strip looks right-aligned whether it fills one row or several.
+    internal sealed class RightAlignedFlowLayoutPanel : FlowLayoutPanel
+    {
+        private bool _aligning; // guard against the re-entrant layout our own moves would trigger
+
+        protected override void OnLayout(LayoutEventArgs levent)
+        {
+            base.OnLayout(levent);
+
+            // Only horizontal flows have a meaningful "right edge" to align to.
+            if (_aligning || this.Controls.Count == 0) return;
+            if (this.FlowDirection != FlowDirection.LeftToRight && this.FlowDirection != FlowDirection.RightToLeft) return;
+
+            _aligning = true;
+            this.SuspendLayout(); // move the controls without provoking another layout pass
+            try { RightAlignRows(); }
+            finally { this.ResumeLayout(false); _aligning = false; }
+        }
+
+        // Group the laid-out controls into rows by their shared Top, then shift each row right by its
+        // leftover space so its right-most control sits against the panel's inner right edge.
+        private void RightAlignRows()
+        {
+            int innerRight = this.ClientSize.Width - this.Padding.Right;
+            var rows = new Dictionary<int, List<Control>>();
+            foreach (Control c in this.Controls)
+            {
+                if (!c.Visible) continue;
+                List<Control> row;
+                if (!rows.TryGetValue(c.Top, out row)) { row = new List<Control>(); rows[c.Top] = row; }
+                row.Add(c);
+            }
+
+            foreach (List<Control> row in rows.Values)
+            {
+                int rowRight = int.MinValue;
+                foreach (Control c in row)
+                {
+                    int r = c.Right + c.Margin.Right; // include the trailing margin so the gap matches the leading one
+                    if (r > rowRight) rowRight = r;
+                }
+                int slack = innerRight - rowRight;
+                if (slack <= 0) continue;
+                foreach (Control c in row) c.Left += slack;
+            }
         }
     }
 }
