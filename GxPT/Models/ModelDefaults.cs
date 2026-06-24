@@ -34,6 +34,7 @@ namespace GxPT
             "deepseek/deepseek-v4-pro",
             "deepseek/deepseek-v4-flash",
             "moonshotai/kimi-k2.6",
+            "moonshotai/kimi-k2.7-code",
             "qwen/qwen3.7-max",
             "qwen/qwen3.7-plus",
             "minimax/minimax-m3",
