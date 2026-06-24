@@ -50,8 +50,10 @@ namespace GxPT
         private bool _overText;
 
         // Normal and underlined copies of the path font; the underline is shown on hover (trial).
-        private readonly Font _textFont;
-        private readonly Font _textFontUnderline;
+        // Captured lazily on first hover (EnsureFonts) so we copy the label's *inherited* font, not the
+        // tiny default font it has before being parented.
+        private Font _textFont;
+        private Font _textFontUnderline;
 
         public event EventHandler ChangeRequested;
         public event EventHandler ClearRequested;
@@ -89,7 +91,7 @@ namespace GxPT
             _icon.Margin = new Padding(0);
             _icon.Anchor = AnchorStyles.None;
 
-            _text = new Label();
+            _text = new DoubleBufferedLabel();
             _text.AutoSize = false;
             _text.Dock = DockStyle.Fill;
             _text.AutoEllipsis = true;
@@ -99,9 +101,6 @@ namespace GxPT
             // so it lives inside the label and stays part of the clickable open-workspace region.
             _text.Margin = new Padding(0);
             _text.Padding = new Padding(6, 0, 0, 0);
-            // Cache a plain + underlined copy of the label font; the underline is shown on hover (trial).
-            _textFont = _text.Font;
-            _textFontUnderline = new Font(_textFont, _textFont.Style | FontStyle.Underline);
 
             // When a workspace is set, the icon and path text act as a single click target that opens
             // the folder in Explorer. They darken / swap to the open-folder glyph on hover and show a
@@ -204,9 +203,19 @@ namespace GxPT
         private void SetHover(bool on)
         {
             if (string.IsNullOrEmpty(_dir)) return;
+            EnsureFonts();
             _icon.Image = on ? (SetIconHover ?? SetIcon) : SetIcon;
             _text.ForeColor = on ? SetTextHover : SetText;
             _text.Font = on ? _textFontUnderline : _textFont;
+        }
+
+        // Capture the label's currently displayed (inherited) font and an underlined copy, once. Done
+        // lazily because the label inherits its real font only after it has been parented.
+        private void EnsureFonts()
+        {
+            if (_textFontUnderline != null) return;
+            _textFont = _text.Font;
+            _textFontUnderline = new Font(_textFont, _textFont.Style | FontStyle.Underline);
         }
 
         // The path label fills its column; this is the right edge (within the label) of the clickable
@@ -273,6 +282,18 @@ namespace GxPT
                 (int)(c.R * factor),
                 (int)(c.G * factor),
                 (int)(c.B * factor));
+        }
+
+        // A Label that paints itself double-buffered, so toggling the font/color on hover doesn't flash
+        // the background (the stock Label erases then redraws, which flickers).
+        private sealed class DoubleBufferedLabel : Label
+        {
+            public DoubleBufferedLabel()
+            {
+                this.SetStyle(
+                    ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint,
+                    true);
+            }
         }
     }
 }
