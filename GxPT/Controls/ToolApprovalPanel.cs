@@ -720,6 +720,19 @@ namespace GxPT
                 if (avail < 1) avail = (this.Parent != null ? this.Parent.ClientSize.Width : 400) - this.Padding.Horizontal;
                 if (avail < 1) avail = 400;
 
+                // Right-align the strip when it fits on one row. A Dock=Bottom LeftToRight
+                // FlowLayoutPanel otherwise hugs the left edge; consume the leftover width as left
+                // padding so the buttons sit against the right edge (matching how the old RightToLeft
+                // flow looked). When the strip is too narrow to fit on one row, drop the padding so the
+                // full width is available and the right-most buttons (Deny side) wrap first.
+                // Measure the one-row content width excluding the panel's own padding so this doesn't
+                // feed back on itself as the padding changes.
+                int oneRowContent = _buttons.GetPreferredSize(new Size(short.MaxValue, 0)).Width - _buttons.Padding.Horizontal;
+                int padLeft = avail - oneRowContent;
+                if (padLeft < 0) padLeft = 0;
+                if (_buttons.Padding.Left != padLeft || _buttons.Padding.Right != 0)
+                    _buttons.Padding = new Padding(padLeft, 0, 0, 0);
+
                 // GetPreferredSize at the real width includes any row wrapping of the buttons.
                 int buttonsH = _buttons.GetPreferredSize(new Size(avail, 0)).Height;
                 if (buttonsH < 28) buttonsH = 34; // guard against a not-yet-measured strip
