@@ -521,7 +521,7 @@ namespace GxPT
             if (props == null) props = new ClientProperties();
             if (!props.Stream.HasValue) props.Stream = true;
             string body = BuildRequestBody(model, messages, tools, props);
-            StreamRawChunks(body, WrapWithProviderReport(props, onChunk), onError, cancel);
+            StreamRawChunks(body, WrapWithProviderReport(model, props, onChunk), onError, cancel);
         }
 
         // Decorates a chunk sink to report (once, on the final usage-bearing chunk) the response's
@@ -529,7 +529,7 @@ namespace GxPT
         // chunk but the usage counters only on the last, so the report waits for usage. Identity
         // when no callback is registered.
         private static Action<ChatCompletionChunk> WrapWithProviderReport(
-            ClientProperties props, Action<ChatCompletionChunk> onChunk)
+            string model, ClientProperties props, Action<ChatCompletionChunk> onChunk)
         {
             if (props == null || props.ResponseUsageCallback == null) return onChunk;
             Action<ResponseUsage> report = props.ResponseUsageCallback;
@@ -548,7 +548,7 @@ namespace GxPT
                     if (!reported[0] && chunk.usage != null)
                     {
                         reported[0] = true;
-                        try { report(BuildResponseUsage(genId[0], provider[0], chunk.usage, discount[0])); }
+                        try { report(BuildResponseUsage(genId[0], model, provider[0], chunk.usage, discount[0])); }
                         catch { }
                     }
                 }
@@ -556,11 +556,12 @@ namespace GxPT
             };
         }
 
-        private static ResponseUsage BuildResponseUsage(
-            string generationId, string provider, ChatCompletionChunk.UsageInfo u, decimal? cacheDiscount)
+        internal static ResponseUsage BuildResponseUsage(
+            string generationId, string model, string provider, ChatCompletionChunk.UsageInfo u, decimal? cacheDiscount)
         {
             ResponseUsage r = new ResponseUsage();
             r.Id = generationId;
+            r.Model = model;
             r.Provider = provider;
             r.PromptTokens = u.prompt_tokens.HasValue ? u.prompt_tokens.Value : 0;
             r.CompletionTokens = u.completion_tokens.HasValue ? u.completion_tokens.Value : 0;
@@ -593,7 +594,7 @@ namespace GxPT
 
             bool failed = false;
             StreamRawChunks(body,
-                WrapWithProviderReport(props, delegate(ChatCompletionChunk chunk)
+                WrapWithProviderReport(model, props, delegate(ChatCompletionChunk chunk)
                 {
                     if (chunk != null && chunk.choices != null)
                     {
@@ -1001,6 +1002,8 @@ namespace GxPT
         // (FetchGenerationStats) keyed by Id - the delta-based reconcile is a no-op when the
         // stream was already accurate.
         public string Id;              // OpenRouter generation id (chunk.id); keys the generation record
+        public string Model;           // the model this request was sent to; lets a consumer judge caching
+                                       // from the actual producer (a sub-agent may override the parent's model)
         public string Provider;        // serving endpoint (e.g. "Anthropic"); null when not reported
         public int PromptTokens;       // total prompt tokens (cached + written + uncached)
         public int CompletionTokens;   // output tokens, reasoning included

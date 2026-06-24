@@ -6007,11 +6007,18 @@ namespace GxPT
             NotifyUsageUpdated(convo);
 
             if (string.IsNullOrEmpty(u.Id) || _client == null) return;
+            // Caching capability follows the model that ACTUALLY produced this usage (u.Model), not
+            // the caller's flag - which is the parent turn's model and is wrong for a sub-agent that
+            // overrode its model (e.g. a caching child under a non-caching parent: the parent-model
+            // flag would skip the discount fetch and "Saved" would never move for that child). Falls
+            // back to the caller's flag when the streamer didn't stamp a model (e.g. scripted tests).
+            bool caching = !string.IsNullOrEmpty(u.Model)
+                ? OpenRouterClient.ModelSupportsPromptCaching(u.Model) : cachingModel;
             // Stream-first, fetch-as-fallback: the fetch exists for cache_discount (and as a cost
             // correction). When a stream ever carries both, there is nothing left to fetch - this
             // self-cancels the extra GETs if OpenRouter adds cache_discount to SSE chunks.
             if (u.CacheDiscount.HasValue && u.Cost.HasValue) return;
-            if (!cachingModel && u.Cost.HasValue) return;
+            if (!caching && u.Cost.HasValue) return;
             // A dedicated background thread, not the ThreadPool: the fetch can sleep for up to
             // ~2 minutes waiting for a slow generation record, and the app's sends/naming also run
             // on the pool - a tool loop's worth of sleeping fetches must not starve them.
@@ -6026,7 +6033,7 @@ namespace GxPT
                     // gate; a nonzero billed discount is the same proof of cache activity,
                     // observed late. Latch the conversation-level preference here - the next
                     // turn emits it (mid-turn iterations still rely on stream counters).
-                    if (cachingModel && stats.CacheDiscount.HasValue && stats.CacheDiscount.Value != 0)
+                    if (caching && stats.CacheDiscount.HasValue && stats.CacheDiscount.Value != 0)
                     {
                         string prov = !string.IsNullOrEmpty(u.Provider) ? u.Provider : stats.ProviderName;
                         if (!string.IsNullOrEmpty(prov)) convo.CacheWarmProvider = prov;
