@@ -29,6 +29,7 @@ namespace GxPT
 
         private ToolStripItem _hotItem;    // item the cursor is currently over
         private ToolStripItem _shownItem;  // item the tip is currently displayed for
+        private Control _tipOwner;         // window Show()/Hide() are anchored to
         private Point _lastClientPos;
 
         internal static void Apply(ToolStrip strip)
@@ -83,14 +84,24 @@ namespace GxPT
             if (!HasTip(item) || item == _shownItem) return;
             if (!_strip.IsHandleCreated || !_strip.Visible) return;
 
-            // Anchor the tip above the strip so it can never land under the cursor (the condition
-            // that drives the native flicker). y is negative because it is relative to the strip's
-            // own top edge, and the strip sits at the bottom of the window.
-            Size sz = TextRenderer.MeasureText(item.ToolTipText, SystemFonts.DefaultFont);
-            int x = _lastClientPos.X;
-            int y = -(sz.Height + 10);
+            // Anchor the tip to the FORM, not the strip, with on-screen positive coordinates. The
+            // strip is only ~22px tall and sits at the bottom of the window, so positioning the tip
+            // above it relative to the strip means negative coordinates -- which the framework can
+            // place off-screen, leaving the tip invisible. Converting the cursor position into the
+            // form's client area and lifting it by the tip height keeps the tip on screen, floating
+            // just above the status bar, where it can never overlap the cursor (the native overlap
+            // is what drove the original flicker).
+            Control owner = _strip.FindForm();
+            if (owner == null) owner = _strip;
+            _tipOwner = owner;
 
-            _toolTip.Show(item.ToolTipText, _strip, x, y, _toolTip.AutoPopDelay);
+            Size sz = TextRenderer.MeasureText(item.ToolTipText, SystemFonts.DefaultFont);
+            Point pt = owner.PointToClient(_strip.PointToScreen(_lastClientPos));
+            pt.Y -= sz.Height + 14;
+            if (pt.Y < 0) pt.Y = 0;
+            if (pt.X < 0) pt.X = 0;
+
+            _toolTip.Show(item.ToolTipText, owner, pt.X, pt.Y, 5000);
             _shownItem = item;
         }
 
@@ -129,7 +140,8 @@ namespace GxPT
         {
             if (_shownItem != null)
             {
-                _toolTip.Hide(_strip);
+                // Hide against the same window the tip was shown on.
+                _toolTip.Hide(_tipOwner != null ? _tipOwner : _strip);
                 _shownItem = null;
             }
         }
