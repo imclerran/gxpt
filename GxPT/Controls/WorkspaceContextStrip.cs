@@ -49,6 +49,10 @@ namespace GxPT
         // Tracked so cursor/tooltip/hover only toggle on boundary crossings.
         private bool _overText;
 
+        // Normal and underlined copies of the path font; the underline is shown on hover (trial).
+        private readonly Font _textFont;
+        private readonly Font _textFontUnderline;
+
         public event EventHandler ChangeRequested;
         public event EventHandler ClearRequested;
         public event EventHandler DismissRequested;
@@ -95,6 +99,9 @@ namespace GxPT
             // so it lives inside the label and stays part of the clickable open-workspace region.
             _text.Margin = new Padding(0);
             _text.Padding = new Padding(6, 0, 0, 0);
+            // Cache a plain + underlined copy of the label font; the underline is shown on hover (trial).
+            _textFont = _text.Font;
+            _textFontUnderline = new Font(_textFont, _textFont.Style | FontStyle.Underline);
 
             // When a workspace is set, the icon and path text act as a single click target that opens
             // the folder in Explorer. They darken / swap to the open-folder glyph on hover and show a
@@ -199,6 +206,7 @@ namespace GxPT
             if (string.IsNullOrEmpty(_dir)) return;
             _icon.Image = on ? (SetIconHover ?? SetIcon) : SetIcon;
             _text.ForeColor = on ? SetTextHover : SetText;
+            _text.Font = on ? _textFontUnderline : _textFont;
         }
 
         // The path label fills its column; this is the right edge (within the label) of the clickable
