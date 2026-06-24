@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Windows.Forms;
 
 namespace GxPT
@@ -29,8 +28,9 @@ namespace GxPT
         private static readonly Image SetIcon = ResourceManager.TryGetAssemblyImage("WorkspaceSet.png");
         private static readonly Image UnsetIcon = ResourceManager.TryGetAssemblyImage("WorkspaceUnset.png");
 
-        // A slightly darkened copy of the set icon, swapped in while hovering (matches the text hover).
-        private static readonly Image SetIconHover = DarkenImage(SetIcon, 0.85f);
+        // An open-folder variant of the set icon, swapped in while hovering the (clickable) workspace
+        // path (falls back to the closed icon if the resource is missing).
+        private static readonly Image SetIconHover = ResourceManager.TryGetAssemblyImage("WorkspaceSetOpen.png");
 
         private readonly TableLayoutPanel _root;
         private readonly PictureBox _icon;
@@ -180,8 +180,9 @@ namespace GxPT
             }
         }
 
-        // Darken (true) or restore (false) the icon and path text while the pointer is over them.
-        // Only active when a workspace is set, so the unset warning state never reacts to hover.
+        // Apply (true) or clear (false) the hover affordance while the pointer is over the path: the
+        // folder icon swaps to its open variant and the text darkens slightly. Only active when a
+        // workspace is set, so the unset warning state never reacts to hover.
         private void SetHover(bool on)
         {
             if (string.IsNullOrEmpty(_dir)) return;
@@ -213,34 +214,6 @@ namespace GxPT
                 (int)(c.R * factor),
                 (int)(c.G * factor),
                 (int)(c.B * factor));
-        }
-
-        // Produce a copy of an image with its RGB channels scaled by factor (alpha preserved, so
-        // transparent areas stay transparent). Returns null if the source is missing.
-        private static Image DarkenImage(Image src, float factor)
-        {
-            if (src == null) return null;
-            var bmp = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
-            using (var g = Graphics.FromImage(bmp))
-            {
-                var cm = new ColorMatrix(new float[][]
-                {
-                    new float[] { factor, 0, 0, 0, 0 },
-                    new float[] { 0, factor, 0, 0, 0 },
-                    new float[] { 0, 0, factor, 0, 0 },
-                    new float[] { 0, 0, 0, 1, 0 },
-                    new float[] { 0, 0, 0, 0, 1 },
-                });
-                using (var ia = new ImageAttributes())
-                {
-                    ia.SetColorMatrix(cm);
-                    g.DrawImage(src,
-                        new Rectangle(0, 0, src.Width, src.Height),
-                        0, 0, src.Width, src.Height,
-                        GraphicsUnit.Pixel, ia);
-                }
-            }
-            return bmp;
         }
     }
 }
