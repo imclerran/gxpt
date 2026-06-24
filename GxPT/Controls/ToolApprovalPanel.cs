@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -98,9 +99,15 @@ namespace GxPT
             _diffPanel.Dock = DockStyle.Fill;
             _diffPanel.Visible = false;
 
-            _buttons = new FlowLayoutPanel();
+            _buttons = new RightAlignedFlowLayoutPanel();
             _buttons.Dock = DockStyle.Bottom;
-            _buttons.FlowDirection = FlowDirection.RightToLeft;
+            // LeftToRight flow (the buttons are inserted in reverse so the visual order is still
+            // Allow…Deny left-to-right; see AddButton). A FlowLayoutPanel always wraps the control at
+            // the END of its flow first, so LeftToRight makes the RIGHT-most buttons (Deny side) drop
+            // to the new row when the window is too narrow, rather than the left-most ones. The
+            // RightAlignedFlowLayoutPanel then shifts every row flush to the right edge, so the strip
+            // stays right-aligned whether it occupies one row or several.
+            _buttons.FlowDirection = FlowDirection.LeftToRight;
             // Wrap onto extra rows when the window is too narrow to fit every button on one line, and
             // AutoSize so the strip grows upward (shrinking the preview above) to keep them all
             // visible. The old fixed-height, no-wrap, AutoScroll setup let a horizontal scrollbar
@@ -238,15 +245,16 @@ namespace GxPT
             catch { }
         }
 
-        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Deny->Allow).
-        // The strip flows RightToLeft, so a button's visual left-to-right position is the reverse of its
-        // index in the Controls collection; assign TabIndex to follow the visual order.
+        // Order the button strip so Tab moves left->right and Shift+Tab right->left (e.g. Allow->Deny).
+        // Buttons are inserted front-first (see AddButton), so with the LeftToRight flow a button's
+        // index in the Controls collection already matches its visual left-to-right position; assign
+        // TabIndex to follow that order.
         private void SetButtonTabOrder()
         {
             if (_buttons == null) return;
             int n = _buttons.Controls.Count;
             for (int i = 0; i < n; i++)
-                _buttons.Controls[i].TabIndex = n - 1 - i;
+                _buttons.Controls[i].TabIndex = i;
         }
 
         // Populate + show for one request. choiceCallback is invoked (on the UI thread) with the
@@ -551,7 +559,7 @@ namespace GxPT
 
             _buttons.Controls.Clear();
             _defaultButton = null;
-            // Deny is always present (added first => rightmost in RightToLeft flow). Auto-focused on the
+            // Deny is always present (added first => rightmost; see AddButton). Auto-focused on the
             // Destructive tier so the keyboard default is the safe choice (it shows the focused flat
             // button's heavier border).
             AddButton("Deny", ApprovalChoice.Deny, tier == ToolTier.Destructive);
@@ -623,7 +631,7 @@ namespace GxPT
 
             _buttons.Controls.Clear();
             _defaultButton = null;
-            // Added first => rightmost in the RightToLeft flow.
+            // Added first => rightmost (see AddContinuationButton).
             AddContinuationButton("Stop", false, false);
             AddContinuationButton("Continue", true, true);
             SetButtonTabOrder();
@@ -715,7 +723,8 @@ namespace GxPT
                 if (avail < 1) avail = (this.Parent != null ? this.Parent.ClientSize.Width : 400) - this.Padding.Horizontal;
                 if (avail < 1) avail = 400;
 
-                // GetPreferredSize at the real width includes any row wrapping of the buttons.
+                // GetPreferredSize at the real width includes any row wrapping of the buttons. The strip
+                // itself (a RightAlignedFlowLayoutPanel) keeps each row flush to the right edge.
                 int buttonsH = _buttons.GetPreferredSize(new Size(avail, 0)).Height;
                 if (buttonsH < 28) buttonsH = 34; // guard against a not-yet-measured strip
 
@@ -853,7 +862,11 @@ namespace GxPT
             };
             b.GotFocus += OnButtonFocusChanged;
             b.LostFocus += OnButtonFocusChanged;
+            // Insert at the front: the LeftToRight strip lays controls out in collection order, so
+            // adding Deny first then prepending each later button keeps Deny right-most (and makes it
+            // the first to wrap onto a new row when space runs out).
             _buttons.Controls.Add(b);
+            _buttons.Controls.SetChildIndex(b, 0);
             if (!string.IsNullOrEmpty(tooltip) && _toolTip != null)
             {
                 try { _toolTip.SetToolTip(b, tooltip); }
@@ -876,7 +889,9 @@ namespace GxPT
             };
             b.GotFocus += OnButtonFocusChanged;
             b.LostFocus += OnButtonFocusChanged;
+            // Front-insert (matching AddButton) so Stop stays right-most under the LeftToRight flow.
             _buttons.Controls.Add(b);
+            _buttons.Controls.SetChildIndex(b, 0);
             if (defaultFocus) _defaultButton = b; // focused after the panel is shown (see FocusDefaultButton)
         }
 
@@ -1127,6 +1142,58 @@ namespace GxPT
             if (!string.IsNullOrEmpty(preview) && preview != args)
                 return preview + "\r\n\r\n" + args;
             return args;
+        }
+    }
+
+    // A FlowLayoutPanel that keeps each row flush against its right edge. The stock control left-aligns
+    // rows, so a horizontally-flowing strip drifts left once it wraps (a single left-padding offset
+    // can't right-align two rows of different widths). The button strip uses LeftToRight flow so the
+    // right-most buttons wrap first; this subclass then nudges each wrapped row back to the right after
+    // the base layout, so the strip looks right-aligned whether it fills one row or several.
+    internal sealed class RightAlignedFlowLayoutPanel : FlowLayoutPanel
+    {
+        private bool _aligning; // guard against the re-entrant layout our own moves would trigger
+
+        protected override void OnLayout(LayoutEventArgs levent)
+        {
+            base.OnLayout(levent);
+
+            // Only horizontal flows have a meaningful "right edge" to align to.
+            if (_aligning || this.Controls.Count == 0) return;
+            if (this.FlowDirection != FlowDirection.LeftToRight && this.FlowDirection != FlowDirection.RightToLeft) return;
+
+            _aligning = true;
+            this.SuspendLayout(); // move the controls without provoking another layout pass
+            try { RightAlignRows(); }
+            finally { this.ResumeLayout(false); _aligning = false; }
+        }
+
+        // Group the laid-out controls into rows by their shared Top, then shift each row right by its
+        // leftover space so its right-most control sits against the panel's inner right edge.
+        private void RightAlignRows()
+        {
+            int innerRight = this.ClientSize.Width - this.Padding.Right;
+            var rows = new Dictionary<int, List<Control>>();
+            foreach (Control c in this.Controls)
+            {
+                if (!c.Visible) continue;
+                List<Control> row;
+                if (!rows.TryGetValue(c.Top, out row)) { row = new List<Control>(); rows[c.Top] = row; }
+                row.Add(c);
+            }
+
+            foreach (List<Control> row in rows.Values)
+            {
+                int rowRight = int.MinValue;
+                foreach (Control c in row)
+                {
+                    int r = c.Right + c.Margin.Right; // include the trailing margin so the gap matches the leading one
+                    if (r > rowRight) rowRight = r;
+                }
+                int slack = innerRight - rowRight;
+                if (slack <= 0) continue;
+                foreach (Control c in row) c.Left += slack;
+            }
         }
     }
 }
