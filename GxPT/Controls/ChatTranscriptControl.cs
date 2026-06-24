@@ -1647,23 +1647,41 @@ namespace GxPT
         {
             e.Graphics.Clear(BackColor);
 
-            Rectangle clip = e.ClipRectangle;
-
             // Apply scroll transform to everything
             e.Graphics.TranslateTransform(0, -_scrollOffset);
 
-            foreach (var it in _items)
-            {
-                Rectangle r = it.Bounds;
-                if (r.Bottom < _scrollOffset - GapBetweenBubbles) continue;
-                if (r.Top > _scrollOffset + ClientSize.Height) break;
+            int viewTop = _scrollOffset - GapBetweenBubbles;
+            int viewBottom = _scrollOffset + ClientSize.Height;
 
+            // Bubbles are laid out top-to-bottom by Reflow, so their bounds are ordered: binary-search
+            // the first item that reaches the viewport instead of walking past every bubble above it.
+            // On a long transcript scrolled near the bottom this turns an O(items) scan on every paint
+            // (and paints happen on every scroll/hover/selection tick) into O(log n + visible).
+            for (int i = FindFirstVisibleIndex(viewTop); i < _items.Count; i++)
+            {
+                var it = _items[i];
+                if (it.Bounds.Top > viewBottom) break;
                 DrawBubble(e.Graphics, it);
             }
 
             // Reset transform
             e.Graphics.ResetTransform();
             base.OnPaint(e);
+        }
+
+        // Smallest index whose bubble bottom is at or below `top` — i.e. the first item not entirely
+        // above the viewport. Returns _items.Count when every item is above `top`. Assumes Bounds are
+        // ordered by the sequential Reflow layout (each item's Bottom >= the previous item's Bottom).
+        private int FindFirstVisibleIndex(int top)
+        {
+            int lo = 0, hi = _items.Count; // search the half-open range [lo, hi)
+            while (lo < hi)
+            {
+                int mid = lo + ((hi - lo) >> 1);
+                if (_items[mid].Bounds.Bottom < top) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
 
         private void DrawBubble(Graphics g, MessageItem it)
