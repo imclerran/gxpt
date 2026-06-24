@@ -218,7 +218,7 @@ namespace GxPT
             if (right <= left) return;
             Size sz = TextRenderer.MeasureText(_text.Text, _text.Font);
             int top = (_text.ClientSize.Height - sz.Height) / 2;
-            int y = top + sz.Height - 3;             // sit just under the glyphs
+            int y = top + sz.Height - 1;             // sit a couple px below the glyphs
             using (var pen = new Pen(_text.ForeColor))
             {
                 e.Graphics.DrawLine(pen, left, y, right - 1, y);
