@@ -2904,7 +2904,7 @@ namespace GxPT
             try
             {
                 AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(stream);
-                viewer.Show(this);
+                ShowAgentTranscriptWindow(viewer);
             }
             catch { }
         }
@@ -2927,10 +2927,30 @@ namespace GxPT
             }
             try
             {
-                using (AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(t))
-                    viewer.ShowDialog(this);
+                AgentTranscriptViewerForm viewer = new AgentTranscriptViewerForm(t);
+                ShowAgentTranscriptWindow(viewer);
             }
             catch { }
+        }
+
+        // Show a sub-agent transcript window the same way for both the live and finished viewers: modeless
+        // (so the main form stays interactive - no modal "ding" when the user clicks it) and unowned (so the
+        // main form can be brought back to the front instead of being pinned behind the transcript). Centered
+        // on the main form by hand, since an unowned window ignores CenterParent. The form disposes itself
+        // when closed, so there's no using/Dispose to manage here.
+        private void ShowAgentTranscriptWindow(AgentTranscriptViewerForm viewer)
+        {
+            if (viewer == null) return;
+            try
+            {
+                Rectangle b = this.Bounds;
+                Size s = viewer.Size;
+                viewer.Location = new Point(
+                    b.Left + Math.Max(0, (b.Width - s.Width) / 2),
+                    b.Top + Math.Max(0, (b.Height - s.Height) / 2));
+            }
+            catch { }
+            viewer.Show();
         }
 
         internal void RetryLastTurn(TabManager.ChatTabContext ctx)

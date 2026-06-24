@@ -35,11 +35,16 @@ namespace GxPT
         private void Init(string title)
         {
             this.Text = title;
-            this.StartPosition = FormStartPosition.CenterParent;
+            // Positioned by the caller (centered on the main form) because the window is shown modeless and
+            // unowned - CenterParent only applies to owned/dialog windows, so it would otherwise land at the
+            // screen's default spot.
+            this.StartPosition = FormStartPosition.Manual;
             this.FormBorderStyle = FormBorderStyle.Sizable;
             this.MinimizeBox = false;
             this.MaximizeBox = true;
-            this.ShowInTaskbar = false;
+            // Independent top-level window (no owner), so show it in the taskbar/Alt-Tab - that's how the
+            // user gets back to it once the main form has been brought to the front.
+            this.ShowInTaskbar = true;
             this.ClientSize = new Size(720, 560);
             this.MinimumSize = new Size(360, 240);
             this.KeyPreview = true;
