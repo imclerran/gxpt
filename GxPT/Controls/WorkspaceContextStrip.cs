@@ -223,7 +223,7 @@ namespace GxPT
             {
                 // MeasureText pads the measured width (more on the right), so the edge overshoots the
                 // last glyph; pull the line in a few px to hug the text.
-                e.Graphics.DrawLine(pen, left, y, right - 4, y);
+                e.Graphics.DrawLine(pen, left + 2, y, right - 6, y);
             }
         }
 
