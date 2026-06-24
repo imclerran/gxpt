@@ -5938,6 +5938,11 @@ namespace GxPT
                     int oneRowHeight = this.ssMain.Height;
                     this.ssMain.AutoSize = false;
                     this.ssMain.Height = oneRowHeight;
+
+                    // Clicking the strip latches it into the framework's modal-menu navigation
+                    // mode, which makes the item tooltips flicker on every mouse move until a click
+                    // lands elsewhere. Replay that teardown after each click so tooltips stay sane.
+                    StatusStripTooltipFix.Apply(this.ssMain);
                 }
 
                 bool visible = AppSettings.GetBool("statusbar_visible");
