@@ -221,7 +221,9 @@ namespace GxPT
             int y = top + sz.Height - 1;             // sit a couple px below the glyphs
             using (var pen = new Pen(_text.ForeColor))
             {
-                e.Graphics.DrawLine(pen, left, y, right - 1, y);
+                // MeasureText pads the measured width (more on the right), so the edge overshoots the
+                // last glyph; pull the line in a few px to hug the text.
+                e.Graphics.DrawLine(pen, left, y, right - 4, y);
             }
         }
 
