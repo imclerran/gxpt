@@ -111,12 +111,13 @@ namespace GxPT
             if (owner == null) owner = _strip;
             _tipOwner = owner;
 
-            // Anchor above the item: convert the item's top-left to screen, lift it clear of the bar
-            // by the tip height, then express it in the owner's client space. Positive, on-screen
-            // coordinates above the status bar -- never under the cursor, never over the taskbar.
+            // Anchor just above the cursor, not above the bar's top edge: the pointer can be anywhere
+            // down the ~22px-tall strip, so anchoring to the item top left small tips floating well
+            // above the mouse. Lifting from the cursor by the tip height puts the tip's bottom a few
+            // pixels above the pointer -- close to the mouse, never under it, never over the taskbar.
             Size sz = TextRenderer.MeasureText(item.ToolTipText, SystemFonts.DefaultFont);
-            Point onScreen = _strip.PointToScreen(item.Bounds.Location);
-            onScreen.Y -= sz.Height + 12;
+            Point onScreen = Cursor.Position;
+            onScreen.Y -= sz.Height + 8;
             Point pt = owner.PointToClient(onScreen);
             if (pt.X < 0) pt.X = 0;
             if (pt.Y < 0) pt.Y = 0;
