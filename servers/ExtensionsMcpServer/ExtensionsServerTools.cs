@@ -85,9 +85,14 @@ namespace ExtensionsMcpServer
                 });
 
             server.AddTool("write_skill_file",
-                "Write a supporting file or script into an existing skill's folder, by a path relative to the "
-                + "skill folder (subdirs allowed). For SKILL.md use create_skill / update_skill instead. "
-                + "Scripts should be .bat/.cmd; they are written with CRLF line endings.",
+                "Write a supporting ASSET of a skill - a template, example, reference doc, or script the skill "
+                + "itself reads or runs - into an existing skill's folder, by a path relative to the skill "
+                + "folder (subdirs allowed). For SKILL.md use create_skill / update_skill instead. Scripts "
+                + "should be .bat/.cmd; they are written with CRLF line endings. This is ONLY for authoring a "
+                + "skill's own reusable parts. It is NOT where a task's OUTPUT goes: if you are carrying out a "
+                + "task (even one a skill describes) and producing a deliverable for the user, that result "
+                + "belongs in their workspace via the file tools (files__write) - never write a task's output "
+                + "into a skill folder.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The skill's slug (it must already exist).")
                     .Str("relpath", true, "Path relative to the skill folder, e.g. scripts/gen.bat or examples/foo.md.")
