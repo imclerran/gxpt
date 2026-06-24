@@ -17,6 +17,12 @@
             {
                 components.Dispose();
             }
+            if (disposing && (_resizeDebounce != null))
+            {
+                _resizeDebounce.Stop();
+                _resizeDebounce.Dispose();
+                _resizeDebounce = null;
+            }
             try { SyntaxHighlightingRenderer.SegmentsReady -= OnSegmentsReady; }
             catch { }
             base.Dispose(disposing);

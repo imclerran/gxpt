@@ -200,6 +200,14 @@ namespace GxPT
         // Queue a deferred reflow to run after current layout (avoids stale viewport sizes)
         private bool _reflowQueued;
 
+        // Bumped whenever something that affects measured bubble sizes but does NOT reassign an item's
+        // Blocks list changes (fonts, edit-diff collapse/registration). Each MessageItem caches the
+        // generation it was measured under; a mismatch forces re-measurement. See MeasureBubbleCached.
+        private int _layoutGeneration;
+        // Coalesces the expensive full Reflow during a live resize drag: each WM_SIZE restarts it, so
+        // the transcript is re-measured once the drag settles instead of on every pixel.
+        private Timer _resizeDebounce;
+
         // Stick-to-bottom behavior during streaming to avoid calling ScrollToBottom each delta
         private bool _stickToBottom;
 
@@ -267,6 +275,16 @@ namespace GxPT
             // Retry button rect captured at draw time (virtual coords); Empty when not drawn
             public Rectangle RetryRect;
 
+            // ---- Cached layout (see MeasureBubbleCached) ----
+            // The result of the last MeasureBubble for this item, reused when none of the inputs that
+            // affect its size have changed. Avoids re-running GDI text measurement for every block on
+            // every Reflow (the dominant cost on long transcripts during resize/visibility changes).
+            public bool LayoutValid;       // false until first measured / after invalidation
+            public int LayoutWidth;        // the usableWidth this size was measured at
+            public Size LayoutSize;        // cached MeasureBubble result
+            public List<Block> LayoutBlocks; // Blocks reference the cache was built from (reassigned on any content edit)
+            public bool LayoutRetry;       // IsRetryTarget(it) state the cache was built with
+            public int LayoutGen;          // _layoutGeneration snapshot (bumped on font/theme/edit-diff changes)
         }
 
         private readonly List<MessageItem> _items = new List<MessageItem>();
@@ -340,6 +358,9 @@ namespace GxPT
                     Removed = removed
                 };
             }
+            // The body text/counts for an expanded record changed, which alters its measured height
+            // without reassigning any item's Blocks; force re-measure on the next Reflow.
+            InvalidateAllLayout();
         }
 
         private EditDiffData GetEditDiffData(string key)
@@ -418,6 +439,16 @@ namespace GxPT
 
             this.AccessibleName = "Chat transcript";
             this.TabStop = true;
+
+            // Coalesces full reflows during an active resize drag (see OnResize).
+            _resizeDebounce = new Timer();
+            _resizeDebounce.Interval = 75;
+            _resizeDebounce.Tick += delegate
+            {
+                _resizeDebounce.Stop();
+                Reflow();
+                Invalidate();
+            };
 
             // Listen for async highlight completions and invalidate the relevant region
             try
@@ -582,6 +613,9 @@ namespace GxPT
         public void RefreshTheme()
         {
             ApplyThemeFromSettings();
+            // Themes don't change font metrics, but they can swap the mono font used for code/diff
+            // measurement via BuildFonts elsewhere; invalidate to be safe (theme changes are rare).
+            InvalidateAllLayout();
             Reflow();
             Invalidate();
         }
@@ -677,6 +711,7 @@ namespace GxPT
         {
             base.OnFontChanged(e);
             BuildFonts();
+            InvalidateAllLayout(); // font metrics changed: every cached bubble size is now stale
             Reflow();
             Invalidate();
         }
@@ -937,7 +972,7 @@ namespace GxPT
                     int tables = 0; foreach (var b in it.Blocks) if (b.Type == BlockType.Table) tables++;
                     while (it.TableScroll.Count < tables) it.TableScroll.Add(0);
                     if (it.TableScroll.Count > tables) it.TableScroll.RemoveRange(tables, it.TableScroll.Count - tables);
-                    Size bubbleSize = MeasureBubble(it, usableWidth);
+                    Size bubbleSize = MeasureBubbleCached(g, it, usableWidth);
                     int xLeft;
                     if (it.Role == MessageRole.User)
                     {
@@ -1021,7 +1056,7 @@ namespace GxPT
                     while (it.TableScroll.Count < tables) it.TableScroll.Add(0);
                     if (it.TableScroll.Count > tables) it.TableScroll.RemoveRange(tables, it.TableScroll.Count - tables);
 
-                    Size bubbleSize = MeasureBubble(it, usableWidth);
+                    Size bubbleSize = MeasureBubbleCached(g, it, usableWidth);
                     int xLeft;
                     if (it.Role == MessageRole.User)
                     {
@@ -1044,7 +1079,40 @@ namespace GxPT
             UpdateScrollbar();
         }
 
-        private Size MeasureBubble(MessageItem it, int maxBubbleWidth)
+        // Invalidate every item's cached layout. Cheap (just bumps a counter); the next Reflow
+        // re-measures lazily. Call when fonts or any non-content input to measurement change.
+        // Thread-safe: RegisterToolRecord may run on the streaming worker thread.
+        private void InvalidateAllLayout()
+        {
+            System.Threading.Interlocked.Increment(ref _layoutGeneration);
+        }
+
+        // Returns the bubble size for an item, reusing the cached result when none of the inputs that
+        // affect it have changed: the usable width, the parsed Blocks (reassigned wholesale on any
+        // content edit), the retry-button state, and the global layout generation. This turns a full
+        // Reflow over an unchanged transcript from O(blocks) GDI measurement into O(items) comparisons.
+        private Size MeasureBubbleCached(Graphics g, MessageItem it, int usableWidth)
+        {
+            if (it.LayoutValid
+                && it.LayoutWidth == usableWidth
+                && it.LayoutGen == _layoutGeneration
+                && ReferenceEquals(it.LayoutBlocks, it.Blocks)
+                && it.LayoutRetry == IsRetryTarget(it))
+            {
+                return it.LayoutSize;
+            }
+
+            Size s = MeasureBubble(g, it, usableWidth);
+            it.LayoutSize = s;
+            it.LayoutWidth = usableWidth;
+            it.LayoutGen = _layoutGeneration;
+            it.LayoutBlocks = it.Blocks;
+            it.LayoutRetry = IsRetryTarget(it);
+            it.LayoutValid = true;
+            return s;
+        }
+
+        private Size MeasureBubble(Graphics g, MessageItem it, int maxBubbleWidth)
         {
             // Bubble width determined by content width + padding
             int textMax = Math.Max(40, maxBubbleWidth - 2 * BubblePadding);
@@ -1062,7 +1130,7 @@ namespace GxPT
                 if (blk.Type != BlockType.NumberedList && blk.Type != BlockType.BulletList)
                     numberedCounters.Clear();
 
-                Size sz = MeasureBlock(blk, textMax, numberedCounters);
+                Size sz = MeasureBlock(g, blk, textMax, numberedCounters);
                 h += sz.Height;
 
                 // Add spacing that matches the drawing code
@@ -1150,7 +1218,7 @@ namespace GxPT
             return maxW;
         }
 
-        private Size MeasureBlock(Block blk, int maxWidth, Dictionary<int, int> numberedCounters)
+        private Size MeasureBlock(Graphics g, Block blk, int maxWidth, Dictionary<int, int> numberedCounters)
         {
             switch (blk.Type)
             {
@@ -1158,12 +1226,12 @@ namespace GxPT
                     {
                         var h = (HeadingBlock)blk;
                         Font f = GetHeadingFont(h.Level);
-                        return MeasureInlineParagraph(h.Inlines, f, maxWidth, true);
+                        return MeasureInlineParagraph(g, h.Inlines, f, maxWidth, true);
                     }
                 case BlockType.Paragraph:
                     {
                         var p = (ParagraphBlock)blk;
-                        return MeasureInlineParagraph(p.Inlines, _baseFont, maxWidth, true);
+                        return MeasureInlineParagraph(g, p.Inlines, _baseFont, maxWidth, true);
                     }
                 case BlockType.BulletList:
                     {
@@ -1174,7 +1242,7 @@ namespace GxPT
                         {
                             // measure bullet glyph + indented paragraph
                             int bulletWidth = BulletIndent + (item.IndentLevel * BulletIndent);
-                            Size sz = MeasureInlineParagraph(item.Content, _baseFont, maxWidth - bulletWidth, true);
+                            Size sz = MeasureInlineParagraph(g, item.Content, _baseFont, maxWidth - bulletWidth, true);
                             y += Math.Max(sz.Height, _baseFont.Height);
                             y += 2;
                             w = Math.Max(w, bulletWidth + sz.Width);
@@ -1212,7 +1280,7 @@ namespace GxPT
                             string numberText = itemNumber.ToString() + delim;
                             Size numberSize = TextRenderer.MeasureText(numberText, _baseFont);
                             int numberWidth = numberSize.Width + 4 + (item.IndentLevel * BulletIndent); // 4px gap after number
-                            Size sz = MeasureInlineParagraph(item.Content, _baseFont, maxWidth - numberWidth, true);
+                            Size sz = MeasureInlineParagraph(g, item.Content, _baseFont, maxWidth - numberWidth, true);
                             y += Math.Max(sz.Height, _baseFont.Height);
                             y += 2;
                             w = Math.Max(w, numberWidth + sz.Width);
@@ -1222,8 +1290,8 @@ namespace GxPT
                 case BlockType.CodeBlock:
                     {
                         var c = (CodeBlock)blk;
-                        // Measure colored segments without wrapping to know full content width
-                        using (Graphics g = CreateGraphics())
+                        // Measure colored segments without wrapping to know full content width.
+                        // Reuses the caller's Graphics instead of allocating one per code block per reflow.
                         {
                             // Enqueue for async highlight so it gets processed soon; enqueue in top-to-bottom order to get bottom-up processing
                             SyntaxHighlightingRenderer.EnqueueHighlight(c.Language, _isDarkTheme, c.Text, _monoFont);
@@ -1253,29 +1321,27 @@ namespace GxPT
                         int h = headerH;
                         if (hasBody && !collapsed && data.BodyIsMarkdown)
                         {
-                            Size body = MeasureMarkdownBlocks(MarkdownParser.ParseMarkdown(data.Body), maxWidth);
+                            Size body = MeasureMarkdownBlocks(g, MarkdownParser.ParseMarkdown(data.Body), maxWidth);
                             h += EditDiffBodyGap + body.Height + EditDiffBodyPad;
                             w = Math.Max(w, body.Width);
                         }
                         else if (hasBody && !collapsed)
                         {
-                            using (Graphics g = CreateGraphics())
-                            {
-                                SyntaxHighlightingRenderer.EnqueueHighlight(data.Language, _isDarkTheme, data.Body, _monoFont);
-                                var colored = SyntaxHighlightingRenderer.GetColoredSegments(data.Body, data.Language, _monoFont, _isDarkTheme);
-                                Size content = SyntaxHighlightingRenderer.MeasureColoredSegmentsNoWrap(g, colored);
-                                int bodyH = Math.Max(_monoFont.Height, content.Height);
-                                bool needH = content.Width > maxWidth + EditDiffScrollSlack;
-                                h += EditDiffBodyGap + bodyH + (needH ? CodeHScrollHeight : 0) + EditDiffBodyPad;
-                                w = Math.Max(w, Math.Min(maxWidth, content.Width));
-                            }
+                            // Reuses the caller's Graphics instead of allocating one per diff body per reflow.
+                            SyntaxHighlightingRenderer.EnqueueHighlight(data.Language, _isDarkTheme, data.Body, _monoFont);
+                            var colored = SyntaxHighlightingRenderer.GetColoredSegments(data.Body, data.Language, _monoFont, _isDarkTheme);
+                            Size content = SyntaxHighlightingRenderer.MeasureColoredSegmentsNoWrap(g, colored);
+                            int bodyH = Math.Max(_monoFont.Height, content.Height);
+                            bool needH = content.Width > maxWidth + EditDiffScrollSlack;
+                            h += EditDiffBodyGap + bodyH + (needH ? CodeHScrollHeight : 0) + EditDiffBodyPad;
+                            w = Math.Max(w, Math.Min(maxWidth, content.Width));
                         }
                         return new Size(Math.Max(24, Math.Min(maxWidth, w)), h);
                     }
                 case BlockType.Error:
                     {
                         var er = (ErrorBlock)blk;
-                        return MeasureInlineParagraph(BuildErrorInlines(er.Message), _baseFont, maxWidth, true);
+                        return MeasureInlineParagraph(g, BuildErrorInlines(er.Message), _baseFont, maxWidth, true);
                     }
                 case BlockType.Table:
                     {
@@ -1292,7 +1358,7 @@ namespace GxPT
                         for (int c = 0; c < cols; c++)
                         {
                             var inl = (c < t.Header.Count) ? t.Header[c] : new List<InlineRun>();
-                            Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                            Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                             colWidths[c] = Math.Max(colWidths[c], sz.Width);
                             rowHeightHeader = Math.Max(rowHeightHeader, sz.Height);
                         }
@@ -1305,7 +1371,7 @@ namespace GxPT
                             for (int c = 0; c < cols; c++)
                             {
                                 var inl = (c < row.Count) ? row[c] : new List<InlineRun>();
-                                Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                                Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                                 colWidths[c] = Math.Max(colWidths[c], sz.Width);
                                 rowH = Math.Max(rowH, sz.Height);
                             }
@@ -1324,7 +1390,7 @@ namespace GxPT
         // Measures a list of Markdown blocks the same way a message body is measured (MeasureBlock plus
         // the per-block-type trailing spacing in the height loop), so the value matches what DrawBlocks
         // consumes. Used for tool records whose body is rendered as Markdown rather than highlighted code.
-        private Size MeasureMarkdownBlocks(List<Block> blocks, int maxWidth)
+        private Size MeasureMarkdownBlocks(Graphics g, List<Block> blocks, int maxWidth)
         {
             int h = 0;
             int w = 0;
@@ -1334,7 +1400,7 @@ namespace GxPT
                 Block blk = blocks[i];
                 if (blk.Type != BlockType.NumberedList && blk.Type != BlockType.BulletList)
                     numberedCounters.Clear();
-                Size sz = MeasureBlock(blk, maxWidth, numberedCounters);
+                Size sz = MeasureBlock(g, blk, maxWidth, numberedCounters);
                 h += sz.Height;
                 if (blk.Type == BlockType.Heading) h += 4;
                 else if (blk.Type == BlockType.Paragraph) h += 2;
@@ -1353,14 +1419,14 @@ namespace GxPT
             return new List<InlineRun> { new InlineRun { Text = message ?? string.Empty, Style = RunStyle.Normal } };
         }
 
-        private Size MeasureInlineParagraph(List<InlineRun> runs, Font baseFont, int maxWidth, bool addBottomGap)
+        private Size MeasureInlineParagraph(Graphics g, List<InlineRun> runs, Font baseFont, int maxWidth, bool addBottomGap)
         {
             int x = 0;
             int y = 0;
             int lineHeight = baseFont.Height;
             int maxLineWidth = 0;
 
-            foreach (var seg in WordWrapRuns(runs, baseFont, maxWidth))
+            foreach (var seg in WordWrapRuns(g, runs, baseFont, maxWidth))
             {
                 if (seg.IsNewLine)
                 {
@@ -1432,14 +1498,14 @@ namespace GxPT
             }
         }
 
-        private IEnumerable<LayoutSeg> WordWrapRuns(List<InlineRun> runs, Font baseFont, int maxWidth)
+        private IEnumerable<LayoutSeg> WordWrapRuns(Graphics g, List<InlineRun> runs, Font baseFont, int maxWidth)
         {
-            // Greedy word wrapping across style runs.
+            // Greedy word wrapping across style runs. The caller supplies the Graphics so layout reuses
+            // a single surface (the Reflow/draw Graphics) instead of allocating one per paragraph.
             int x = 0;
             int lineWidth = 0;
             int lineHeight = baseFont.Height;
 
-            using (Graphics g = CreateGraphics())
             {
                 // Use typographic metrics to avoid GDI+ extra side bearings padding
                 using (var fmt = StringFormat.GenericTypographic)
@@ -1529,10 +1595,24 @@ namespace GxPT
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            Reflow();
+            // Keep the scrollbar geometry responsive and repaint with the current (possibly slightly
+            // stale) bounds, but defer the expensive full Reflow. When the window is wider than the
+            // capped content area the cached measurements make Reflow cheap; when it is narrower the
+            // usable width shrinks every pixel, so coalescing avoids re-measuring the whole transcript
+            // on every WM_SIZE during a drag.
+            UpdateScrollbar();
             Invalidate();
-            // Ensure a second pass after parent has finished resizing
-            ReflowSoon();
+            if (_resizeDebounce != null)
+            {
+                _resizeDebounce.Stop();
+                _resizeDebounce.Start();
+            }
+            else
+            {
+                // Timer not wired yet (very early in construction): fall back to the immediate path.
+                Reflow();
+                ReflowSoon();
+            }
         }
 
         protected override void SetBoundsCore(int x, int y, int width, int height, BoundsSpecified specified)
@@ -1567,23 +1647,41 @@ namespace GxPT
         {
             e.Graphics.Clear(BackColor);
 
-            Rectangle clip = e.ClipRectangle;
-
             // Apply scroll transform to everything
             e.Graphics.TranslateTransform(0, -_scrollOffset);
 
-            foreach (var it in _items)
-            {
-                Rectangle r = it.Bounds;
-                if (r.Bottom < _scrollOffset - GapBetweenBubbles) continue;
-                if (r.Top > _scrollOffset + ClientSize.Height) break;
+            int viewTop = _scrollOffset - GapBetweenBubbles;
+            int viewBottom = _scrollOffset + ClientSize.Height;
 
+            // Bubbles are laid out top-to-bottom by Reflow, so their bounds are ordered: binary-search
+            // the first item that reaches the viewport instead of walking past every bubble above it.
+            // On a long transcript scrolled near the bottom this turns an O(items) scan on every paint
+            // (and paints happen on every scroll/hover/selection tick) into O(log n + visible).
+            for (int i = FindFirstVisibleIndex(viewTop); i < _items.Count; i++)
+            {
+                var it = _items[i];
+                if (it.Bounds.Top > viewBottom) break;
                 DrawBubble(e.Graphics, it);
             }
 
             // Reset transform
             e.Graphics.ResetTransform();
             base.OnPaint(e);
+        }
+
+        // Smallest index whose bubble bottom is at or below `top` — i.e. the first item not entirely
+        // above the viewport. Returns _items.Count when every item is above `top`. Assumes Bounds are
+        // ordered by the sequential Reflow layout (each item's Bottom >= the previous item's Bottom).
+        private int FindFirstVisibleIndex(int top)
+        {
+            int lo = 0, hi = _items.Count; // search the half-open range [lo, hi)
+            while (lo < hi)
+            {
+                int mid = lo + ((hi - lo) >> 1);
+                if (_items[mid].Bounds.Bottom < top) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
         }
 
         private void DrawBubble(Graphics g, MessageItem it)
@@ -1861,7 +1959,7 @@ namespace GxPT
                     {
                         y += EditDiffBodyGap;
                         List<Block> bodyBlocks = MarkdownParser.ParseMarkdown(data.Body);
-                        int bodyH = MeasureMarkdownBlocks(bodyBlocks, maxWidth).Height;
+                        int bodyH = MeasureMarkdownBlocks(g, bodyBlocks, maxWidth).Height;
                         // Pass the owner so tables (TableScroll state) and copy work; the body's blocks
                         // carry no EditDiff sentinels, so there's no re-entrancy.
                         DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, owner);
@@ -2131,7 +2229,7 @@ namespace GxPT
                         for (int c = 0; c < cols; c++)
                         {
                             var inl = (c < t.Header.Count) ? t.Header[c] : new List<InlineRun>();
-                            Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                            Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                             colWidths[c] = Math.Max(colWidths[c], sz.Width);
                             headerH = Math.Max(headerH, sz.Height);
                         }
@@ -2142,7 +2240,7 @@ namespace GxPT
                             for (int c = 0; c < cols; c++)
                             {
                                 var inl = (c < t.Rows[r].Count) ? t.Rows[r][c] : new List<InlineRun>();
-                                Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                                Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                                 colWidths[c] = Math.Max(colWidths[c], sz.Width);
                                 rowH = Math.Max(rowH, sz.Height);
                             }
@@ -2294,7 +2392,7 @@ namespace GxPT
 
             // Collect segments for processing
             var segments = new List<LayoutSeg>();
-            foreach (var seg in WordWrapRuns(runs, baseFont, maxWidth))
+            foreach (var seg in WordWrapRuns(g, runs, baseFont, maxWidth))
             {
                 segments.Add(seg);
             }
@@ -2579,7 +2677,7 @@ namespace GxPT
         {
             int lineHeight = baseFont.Height;
             int total = 0;
-            foreach (var seg in WordWrapRuns(runs, baseFont, maxWidth))
+            foreach (var seg in WordWrapRuns(g, runs, baseFont, maxWidth))
             {
                 if (seg.IsNewLine)
                 {
@@ -2820,6 +2918,7 @@ namespace GxPT
                 if (HitTestEditDiff(e.Location, out edKey))
                 {
                     _editDiffCollapsed[edKey] = !IsEditDiffCollapsed(edKey);
+                    InvalidateAllLayout(); // collapse state changes a bubble's height without touching its Blocks
                     Reflow();
                     Invalidate();
                     return;
@@ -3571,7 +3670,7 @@ namespace GxPT
                                 for (int c = 0; c < cols; c++)
                                 {
                                     var inl = (c < t.Header.Count) ? t.Header[c] : new List<InlineRun>();
-                                    Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                                    Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                                     colWidths[c] = Math.Max(colWidths[c], sz.Width);
                                     headerH = Math.Max(headerH, sz.Height);
                                 }
@@ -3582,7 +3681,7 @@ namespace GxPT
                                     for (int c = 0; c < cols; c++)
                                     {
                                         var inl = (c < t.Rows[r].Count) ? t.Rows[r][c] : new List<InlineRun>();
-                                        Size sz = MeasureInlineParagraph(inl, _baseFont, int.MaxValue / 4, false);
+                                        Size sz = MeasureInlineParagraph(g, inl, _baseFont, int.MaxValue / 4, false);
                                         colWidths[c] = Math.Max(colWidths[c], sz.Width);
                                         rowH = Math.Max(rowH, sz.Height);
                                     }
