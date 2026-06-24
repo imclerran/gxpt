@@ -5938,6 +5938,11 @@ namespace GxPT
                     int oneRowHeight = this.ssMain.Height;
                     this.ssMain.AutoSize = false;
                     this.ssMain.Height = oneRowHeight;
+
+                    // The native ToolStrip tooltips flicker when shown over the taskbar at the
+                    // bottom of the screen. Drive the item tooltips manually instead (shown above
+                    // the bar, on hover rather than mouse-move).
+                    StatusStripTooltipFix.Apply(this.ssMain);
                 }
 
                 bool visible = AppSettings.GetBool("statusbar_visible");
