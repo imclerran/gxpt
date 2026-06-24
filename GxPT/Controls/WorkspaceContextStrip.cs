@@ -45,6 +45,10 @@ namespace GxPT
         // click can open it in Explorer.
         private string _dir;
 
+        // Whether the pointer is currently over the rendered path text (vs. the blank space after it).
+        // Tracked so cursor/tooltip/hover only toggle on boundary crossings.
+        private bool _overText;
+
         public event EventHandler ChangeRequested;
         public event EventHandler ClearRequested;
         public event EventHandler DismissRequested;
@@ -91,16 +95,18 @@ namespace GxPT
             _text.Margin = new Padding(6, 0, 0, 0);
 
             // When a workspace is set, the icon and path text act as a single click target that opens
-            // the folder in Explorer. They darken on hover and show a pointer cursor + tooltip, but are
-            // deliberately NOT styled as a link (no underline, no link color). The handlers are always
-            // attached and simply no-op while no workspace is set (guarded by _dir).
+            // the folder in Explorer. They darken / swap to the open-folder glyph on hover and show a
+            // pointer cursor + tooltip, but are deliberately NOT styled as a link (no underline, no link
+            // color). The text label fills its column, so its handlers are position-aware: only the
+            // actual rendered text (not the blank space after it) reacts. All handlers no-op while no
+            // workspace is set (guarded by _dir).
             _openTip = new ToolTip();
             _icon.Click += OnOpenWorkspaceClicked;
-            _text.Click += OnOpenWorkspaceClicked;
             _icon.MouseEnter += delegate { SetHover(true); };
             _icon.MouseLeave += delegate { SetHover(false); };
-            _text.MouseEnter += delegate { SetHover(true); };
-            _text.MouseLeave += delegate { SetHover(false); };
+            _text.MouseClick += OnTextMouseClick;
+            _text.MouseMove += OnTextMouseMove;
+            _text.MouseLeave += OnTextMouseLeave;
 
             // A single-row table deterministically centers each cell's content vertically, which
             // dock/anchor/autosize alone did not do reliably (the links and text hugged the top).
@@ -148,6 +154,12 @@ namespace GxPT
             bool has = !string.IsNullOrEmpty(dir);
             _dir = has ? dir : null;
             _icon.Image = has ? SetIcon : UnsetIcon;
+
+            // Reset the per-pointer text state; the next MouseMove re-evaluates it for the new text.
+            _overText = false;
+            _text.Cursor = Cursors.Default;
+            _openTip.SetToolTip(_text, null);
+
             if (has)
             {
                 this.BackColor = SetBack;
@@ -157,12 +169,11 @@ namespace GxPT
                 _clear.Visible = true;
                 _dismiss.Visible = false; // can't dismiss while a folder is set (use Clear)
 
-                // Make the icon + path read as clickable: pointer cursor and an "Open in Explorer"
-                // tooltip on both.
+                // The whole icon is a click target (pointer cursor + tooltip). The text label fills its
+                // column, so its cursor/tooltip are applied per-pointer in OnTextMouseMove instead —
+                // only over the rendered text, not the blank space after it.
                 _icon.Cursor = Cursors.Hand;
-                _text.Cursor = Cursors.Hand;
                 _openTip.SetToolTip(_icon, "Open in Explorer");
-                _openTip.SetToolTip(_text, "Open in Explorer");
             }
             else
             {
@@ -174,9 +185,7 @@ namespace GxPT
                 _dismiss.Visible = true;
 
                 _icon.Cursor = Cursors.Default;
-                _text.Cursor = Cursors.Default;
                 _openTip.SetToolTip(_icon, null);
-                _openTip.SetToolTip(_text, null);
             }
         }
 
@@ -188,6 +197,45 @@ namespace GxPT
             if (string.IsNullOrEmpty(_dir)) return;
             _icon.Image = on ? (SetIconHover ?? SetIcon) : SetIcon;
             _text.ForeColor = on ? SetTextHover : SetText;
+        }
+
+        // The path label fills its column; this is the rendered width of the text within it, so we can
+        // tell a click/hover over the text apart from one over the trailing blank space. Capped to the
+        // label width so a long (ellipsized) path counts its whole visible extent.
+        private int TextWidth()
+        {
+            Size sz = TextRenderer.MeasureText(_text.Text, _text.Font);
+            return Math.Min(sz.Width, _text.Width);
+        }
+
+        // Track + apply the hover affordance only while the pointer is over the actual text (the blank
+        // space after a short path stays inert). Toggles on boundary crossings to avoid tooltip flicker.
+        private void OnTextMouseMove(object sender, MouseEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_dir)) return;
+            bool over = e.X <= TextWidth();
+            if (over == _overText) return;
+            _overText = over;
+            _text.Cursor = over ? Cursors.Hand : Cursors.Default;
+            _openTip.SetToolTip(_text, over ? "Open in Explorer" : null);
+            SetHover(over);
+        }
+
+        private void OnTextMouseLeave(object sender, EventArgs e)
+        {
+            if (!_overText) return;
+            _overText = false;
+            _text.Cursor = Cursors.Default;
+            _openTip.SetToolTip(_text, null);
+            SetHover(false);
+        }
+
+        // Open only when the click landed on the text, not the trailing blank space.
+        private void OnTextMouseClick(object sender, MouseEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_dir)) return;
+            if (e.X > TextWidth()) return;
+            OnOpenWorkspaceClicked(sender, e);
         }
 
         // Open the current workspace folder in Windows Explorer (no-op when none is set).
