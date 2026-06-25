@@ -626,7 +626,7 @@ Same dual-world pattern (net48 linked-source via `dotnet test`):
     pure structured-file writes with a `scope` (project/user) arg, so it reused
     `SkillWriter`'s atomic-write/validation machinery rather than a new server (agents
     have no execution surface). The agent tools are gated on the `agent-writer` skill the
-    same way the skill tools are gated on `skill-writer` (`SkillToolGate`). Still later:
+    same way the skill tools are gated on `skill-writer` (`ExtensionsToolGate`). Still later:
     folder-form agents with bundled assets.
 
 ---

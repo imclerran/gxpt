@@ -12,7 +12,7 @@ namespace GxPT
     //     shared server up via the usual "any enabled skill" launch rule.)
     //   * run_skill_script is hidden when NO skill is enabled at all - the server may still be running
     //     (it is shared across the workdir), but its tools have no business in a turn with no skills.
-    internal static class SkillToolGate
+    internal static class ExtensionsToolGate
     {
         // The meta-skills that own the authoring surfaces (their slugs / folder names).
         public const string SkillWriterSlug = "skill-writer";
