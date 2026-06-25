@@ -71,12 +71,20 @@ Guidance:
 
 The body is the agent's system prompt. The built-in agents (`explore`, `plan`, `verify`,
 `web-research`, `code-reviewer`, `general-purpose`) are the model to follow - read one with
-`read_agent` before you draft, and match its shape and length. They are deliberately lean: a
-handful of short paragraphs, not a page. **Resist over-specifying.** Do not script the agent's
-method step by step ("1. fetch the README, 2. then search code, 3. then…"). The dispatching model
-supplies the specific task and the deliverable it wants each time it delegates; an over-prescribed
-prompt fights that and makes the agent rigid. State the role, the shape of the result, and the
-guardrails - then trust the agent and the dispatcher to handle the particulars.
+`read_agent` before you draft, and match its shape.
+
+**How prescriptive to make it depends on what the user told you in the interview** (step 2 of the
+skill), so settle that first. The built-in agents are deliberately lean - a handful of short
+paragraphs - because they are general specialists dispatched with a fresh, specific brief each
+time; for that kind of agent, do not script the method step by step ("1. fetch the README, 2. then
+search code, 3. then…"), since an over-prescribed prompt fights the dispatcher's brief and makes
+the agent rigid. But lean is not always right: an agent the user wants to perform the *same*
+procedure identically every time, or one fired off with only a one-line ask, may genuinely need a
+detailed, opinionated script. Match the altitude to the user's stated goal rather than defaulting
+either way. When in doubt, lean - and confirm with the user.
+
+Whatever the altitude, the four-part structure below still applies: state the role, the shape of
+the result, and the guardrails, and always close with the final instructions.
 
 Every built-in agent body follows the same four parts, in this order. Use them as your template:
 
@@ -109,9 +117,9 @@ Every built-in agent body follows the same four parts, in this order. Use them a
    This is the single most important line to get right and the easiest to forget; an agent missing
    it tends to narrate, stop early, or never produce its report.
 
-Keep the whole thing focused. An agent with one clear job, a lean prompt that ends on the final
-instructions, and the lowest tier that does the work is safer, cheaper, and gets picked for the
-right tasks.
+Keep the whole thing focused. An agent with one clear job, a prompt pitched at the right altitude
+for how the user will use it, the final instructions at the end, and the lowest tier that does the
+work is safer, cheaper, and gets picked for the right tasks.
 
 ### A complete body, annotated
 

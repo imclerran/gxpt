@@ -29,16 +29,33 @@ several, suggest splitting them.
 
 ## 2. Interview until you can write its system prompt
 
-Ask clarifying questions, a few at a time. You are capturing how this specialist should behave.
-Pin down:
+This is the most important step - a good agent comes from understanding what the user actually
+wants, not from guessing well. **Interview thoroughly before you propose anything.** Ask clarifying
+questions, a few at a time, and keep going until you genuinely understand the agent's purpose and
+no ambiguity remains. Do not jump to a full design - and certainly not to writing the file - while
+you are still unsure what they want. It is cheap to ask another question and expensive to write the
+wrong agent. If the user is vague ("an agent that helps with tests"), dig in: helps how, for whom,
+producing what? You are capturing how this specialist should behave. Pin down:
 
-- The single job, and what a good final answer looks like (the agent returns text - what should
-  it contain?).
-- When the main assistant should delegate to it (this becomes the `description` - get it right).
+- **The single job**, and what a good final answer looks like (the agent returns text - what
+  exactly should it contain, and in what form?).
+- **When the main assistant should delegate to it** (this becomes the `description` - get it right).
+- **How they intend to use it** - will they dispatch it with a detailed brief each time, or fire it
+  off with a one-line ask? This decides how prescriptive the system prompt should be (see below).
+  Ask; don't assume.
+- **How much latitude the agent should have** - should it follow a fixed procedure every time, or
+  use judgment about how to approach each task? Some jobs want a tight, opinionated script; others
+  want a lean prompt that leaves the method to the agent and the dispatcher.
 - Whether it only reads, or also writes/edits files, or runs destructive things (this sets the
   `max_tier` ceiling).
 - Which tools it needs (file read/edit, git, web, command, etc.).
 - Whether it should be capped to a few turns (cheap, fast) or allowed to run longer.
+
+There is no single right altitude for the system prompt - it depends on the answers above. A
+focused builder the user will hand a precise brief each time wants a lean prompt; a checker that
+must run the same audit identically every time may want a detailed, prescriptive procedure. Surface
+this trade-off and let the user's goals decide it. Don't move on until you could write the prompt
+and defend every choice in it from what the user told you.
 
 Before drafting, read `writing-agents.md` in this folder. It covers the agent contract in full - the
 `tools` allowlist syntax, what each `max_tier` means, `model` and `max_turns`, and how to phrase a
