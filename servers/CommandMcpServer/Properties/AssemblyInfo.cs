@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("CommandMcpServer")]
-[assembly: AssemblyDescription("First-party MCP server: run an already-approved shell command line, capturing output.")]
+[assembly: AssemblyDescription("First-party MCP server: run an already-approved shell command line - either CMD or PowerShell - capturing output.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Mcp35")]
