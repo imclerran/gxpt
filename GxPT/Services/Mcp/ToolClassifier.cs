@@ -122,6 +122,13 @@ namespace GxPT
                         ? "solution" : "project";
                     return new ToolPolicy(ToolTier.Destructive, RememberScope.Argument, scopeArg);
                 }
+                // The Command server also surfaces PowerShell tool(s) when a host is discovered at
+                // runtime (command__powershell, command__pwsh), so they aren't in the static table
+                // above. Like command__run, a PowerShell script runs arbitrary code, so it is
+                // Destructive and argument-scoped on the 'command' being run — "always allow this exact
+                // script", never a blanket "always allow PowerShell".
+                if (functionName.StartsWith(McpConfig.CommandName + "__", StringComparison.Ordinal))
+                    return new ToolPolicy(ToolTier.Destructive, RememberScope.Argument, "command");
                 // First-party but not in the table (shouldn't happen) -> conservative Write/Tool.
                 return new ToolPolicy(ToolTier.Write, RememberScope.Tool, null);
             }

@@ -326,6 +326,55 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Command_signature_keeps_a_quoted_token_with_spaces_whole()
+        {
+            // Regression: a quoted path with interior spaces must stay one token, not break at the
+            // first space. 2nd token is not a flag -> command + the whole quoted operand.
+            Assert.Equal("powershell \"C:\\Program Files\\app.ps1\"",
+                ToolApprovalPolicy.CommandSignature("powershell \"C:\\Program Files\\app.ps1\""));
+
+            // Quoted operand after flags: the .ps1 (inside quotes) is still found as the file operand,
+            // with its spaces intact.
+            Assert.Equal("powershell \"C:\\My Scripts\\run.ps1\"",
+                ToolApprovalPolicy.CommandSignature("powershell -File \"C:\\My Scripts\\run.ps1\" -Name \"Mary Read\""));
+
+            // Single-quoted spans count too (a quoted subcommand-position token isn't a flag).
+            Assert.Equal("sh 'a b.sh'",
+                ToolApprovalPolicy.CommandSignature("sh 'a b.sh' --flag"));
+        }
+
+        [Fact]
+        public void Command_signature_matches_multiline_scripts_exactly()
+        {
+            // A multi-line script has no meaningful program+operand identity; it must match EXACTLY so
+            // two different scripts that merely share an opening line don't collapse to one signature
+            // (which would let a remembered approval silently auto-allow a script the user never saw).
+            string a = "hostname\r\ndel C:\\temp\\a.txt";
+            string b = "hostname\r\ndel C:\\Windows\\System32\\important";
+            Assert.Equal(a, ToolApprovalPolicy.CommandSignature(a));
+            Assert.Equal(b, ToolApprovalPolicy.CommandSignature(b));
+            Assert.NotEqual(ToolApprovalPolicy.CommandSignature(a), ToolApprovalPolicy.CommandSignature(b));
+            // A bare-newline variant is treated the same.
+            Assert.Equal("Get-Process\nStop-Process x",
+                ToolApprovalPolicy.CommandSignature("Get-Process\nStop-Process x"));
+        }
+
+        [Fact]
+        public void Command_pattern_rule_matches_across_quoted_path_with_spaces()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberPrefixArg };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+
+            pol.Check("command__powershell", Args("{\"command\":\"& \\\"C:\\\\Program Files\\\\app.ps1\\\" -Verbose\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // Same quoted script, different trailing flags -> covered, no re-prompt.
+            Assert.Equal(ApprovalDecision.Allow,
+                pol.Check("command__powershell", Args("{\"command\":\"& \\\"C:\\\\Program Files\\\\app.ps1\\\" -WhatIf\"}")));
+            Assert.Equal(1, prompt.Calls);
+        }
+
+        [Fact]
         public void Command_pattern_rule_is_flag_insensitive_but_file_sensitive()
         {
             var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberPrefixArg };

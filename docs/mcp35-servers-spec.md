@@ -240,15 +240,35 @@ ReadOnly, `commit` Write, `push` Destructive(`Scope=None`).
 
 ## 5. CommandMcpServer (server name `command`) — the sharpest edge
 
-One tool, `run` (→ `command__run`, Destructive, argument-scoped). Executes an
-arbitrary command line. This server has **no allowlist of its own** — that's the
-host's argument-scoped gate (base+subcommand / exact, `mcp35-approval-spec.md`).
-The server's job is to execute the *already-approved* command **safely and
-observably**.
+The always-present tool is `run` (→ `command__run`, Destructive, argument-scoped).
+It executes an arbitrary command line. This server has **no allowlist of its
+own** — that's the host's argument-scoped gate (base+subcommand / exact,
+`mcp35-approval-spec.md`). The server's job is to execute the *already-approved*
+command **safely and observably**.
+
+On systems where PowerShell is present the server *also* registers a PowerShell
+tool per discovered host — exactly the way the MSBuild server surfaces a tool per
+discovered engine: **enabled only when discovered, never advertised when absent**.
+Discovery runs once at startup (defensive — a probe failure yields no tool, never
+a crash), detects the version, and folds it into the tool description so the model
+uses cmdlets/syntax that version supports. There are three host shapes:
+
+- `command__powershell` — Windows PowerShell **2.0–5.1**; version via
+  `$PSVersionTable.PSVersion`; runs via `-EncodedCommand`.
+- `command__powershell_v1` — Windows PowerShell **1.0**, which predates
+  `$PSVersionTable`/`-EncodedCommand`/`-ExecutionPolicy`/`-NonInteractive`; version
+  confirmed via `(Get-Host).Version`; runs by feeding the script over **stdin**
+  (`-Command -`). A box's `powershell.exe` is one version, so exactly one of the
+  two Windows-PowerShell tools is registered — never both.
+- `command__pwsh` — PowerShell **6+ Core**; modern style, like `powershell`.
+
+These tools share `run`'s host classification (Destructive, argument-scoped on
+`command`).
 
 | Tool | Schema | Behavior |
 |------|--------|----------|
 | `run` | `command*`, `timeout_ms?` | Run `command` via the shell; capture stdout/stderr/exit. |
+| `powershell` / `powershell_v1` / `pwsh` *(if discovered)* | `command*`, `timeout_ms?` | Run a PowerShell script on the discovered host; capture stdout/stderr/exit. |
 
 - Execution: `ProcessRunner` with `FileName = GXPT_CMD_SHELL` (`cmd.exe`) and
   `Arguments = "/c " + command` — the command string is handed to the shell as
@@ -265,6 +285,13 @@ observably**.
 - The server treats **all** of `command` as opaque and never tries to "sanitize"
   it (sanitizing would give a false sense of safety); containment is the gate +
   the working-dir + the timeout, not string filtering.
+- PowerShell tools run the interpreter directly (not through `cmd.exe`). For
+  2.0+/Core: `-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand
+  <base64>`, where the base64 is the **UTF-16LE** script. For 1.0 (whose host
+  lacks those switches): `-NoProfile -Command -` with the script written to the
+  child's **stdin**. Both remove shell quoting from the equation entirely (the
+  whole script crosses as one opaque token), the same "don't let the shell
+  re-interpret model text" goal the `run` tool meets with `cmd /s /c "<command>"`.
 
 ---
 

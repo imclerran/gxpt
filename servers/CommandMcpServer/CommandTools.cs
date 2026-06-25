@@ -17,7 +17,6 @@ namespace CommandMcpServer
     {
         private const int DefaultTimeoutMs = 60000;
         private const int MaxTimeoutMs = 600000;
-        private const int OutputCap = 100000; // chars per stream
 
         public static void Register(McpServer server, CommandConfig config)
         {
@@ -40,7 +39,7 @@ namespace CommandMcpServer
             string command = ctx.Arguments.Value<string>("command");
             if (string.IsNullOrEmpty(command)) return ToolResults.Error("command is required");
 
-            int timeout = IntArg(ctx, "timeout_ms", DefaultTimeoutMs, 1, MaxTimeoutMs);
+            int timeout = CommandToolHelpers.IntArg(ctx.Arguments, "timeout_ms", DefaultTimeoutMs, 1, MaxTimeoutMs);
 
             ProcessRequest req = new ProcessRequest();
             req.FileName = config.Shell;
@@ -68,35 +67,7 @@ namespace CommandMcpServer
                 return ToolResults.Error("failed to run command: " + ex.Message);
             }
 
-            bool outTrunc, errTrunc;
-            JObject outp = new JObject();
-            outp["exitCode"] = result.ExitCode;
-            outp["stdout"] = Cap(result.StdOut, out outTrunc);
-            outp["stderr"] = Cap(result.StdErr, out errTrunc);
-            outp["timedOut"] = result.TimedOut;
-            if (outTrunc || errTrunc) outp["truncated"] = true;
-            return ToolResults.Json(outp);
-        }
-
-        private static int IntArg(ToolCallContext ctx, string name, int fallback, int min, int max)
-        {
-            JToken t = ctx.Arguments[name];
-            if (t == null || t.Type == JTokenType.Null) return fallback;
-            int n;
-            try { n = t.Value<int>(); }
-            catch { return fallback; }
-            if (n < min) return min;
-            if (n > max) return max;
-            return n;
-        }
-
-        private static string Cap(string s, out bool truncated)
-        {
-            truncated = false;
-            if (s == null) return string.Empty;
-            if (s.Length <= OutputCap) return s;
-            truncated = true;
-            return s.Substring(0, OutputCap);
+            return ToolResults.Json(CommandToolHelpers.BuildResult(result, null));
         }
     }
 }

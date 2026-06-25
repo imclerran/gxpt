@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -257,7 +258,14 @@ namespace GxPT
             if (command == null) return string.Empty;
             string trimmed = command.Trim();
             if (trimmed.Length == 0) return string.Empty;
-            string[] t = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            // A multi-line command (typically a PowerShell script) has no meaningful "program + first
+            // operand" identity - reducing it to its first line's leading tokens would let a DIFFERENT
+            // multi-line script that merely opens the same way match a remembered "command pattern" rule.
+            // Match such commands EXACTLY instead (the safe direction: re-prompt rather than silently
+            // auto-allow a script the user never approved).
+            if (trimmed.IndexOf('\n') >= 0 || trimmed.IndexOf('\r') >= 0) return trimmed;
+            string[] t = TokenizeCommand(trimmed);
+            if (t.Length == 0) return string.Empty;
             if (t.Length == 1) return t[0];
 
             if (!IsFlagToken(t[1])) return t[0] + " " + t[1];
@@ -270,6 +278,51 @@ namespace GxPT
             }
             // No concrete operand -> keep today's behavior (command + first flag).
             return t[0] + " " + t[1];
+        }
+
+        // Split a single-line command into whitespace-separated tokens, keeping a quoted span ("..." or
+        // '...') as ONE token (quotes preserved) so a path with interior spaces — e.g.
+        // powershell "C:\Program Files\app.ps1" — isn't broken at the first space. Only space/tab
+        // separate tokens; multi-line commands never reach here (CommandSignature matches them exactly),
+        // so a newline is never a separator. This is a signature/display heuristic, not a shell parser:
+        // it doesn't process backslash escapes or nested quotes, which the signature's downstream use
+        // (compare-for-equality, ignore flags) doesn't need. Quotes are kept in the token text so the
+        // displayed pattern stays unambiguous; the path/flag heuristics strip them where needed
+        // (LooksLikePath, IsFlagToken).
+        private static string[] TokenizeCommand(string command)
+        {
+            List<string> tokens = new List<string>();
+            if (string.IsNullOrEmpty(command)) return tokens.ToArray();
+
+            StringBuilder cur = new StringBuilder();
+            bool inToken = false;
+            char quote = '\0';
+            for (int i = 0; i < command.Length; i++)
+            {
+                char c = command[i];
+                if (quote != '\0')
+                {
+                    cur.Append(c);
+                    if (c == quote) quote = '\0';
+                }
+                else if (c == '"' || c == '\'')
+                {
+                    quote = c;
+                    cur.Append(c);
+                    inToken = true;
+                }
+                else if (c == ' ' || c == '\t')
+                {
+                    if (inToken) { tokens.Add(cur.ToString()); cur.Length = 0; inToken = false; }
+                }
+                else
+                {
+                    cur.Append(c);
+                    inToken = true;
+                }
+            }
+            if (inToken) tokens.Add(cur.ToString());
+            return tokens.ToArray();
         }
 
         private static bool IsFlagToken(string tok)

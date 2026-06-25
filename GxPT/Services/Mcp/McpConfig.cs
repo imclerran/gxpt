@@ -28,6 +28,18 @@ namespace GxPT
         public const string GitHubName = "github";
         public const string GitHubUrl = "https://api.githubcopilot.com/mcp/";
 
+        // The PowerShell tools the command server surfaces per discovered host: one Windows-PowerShell
+        // tool (2.0-5.1 -> command__powershell, or 1.0 -> command__powershell_v1) plus an optional Core
+        // tool (command__pwsh). Centralized so every site that special-cases PowerShell rendering (the
+        // approval preview, the transcript record, ...) agrees on the set instead of each repeating the
+        // name list. The approval classification keys off the broader CommandName + "__" prefix.
+        public static bool IsPowerShellTool(string functionName)
+        {
+            return string.Equals(functionName, CommandName + "__powershell", System.StringComparison.Ordinal)
+                || string.Equals(functionName, CommandName + "__powershell_v1", System.StringComparison.Ordinal)
+                || string.Equals(functionName, CommandName + "__pwsh", System.StringComparison.Ordinal);
+        }
+
         // Env var names the host injects (servers spec §1).
         public const string EnvWorkdir = "GXPT_WORKDIR";
         public const string EnvWebSearchKey = "GXPT_WEB_SEARCH_KEY";

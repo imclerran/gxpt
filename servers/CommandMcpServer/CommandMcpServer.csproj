@@ -41,7 +41,10 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="CommandConfig.cs" />
+    <Compile Include="CommandToolHelpers.cs" />
     <Compile Include="CommandTools.cs" />
+    <Compile Include="PowerShellDiscovery.cs" />
+    <Compile Include="PowerShellTools.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
