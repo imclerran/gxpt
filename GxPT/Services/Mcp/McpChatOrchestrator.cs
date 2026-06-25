@@ -930,7 +930,7 @@ namespace GxPT
             }
             if (AskUser != null)
             {
-                list.Add(new HostTool(AskUser.AskUserName,
+                list.Add(new HostTool(AskUserTool.AskUserName,
                     delegate { return AskUser.AskUserDef(); },
                     delegate(ToolCall c, out bool err) { return AskUser.Ask(c.ArgumentsJson, out err); }));
             }
