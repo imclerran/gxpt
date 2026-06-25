@@ -15,7 +15,7 @@ namespace GxPT.Tests
         [Fact]
         public void HiddenTools_SkillEnabledButNoWriters_HidesAuthoring_ShowsRunScript()
         {
-            // A non-writer skill is enabled: the 8 skill-authoring tools AND the 7 agent-authoring tools are
+            // A non-writer skill is enabled: the 9 skill-authoring tools AND the 8 agent-authoring tools are
             // hidden (neither meta-skill is on), but run_skill_script is available (any skill may ship one).
             ICollection<string> hidden = SkillToolGate.HiddenTools(new List<Skill> { MakeSkill("greeting") });
             // skill authoring: tier 1
@@ -24,6 +24,7 @@ namespace GxPT.Tests
             Assert.Contains("extensions__update_skill", hidden);
             // skill authoring: tier 2 (maintenance)
             Assert.Contains("extensions__edit_skill_file", hidden);
+            Assert.Contains("extensions__rename_skill", hidden);
             Assert.Contains("extensions__list_skill_files", hidden);
             Assert.Contains("extensions__delete_skill_file", hidden);
             Assert.Contains("extensions__delete_skill", hidden);
@@ -32,6 +33,7 @@ namespace GxPT.Tests
             Assert.Contains("extensions__create_agent", hidden);
             Assert.Contains("extensions__update_agent", hidden);
             Assert.Contains("extensions__edit_agent", hidden);
+            Assert.Contains("extensions__rename_agent", hidden);
             Assert.Contains("extensions__read_agent", hidden);
             Assert.Contains("extensions__list_agents", hidden);
             Assert.Contains("extensions__delete_agent", hidden);

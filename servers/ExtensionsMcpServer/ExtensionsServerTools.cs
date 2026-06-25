@@ -159,6 +159,29 @@ namespace ExtensionsMcpServer
                     catch (SkillWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
 
+            server.AddTool("rename_skill",
+                "Rename a skill: change its slug - the folder name and handle. Moves the whole skill folder "
+                + "(SKILL.md plus any supporting files/scripts) and updates the frontmatter name to stay "
+                + "aligned. Refuses if new_slug already exists or the skill is bundled (read-only). Anything "
+                + "that referenced the old slug must switch to the new one.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The skill's current slug (it must already exist).")
+                    .Str("new_slug", true, "The new kebab-case slug/handle; normalized automatically.")
+                    .Str("new_name", false, "New display name; omit to derive a Title Case name from new_slug. "
+                        + "If given, it must reduce to new_slug.")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Write(),
+                delegate(ToolCallContext ctx)
+                {
+                    try
+                    {
+                        return ToolResults.Text(writer.RenameSkill(
+                            Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "new_slug"), Str(ctx, "new_name")));
+                    }
+                    catch (SkillWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
             server.AddTool("list_skill_files",
                 "List every file in an existing skill's folder, by path relative to the folder. Works for any "
                 + "skill regardless of whether it is enabled.",
@@ -305,6 +328,28 @@ namespace ExtensionsMcpServer
                         return ToolResults.Text(agents.EditAgent(
                             Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "old_string"),
                             Str(ctx, "new_string"), Bool(ctx, "replace_all")));
+                    }
+                    catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
+                });
+
+            server.AddTool("rename_agent",
+                "Rename an agent: change its slug - the <slug>.md file name and dispatch handle. Moves the file "
+                + "and updates the frontmatter name to stay aligned. Refuses if new_slug already exists or the "
+                + "agent is bundled (read-only). Anything that dispatched the old slug must switch to the new one.",
+                SchemaBuilder.Object()
+                    .Str("slug", true, "The agent's current slug (it must already exist).")
+                    .Str("new_slug", true, "The new kebab-case slug/handle; normalized automatically.")
+                    .Str("new_name", false, "New display name; omit to derive a Title Case name from new_slug. "
+                        + "If given, it must reduce to new_slug.")
+                    .Str("scope", false, scopeDesc)
+                    .Build(),
+                ToolAnnotations.Write(),
+                delegate(ToolCallContext ctx)
+                {
+                    try
+                    {
+                        return ToolResults.Text(agents.RenameAgent(
+                            Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "new_slug"), Str(ctx, "new_name")));
                     }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });

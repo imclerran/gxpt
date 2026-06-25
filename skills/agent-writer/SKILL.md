@@ -124,12 +124,13 @@ read the one you want before changing it):
 - `delete_agent(slug)` removes the whole agent. It's destructive - the user confirms, so only reach
   for it when asked.
 
-**Renaming an agent.** There is no rename tool, and the slug can't change in place (it's the
-filename). `update_agent` only changes the display name, and it must still reduce to the same slug -
-so it can re-case a name, not re-handle it. To genuinely rename (new slug), do it as create-new +
-delete-old: `read_agent(old-slug)` for the full contract and body, `create_agent(new-slug, ...)`
-with the new name and slug, `validate_agent(new-slug)`, then `delete_agent(old-slug)`. Tell the user
-the handle changed, since anything that dispatched the old slug must use the new one.
+**Renaming an agent.** Use `rename_agent(slug, new_slug, new_name?)` - it moves `<slug>.md` to
+`<new_slug>.md` and rewrites the frontmatter name to stay aligned (omit `new_name` to derive a Title
+Case name from the new slug; pass it to control casing, e.g. `GitHub Researcher`). It refuses if the
+new slug already exists or the agent is bundled (read-only - copy it into project/user scope first).
+`update_agent` only re-cases the display name within the same slug; reach for `rename_agent` whenever
+the handle itself changes. Tell the user the handle changed, since anything that dispatched the old
+slug must use the new one.
 
 After writing, run `validate_agent(slug)` to confirm the file loads (its description is what makes
 it dispatchable) and the contract is well-formed.

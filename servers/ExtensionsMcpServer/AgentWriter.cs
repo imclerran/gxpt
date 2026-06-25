@@ -144,6 +144,67 @@ namespace ExtensionsMcpServer
                 + (replaceAll ? count + " replacement" + (count == 1 ? "" : "s") : "1 replacement") + ").";
         }
 
+        // rename_agent: change an agent's slug - its <slug>.md file name and dispatch handle. Moves the file
+        // within the same writable scope and rewrites the frontmatter name to stay aligned with the new slug.
+        // Refuses if the target slug already exists, or if the source is a bundled (read-only) agent. newName
+        // is optional: omitted => a Title Case name derived from the new slug (kept if the current name already
+        // aligns); given => it must reduce to the new slug. Renaming a handle has no other safe shortcut - the
+        // slug is the identity, so references to the old slug must be updated by the caller.
+        public string RenameAgent(string scope, string slugIn, string newSlugIn, string newName)
+        {
+            string root = RootFor(scope);
+            string oldSlug = RequireSlug(slugIn);
+            string newSlug = RequireSlug(newSlugIn);
+            string oldFile = Path.Combine(root, oldSlug + ".md");
+            if (!File.Exists(oldFile))
+                throw NotWritable(oldSlug, scope, false);
+            if (string.Equals(oldSlug, newSlug, StringComparison.Ordinal))
+                throw new AgentWriteException("the new slug is the same as the current one ('" + oldSlug + "')");
+            string newFile = Path.Combine(root, newSlug + ".md");
+            if (File.Exists(newFile))
+                throw new AgentWriteException("agent '" + newSlug + "' already exists; choose a different slug or delete it first");
+
+            string existing;
+            try { existing = File.ReadAllText(oldFile, Encoding.UTF8); }
+            catch (Exception ex) { throw new AgentWriteException("could not read agent: " + ex.Message); }
+
+            AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
+            if (IsBlank(fm.Description))
+                throw new AgentWriteException("agent '" + oldSlug + "' has no description; fix it with update_agent before renaming");
+
+            string resolvedName = ResolveRenameName("agent", newName, newSlug, fm.Name);
+
+            // Write the new file first, then remove the old one. The collision guard above means the new path
+            // never overwrites another agent, and the content is preserved (this is a move, not a rewrite).
+            AtomicWrite(newFile, BuildAgentMd(resolvedName, fm.Description, fm.ToolsRaw, fm.MaxTierRaw,
+                fm.ModelRaw, fm.MaxTurnsRaw, fm.Body));
+            try { File.Delete(oldFile); }
+            catch (Exception ex)
+            {
+                throw new AgentWriteException("renamed to '" + newSlug + "' but could not remove the old '"
+                    + oldSlug + "': " + ex.Message);
+            }
+            return "Renamed agent '" + oldSlug + "' to '" + newSlug + "'. Anything that dispatched '" + oldSlug
+                + "' must now use '" + newSlug + "'.";
+        }
+
+        // The display name a rename should write: an explicit newName (validated against the new slug), else
+        // the current name if it still aligns, else a Title Case name derived from the new slug. Shared shape
+        // with the skill writer (kept here, not in WriterIo, because the domain exception type differs).
+        private static string ResolveRenameName(string noun, string newName, string newSlug, string currentName)
+        {
+            if (!IsBlank(newName))
+            {
+                RequireSingleLine(newName, "new_name");
+                if (!WriterIo.NameMatchesSlug(newName, newSlug))
+                    throw new AgentWriteException(WriterIo.NameSlugMismatchMessage(noun, newName, newSlug, true, "create_agent"));
+                return newName;
+            }
+            if (!IsBlank(currentName) && WriterIo.NameMatchesSlug(currentName, newSlug))
+                return currentName;
+            return WriterIo.TitleCaseFromSlug(newSlug);
+        }
+
         // read_agent (ReadOnly): the full <slug>.md text. Reads from ANY root - project, user, or the
         // bundled (shipped) agents - newest-wins (project > user > bundled), mirroring the catalog the host
         // shows. So a bundled agent (e.g. explore) is readable even though it can't be edited in place;

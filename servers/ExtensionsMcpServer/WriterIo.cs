@@ -48,6 +48,25 @@ namespace ExtensionsMcpServer
             return sb.ToString();
         }
 
+        // A display name derived from a kebab slug: each hyphen segment capitalized, joined by spaces
+        // ("code-explore" -> "Code Explore"). A reasonable default when a rename supplies no name; acronym
+        // casing (e.g. "GitHub") is lost, so callers can pass an explicit name to refine it.
+        public static string TitleCaseFromSlug(string slug)
+        {
+            if (string.IsNullOrEmpty(slug)) return slug;
+            string[] parts = slug.Split('-');
+            StringBuilder sb = new StringBuilder(slug.Length);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string p = parts[i];
+                if (p.Length == 0) continue;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(char.ToUpperInvariant(p[0]));
+                if (p.Length > 1) sb.Append(p.Substring(1));
+            }
+            return sb.Length == 0 ? slug : sb.ToString();
+        }
+
         // The shared "name and slug must stay aligned" message, worded once so the two writers can't drift.
         // noun is "agent"/"skill"; createTool is "create_agent"/"create_skill". On CREATE both sides are
         // still free, so it offers to fix either; on UPDATE the slug is the fixed identity, so it points at

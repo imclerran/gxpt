@@ -109,6 +109,60 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void RenameAgent_MovesFileDerivesNameAndPreservesContract()
+        {
+            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.",
+                new[] { "files__read" }, "readonly", "deepseek/x", 20, "You are an explorer.");
+
+            _writer.RenameAgent(null, "code-explore", "code-search", null);   // no new_name -> derived
+
+            Assert.False(File.Exists(AgentFile("code-explore")));   // old file gone
+            string text = File.ReadAllText(AgentFile("code-search"));
+            Assert.Contains("name: Code Search", text);            // Title Case derived from the new slug
+            AgentFrontmatter fm = AgentFrontmatter.Parse(text);
+            Assert.Equal("Explores code.", fm.Description);        // contract preserved
+            Assert.Equal("[files__read]", fm.ToolsRaw);
+            Assert.Equal("readonly", fm.MaxTierRaw);
+            Assert.Equal("deepseek/x", fm.ModelRaw);
+            Assert.Equal("You are an explorer.", fm.Body);
+        }
+
+        [Fact]
+        public void RenameAgent_KeepsExplicitNameWhenAligned()
+        {
+            _writer.CreateAgent(null, "github-sync", "GitHub Sync", "Syncs a repo.", null, null, null, 0, "body");
+            _writer.RenameAgent(null, "github-sync", "github-mirror", "GitHub Mirror");  // acronym casing preserved
+            Assert.Contains("name: GitHub Mirror", File.ReadAllText(AgentFile("github-mirror")));
+        }
+
+        [Fact]
+        public void RenameAgent_RefusesExistingTarget()
+        {
+            _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, 0, "b");
+            _writer.CreateAgent(null, "beta", "Beta", "d", null, null, null, 0, "b");
+            Assert.Throws<AgentWriteException>(() => _writer.RenameAgent(null, "alpha", "beta", null));
+            Assert.True(File.Exists(AgentFile("alpha")));   // source untouched on refusal
+            Assert.True(File.Exists(AgentFile("beta")));
+        }
+
+        [Fact]
+        public void RenameAgent_RejectsNameNotMatchingNewSlug()
+        {
+            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, 0, "body");
+            Assert.Throws<AgentWriteException>(() =>
+                _writer.RenameAgent(null, "code-explore", "code-search", "Totally Different"));
+            Assert.True(File.Exists(AgentFile("code-explore")));      // nothing moved
+            Assert.False(File.Exists(AgentFile("code-search")));
+        }
+
+        [Fact]
+        public void RenameAgent_RefusesBundledSource()
+        {
+            MakeBundled("explore", "bundled body");   // lives only in the read-only bundled root
+            Assert.Throws<AgentWriteException>(() => _writer.RenameAgent(null, "explore", "code-explore", null));
+        }
+
+        [Fact]
         public void CreateAgent_OmitsOptionalFieldsWhenAbsent()
         {
             _writer.CreateAgent(null, "minimal", "Minimal", "A minimal agent.", null, null, null, 0, "body");

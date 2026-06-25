@@ -5,7 +5,7 @@ how to choose the tool allowlist and tier, and how to write the system prompt.
 
 ## The file
 
-An agent is one flat `<slug>.md`: a `--- … ---` frontmatter block, then the body (its system
+An agent is one flat `<slug>.md`: a `--- ... ---` frontmatter block, then the body (its system
 prompt). You never hand-format the frontmatter - the agent tools assemble it from fields. Example:
 
 ```
@@ -33,7 +33,7 @@ You are a code-exploration specialist working inside the user's workspace.
   - `readonly` - can only use read-only tools. Use for explorers, reviewers, researchers,
     planners. They cannot change anything even if a write tool slips into the allowlist.
   - `write` (the default) - can also edit files (each write still goes through the approval gate).
-  - `destructive` - can also run irreversible tools (delete, git push/reset, command__run, …).
+  - `destructive` - can also run irreversible tools (delete, git push/reset, command__run, etc.).
     Opt into this only when the job truly needs it.
   Pick the **lowest** tier that does the job.
 - **model** - an optional model id override. Omit it to inherit the parent turn's model. Set it
@@ -72,14 +72,15 @@ the allowlist, and pick the lowest ceiling that still covers the job.
   `memory__forget`, `memory__consolidate` (write - low-risk local `.gxpt` edits). Rarely needed by a
   sub-agent.
 - **msbuild** - builds .NET projects. Tool names are discovered per machine (`msbuild__build_4_0`,
-  `msbuild__build_solution_2022`, …), so match them with a glob like `msbuild__*`; every build tool
+  `msbuild__build_solution_2022`, ...), so match them with a glob like `msbuild__*`; every build tool
   is destructive (a build runs arbitrary targets/Exec tasks). Tell a build agent to pick an
   available one.
 - **extensions** - skill and agent authoring (`.gxpt/skills`, `.gxpt/agents`). Read-only:
   `extensions__list_skill_files`, `extensions__validate_skill`, `extensions__read_agent`,
   `extensions__list_agents`, `extensions__validate_agent`. Write: `extensions__create_skill`,
   `extensions__write_skill_file`, `extensions__update_skill`, `extensions__edit_skill_file`,
-  `extensions__create_agent`, `extensions__update_agent`, `extensions__edit_agent`. Destructive:
+  `extensions__rename_skill`, `extensions__create_agent`, `extensions__update_agent`,
+  `extensions__edit_agent`, `extensions__rename_agent`. Destructive:
   `extensions__delete_skill_file`, `extensions__delete_skill`, `extensions__delete_agent`,
   `extensions__run_skill_script`. Rarely granted to a sub-agent (an agent cannot author agents in a
   way that escalates - the same tier rules apply).
@@ -115,7 +116,7 @@ The body is the agent's system prompt. The built-in agents (`code-explore`, `pla
 skill), so settle that first. The built-in agents are deliberately lean - a handful of short
 paragraphs - because they are general specialists dispatched with a fresh, specific brief each
 time; for that kind of agent, do not script the method step by step ("1. fetch the README, 2. then
-search code, 3. then…"), since an over-prescribed prompt fights the dispatcher's brief and makes
+search code, 3. then..."), since an over-prescribed prompt fights the dispatcher's brief and makes
 the agent rigid. But lean is not always right: an agent the user wants to perform the *same*
 procedure identically every time, or one fired off with only a one-line ask, may genuinely need a
 detailed, opinionated script. Match the altitude to the user's stated goal rather than defaulting
@@ -152,7 +153,7 @@ Every built-in agent body follows the same four parts, in this order. Use them a
    > Work by calling tools, not by narrating. A message with no tool call is treated as your final
    > answer, so only stop once you are ready to give your summary.
 
-   Adapt the tail - "…to present the plan", "…to give your review" - but keep the two sentences.
+   Adapt the tail - "...to present the plan", "...to give your review" - but keep the two sentences.
    This is the single most important line to get right and the easiest to forget; an agent missing
    it tends to narrate, stop early, or never produce its report.
 
@@ -165,17 +166,17 @@ work is safer, cheaper, and gets picked for the right tasks.
 This is the `code-explore` agent's body - the canonical shape. Notice how short each part is:
 
 ```
-You are a code-exploration specialist working inside the user's workspace.      ← 1. identity
+You are a code-exploration specialist working inside the user's workspace.      <-- 1. identity
 
-Given a question about the codebase, locate the relevant files, read the parts   ← 2. job + what
-that matter, and return a tight written summary covering:                            to return
+Given a question about the codebase, locate the relevant files, read the parts   <-- 2. job + what
+that matter, and return a tight written summary covering:                             to return
 - where the thing lives (file path + line where useful),
 - how it works at a high level,
 - anything surprising or worth flagging.
 
-Cite paths so the user can jump to them. Do NOT modify any files. If you can't    ← 3. rules &
-find something after a genuine search, say so and name where you looked.              boundaries
+Cite paths so the user can jump to them. Do NOT modify any files. If you can't    <-- 3. rules &
+find something after a genuine search, say so and name where you looked.               boundaries
 
-Work by calling tools, not by narrating. A message with no tool call is treated   ← 4. final
-as your final answer, so only stop once you are ready to give your summary.           instructions
+Work by calling tools, not by narrating. A message with no tool call is treated   <-- 4. final
+as your final answer, so only stop once you are ready to give your summary.            instructions
 ```

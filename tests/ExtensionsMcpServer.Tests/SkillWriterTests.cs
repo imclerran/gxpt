@@ -78,6 +78,41 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void RenameSkill_MovesFolderWithAssetsAndDerivesName()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Says hi.", "body");
+            _writer.WriteFile(null, "greeting", "ref.md", "reference content");
+
+            _writer.RenameSkill(null, "greeting", "salutation", null);   // no new_name -> derived
+
+            Assert.False(Directory.Exists(Path.Combine(_project, "greeting")));   // old folder gone
+            string text = File.ReadAllText(SkillFile("salutation"));
+            Assert.Contains("name: Salutation", text);                            // derived from new slug
+            Assert.Contains("Says hi.", text);                                    // description preserved
+            Assert.True(File.Exists(Path.Combine(_project, "salutation", "ref.md")));   // asset came along
+        }
+
+        [Fact]
+        public void RenameSkill_RefusesExistingTarget()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "d", "b");
+            _writer.CreateSkill(null, "farewell", "Farewell", "d", "b");
+            Assert.Throws<SkillWriteException>(() => _writer.RenameSkill(null, "greeting", "farewell", null));
+            Assert.True(File.Exists(SkillFile("greeting")));   // both untouched on refusal
+            Assert.True(File.Exists(SkillFile("farewell")));
+        }
+
+        [Fact]
+        public void RenameSkill_RejectsNameNotMatchingNewSlug()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Says hi.", "body");
+            Assert.Throws<SkillWriteException>(() =>
+                _writer.RenameSkill(null, "greeting", "salutation", "Something Else"));
+            Assert.True(File.Exists(SkillFile("greeting")));                       // not moved
+            Assert.False(Directory.Exists(Path.Combine(_project, "salutation")));
+        }
+
+        [Fact]
         public void CreateSkill_RefusesExisting()
         {
             _writer.CreateSkill(null, "greeting", "Greeting", "Be a pirate.", "body");
