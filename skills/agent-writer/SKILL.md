@@ -40,9 +40,11 @@ Pin down:
 - Which tools it needs (file read/edit, git, web, command, etc.).
 - Whether it should be capped to a few turns (cheap, fast) or allowed to run longer.
 
-Before drafting, read `writing-agents.md` in this folder for the agent contract in full - the
+Before drafting, read `writing-agents.md` in this folder. It covers the agent contract in full - the
 `tools` allowlist syntax, what each `max_tier` means, `model` and `max_turns`, and how to phrase a
-good `description`. Read it whenever a task touches tools so you propose the right allowlist.
+good `description` - and the four-part structure for the system prompt body, including the **final
+instructions** that every built-in agent ends on. Read it before you write any body, and whenever a
+task touches tools so you propose the right allowlist.
 
 ## 3. Decide the contract
 
@@ -78,9 +80,14 @@ scope, so you don't pass a scope to it.
 
 Creating a new agent:
 - `create_agent(slug, name, description, body, tools, max_tier, model, max_turns)` - the body is the
-  agent's system prompt. Write it in the second person ("You are ..."), state the one job, what to
-  return, and any rules or gotchas. Tell it to work by calling tools and to give its final answer as
-  a plain message.
+  agent's system prompt. Follow the four-part structure from `writing-agents.md`, in order:
+  (1) a second-person identity line ("You are a …"); (2) the one job plus a bullet list of what the
+  written result must contain; (3) the rules and boundaries (state read-only limits explicitly); and
+  (4) the **final instructions** - the closing paragraph that every built-in agent ends on, telling
+  it to work by calling tools, not narrating, and that a message with no tool call is its final
+  answer. Do NOT omit the final instructions; the agent's run loop depends on them. Keep the prompt
+  lean and don't script its method step by step - the dispatching model supplies the specific task
+  each time. When in doubt, `read_agent("explore")` and mirror its shape and length.
 
 Editing an existing agent (first `list_agents` to see which slugs exist, then `read_agent(slug)` to
 read the one you want before changing it):

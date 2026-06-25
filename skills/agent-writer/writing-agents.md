@@ -69,12 +69,66 @@ Guidance:
 
 ## Writing the system prompt (the body)
 
-- Address the agent in the second person: "You are a …".
-- State its ONE job and the boundaries ("Do NOT modify files").
-- Describe exactly what its final answer should contain - the agent returns text that the main
-  assistant folds back in, so a tight, structured result (with file paths where useful) is the
-  whole value.
-- Tell it to work by calling tools, and that a message with no tool call is its final answer, so
-  it should only stop when ready to report.
-- Keep it focused. An agent with one clear job and a low tier is safer, cheaper, and gets picked
-  for the right tasks.
+The body is the agent's system prompt. The built-in agents (`explore`, `plan`, `verify`,
+`web-research`, `code-reviewer`, `general-purpose`) are the model to follow - read one with
+`read_agent` before you draft, and match its shape and length. They are deliberately lean: a
+handful of short paragraphs, not a page. **Resist over-specifying.** Do not script the agent's
+method step by step ("1. fetch the README, 2. then search code, 3. then…"). The dispatching model
+supplies the specific task and the deliverable it wants each time it delegates; an over-prescribed
+prompt fights that and makes the agent rigid. State the role, the shape of the result, and the
+guardrails - then trust the agent and the dispatcher to handle the particulars.
+
+Every built-in agent body follows the same four parts, in this order. Use them as your template:
+
+1. **Identity line** - one sentence in the second person naming the specialty: "You are a
+   code-exploration specialist working inside the user's workspace." / "You are an adversarial
+   verification specialist."
+
+2. **The job + what to return.** One short paragraph (or a lead-in sentence) on the job, then a
+   bullet list of what the written result must contain. The agent returns text that the main
+   assistant folds back in, so this is the whole value - make the deliverable concrete. Describe
+   *what the result contains*, not the *procedure to produce it*. E.g. the explorer returns "where
+   the thing lives (file path + line), how it works at a high level, anything surprising."
+
+3. **Rules and boundaries.** A short paragraph of the guardrails and gotchas: what it must NOT do
+   (state read-only limits explicitly - "Do NOT modify any files" - even though `max_tier` already
+   enforces them, because the prompt is what the agent actually reads), conventions to follow, and
+   what to do when it can't finish ("if you can't find it after a genuine search, say so and name
+   where you looked"; "if part of the task is unclear, call it out rather than guessing").
+
+4. **Final instructions.** Close with the standing instruction that EVERY built-in agent ends on -
+   the agent's run loop depends on it, so do not omit it. It tells the agent to act by calling
+   tools rather than narrating, and that a turn with no tool call is taken as its final answer (so
+   it must keep going until ready to report). The canonical wording, which you should reuse and
+   adapt only the last clause to the agent's deliverable:
+
+   > Work by calling tools, not by narrating. A message with no tool call is treated as your final
+   > answer, so only stop once you are ready to give your summary.
+
+   Adapt the tail - "…to present the plan", "…to give your review" - but keep the two sentences.
+   This is the single most important line to get right and the easiest to forget; an agent missing
+   it tends to narrate, stop early, or never produce its report.
+
+Keep the whole thing focused. An agent with one clear job, a lean prompt that ends on the final
+instructions, and the lowest tier that does the work is safer, cheaper, and gets picked for the
+right tasks.
+
+### A complete body, annotated
+
+This is the `explore` agent's body - the canonical shape. Notice how short each part is:
+
+```
+You are a code-exploration specialist working inside the user's workspace.      ← 1. identity
+
+Given a question about the codebase, locate the relevant files, read the parts   ← 2. job + what
+that matter, and return a tight written summary covering:                            to return
+- where the thing lives (file path + line where useful),
+- how it works at a high level,
+- anything surprising or worth flagging.
+
+Cite paths so the user can jump to them. Do NOT modify any files. If you can't    ← 3. rules &
+find something after a genuine search, say so and name where you looked.              boundaries
+
+Work by calling tools, not by narrating. A message with no tool call is treated   ← 4. final
+as your final answer, so only stop once you are ready to give your summary.           instructions
+```
