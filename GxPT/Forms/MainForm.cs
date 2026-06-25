@@ -875,9 +875,64 @@ namespace GxPT
                 // While this tab's prompt awaits the user, pause the status-bar marquee and swap the
                 // Stop button for an "awaiting user..." label (only when this is the active tab).
                 panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
+                // The approval panel's Explain button opens a fresh tab that describes the pending
+                // command, carrying over this conversation's model + ZDR. The approval itself stays up.
+                panel.ExplainRequested = delegate(string command, bool isPowerShell)
+                {
+                    OpenCommandExplainTab(ctxRef, command, isPowerShell);
+                };
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
+        }
+
+        // Open a new chat tab that asks the model to explain a pending command (from the approval
+        // panel's Explain button), then send it. The new conversation inherits the source tab's model
+        // and ZDR setting so the explanation routes through the same provider/privacy choice; it gets
+        // NO working directory, so it's a plain chat turn that won't itself trigger tool approvals.
+        // The source tab's approval prompt is untouched - it stays up for the user to Allow/Deny.
+        internal void OpenCommandExplainTab(TabManager.ChatTabContext sourceCtx, string command, bool isPowerShell)
+        {
+            try
+            {
+                if (_tabManager == null || string.IsNullOrEmpty(command)) return;
+
+                // Snapshot the source conversation's model + effective ZDR before we switch tabs.
+                string model = sourceCtx != null ? sourceCtx.SelectedModel : null;
+                bool zdr = sourceCtx != null && sourceCtx.Conversation != null
+                           && (sourceCtx.Conversation.Zdr || sourceCtx.Conversation.ZdrFirstMessageIndex >= 0);
+
+                var ctx = _tabManager.CreateConversationTab(); // creates and selects the new tab
+                if (ctx == null) return;
+
+                if (!string.IsNullOrEmpty(model))
+                {
+                    ctx.SelectedModel = model;
+                    if (ctx.Conversation != null) ctx.Conversation.SelectedModel = model;
+                }
+                if (ctx.Conversation != null) ctx.Conversation.Zdr = zdr;
+
+                // Reflect the carried-over model + ZDR on the toolbar now that this tab is active, so the
+                // send below (which reads the combo) uses them.
+                SyncComboModelFromActiveTab();
+                SyncZdrCheckboxFromActiveTab();
+
+                string prompt = BuildCommandExplainPrompt(command, isPowerShell);
+                if (_inputManager != null) _inputManager.SetInputText(prompt, true);
+                btnSend_Click(this, EventArgs.Empty);
+            }
+            catch { }
+        }
+
+        // The user prompt seeded into an Explain tab: ask for a plain-language walkthrough of the command
+        // without running it, fenced in the matching language so it renders as a code block.
+        private static string BuildCommandExplainPrompt(string command, bool isPowerShell)
+        {
+            string kind = isPowerShell ? "PowerShell" : "Windows command-line";
+            string fence = isPowerShell ? "powershell" : "batch";
+            return "Explain, in plain language, what the following " + kind + " command does, "
+                + "step by step. Call out anything destructive or risky. Do not run it.\r\n\r\n"
+                + "```" + fence + "\r\n" + (command ?? string.Empty) + "\r\n```";
         }
 
         // Re-theme every tab's tool-approval panel after a light<->dark switch: a currently-visible

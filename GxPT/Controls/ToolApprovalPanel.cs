@@ -62,6 +62,21 @@ namespace GxPT
         // fires and the initial blue focus border was missing until the user tabbed.
         private Button _defaultButton;
 
+        // A small "Explain" affordance pinned to the panel's top-right corner, shown only while a
+        // command-style tool (command__run or a discovered PowerShell tool) awaits approval. Clicking it
+        // asks the host to open a fresh chat tab that explains the pending command - it does NOT resolve
+        // the approval, which stays up for the user to Allow/Deny. The captured command + whether it's
+        // PowerShell are remembered so the deferred click knows what to explain.
+        private readonly Button _explainButton;
+        private string _explainCommand;
+        private bool _explainIsPowerShell;
+
+        // Raised (on the UI thread) when the user clicks Explain for the current command tool. The host
+        // (MainForm) opens a new tab seeded with an "explain this command" prompt, carrying over the
+        // source conversation's model + ZDR setting. Arguments: the command line, and whether it is a
+        // PowerShell (vs cmd) command so the prompt and code fence match. Null = no handler wired.
+        public Action<string, bool> ExplainRequested;
+
         public ToolApprovalPanel()
         {
             this.Dock = DockStyle.Bottom;
@@ -122,6 +137,18 @@ namespace GxPT
             _toolTip = new ToolTip();
             _toolTip.AutoPopDelay = 15000; // keep the multi-line rule explanation visible long enough to read
 
+            // The Explain affordance: a flat chrome button overlaid on the top-right corner (not docked),
+            // shown only for command tools. AutoSize so it fits "Explain" at any font/DPI; positioned and
+            // brought to the front in PositionExplainButton once a command prompt is shown.
+            _explainButton = new Button();
+            _explainButton.Text = "Explain";
+            _explainButton.AutoSize = true;
+            _explainButton.Visible = false;
+            _explainButton.Margin = new Padding(0);
+            _explainButton.Click += OnExplainClicked;
+            _explainButton.GotFocus += OnButtonFocusChanged;
+            _explainButton.LostFocus += OnButtonFocusChanged;
+
             // Order added (Fill must be added before docked siblings to lay out correctly):
             this.Controls.Add(_diffPanel);
             this.Controls.Add(_preview);
@@ -129,6 +156,7 @@ namespace GxPT
             this.Controls.Add(_tierBadge);
             this.Controls.Add(_header);
             this.Controls.Add(_buttons);
+            this.Controls.Add(_explainButton);
 
             // Theme the chrome up front so the panel isn't a stark white block before the first prompt.
             ApplyTheme();
@@ -186,6 +214,9 @@ namespace GxPT
                         if (b != null) ApplyButtonTheme(b, dark, tc);
                     }
                 }
+
+                // The overlaid Explain button shares the flat, theme-tinted button styling.
+                if (_explainButton != null) ApplyButtonTheme(_explainButton, dark, tc);
 
                 // Re-tint the syntax-highlighted diff/preview when it's the visible details control, so a
                 // live theme switch updates it too (it was themed once at SetContent time).
@@ -262,6 +293,9 @@ namespace GxPT
         public void ShowFor(ApprovalRequest req, Action<ApprovalChoice> choiceCallback)
         {
             _onChoose = choiceCallback;
+            // Cleared up front; the command-tool branch below re-arms it when this is a command prompt.
+            _explainCommand = null;
+            _explainIsPowerShell = false;
 
             _header.Text = (req.ServerName != null ? req.ServerName : "?") + "  ·  " +
                            (req.ToolName != null ? req.ToolName : req.FunctionName);
@@ -431,6 +465,10 @@ namespace GxPT
                             ? label + "   (pattern: " + sig + ")"
                             : label + ":";
                         handled = true;
+                        // Remember the command so the Explain button (shown below) can open a tab that
+                        // describes it.
+                        _explainCommand = cmd;
+                        _explainIsPowerShell = isPs;
                     }
                 }
                 else if (string.Equals(req.FunctionName, "files__write", StringComparison.Ordinal))
@@ -590,6 +628,11 @@ namespace GxPT
             AddButton("Allow once", ApprovalChoice.AllowOnce, tier == ToolTier.Write);
             SetButtonTabOrder();
 
+            // Offer Explain only for a command prompt (the branch above captured the command). The
+            // button overlays the header's top-right corner; reserve header space so its text never
+            // runs under the button.
+            UpdateExplainButton(!string.IsNullOrEmpty(_explainCommand));
+
             // Color the panel + the freshly built buttons for the active theme before measuring, so the
             // button metrics used by LayoutToContent reflect their themed style.
             ApplyTheme();
@@ -607,6 +650,52 @@ namespace GxPT
             this.SendToBack();
             SetPromptVisible(true);
             FocusDefaultButton();
+        }
+
+        // Show or hide the top-right Explain button for the current prompt, reserving room in the header
+        // so its (possibly long) "server · tool" text never draws under the button.
+        private void UpdateExplainButton(bool show)
+        {
+            if (_explainButton == null) return;
+            _explainButton.Visible = show;
+            if (show)
+            {
+                int reserve = _explainButton.PreferredSize.Width + 8;
+                _header.Padding = new Padding(0, 0, reserve, 0);
+                PositionExplainButton();
+                _explainButton.BringToFront(); // paint over the docked header it overlaps
+            }
+            else
+            {
+                _header.Padding = Padding.Empty;
+            }
+        }
+
+        // Pin the Explain button to the panel's inner top-right corner (inside the panel padding),
+        // aligned with the header row. Re-run on resize because the panel width changes with the window.
+        private void PositionExplainButton()
+        {
+            if (_explainButton == null || !_explainButton.Visible) return;
+            int bw = _explainButton.PreferredSize.Width;
+            int x = this.ClientSize.Width - this.Padding.Right - bw;
+            int y = this.Padding.Top;
+            if (x < this.Padding.Left) x = this.Padding.Left;
+            _explainButton.Location = new Point(x, y);
+        }
+
+        // Explain click: hand the captured command to the host so it can open a fresh chat tab that
+        // explains it. Deliberately does NOT hide the panel - the approval stays up for the user to
+        // Allow/Deny after reading the explanation.
+        private void OnExplainClicked(object sender, EventArgs e)
+        {
+            string cmd = _explainCommand;
+            bool isPs = _explainIsPowerShell;
+            Action<string, bool> h = ExplainRequested;
+            if (h != null && !string.IsNullOrEmpty(cmd))
+            {
+                try { h(cmd, isPs); }
+                catch { }
+            }
         }
 
         // Focus the tier's default button now that the panel is visible (focusing earlier is a no-op).
@@ -638,6 +727,10 @@ namespace GxPT
         {
             _onChoose = null;
             _onContinue = callback;
+            // The iteration-cap prompt is not a command tool: never offer Explain here.
+            _explainCommand = null;
+            _explainIsPowerShell = false;
+            UpdateExplainButton(false);
 
             _header.Text = "Tool-call limit reached";
             _currentTier = ToolTier.Write; // informational; reuse the Write (goldenrod) badge color
@@ -770,6 +863,8 @@ namespace GxPT
             base.OnSizeChanged(e);
             // Width changes (parent resize) can re-wrap the buttons; keep the panel tall enough.
             if (this.Visible) LayoutToContent();
+            // Keep the overlaid Explain button anchored to the (now moved) right edge.
+            PositionExplainButton();
         }
 
         // Approximate wrapped height of the raw-JSON preview text at the current width. Best-effort:
