@@ -375,21 +375,14 @@ namespace GxPT
                 IList<JObject> tools = hasMcpTools
                     ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
                 string manifest = hasMcpTools ? _registry.NamesManifestSystemMessage(resolveDir) : null;
-                if (SkillTools != null && SkillTools.HasSkills)
+                // Append the host ("meta") tools offered this turn (open_skill/read_skill_file/
+                // dispatch_agent/ask_user) from the SAME list ExecuteCall dispatches against, so a tool is
+                // exposed here exactly when it is dispatch-exempt there (see AvailableHostTools).
+                List<HostTool> hostTools = AvailableHostTools();
+                for (int h = 0; h < hostTools.Count; h++)
                 {
                     if (tools == null) tools = new List<JObject>();
-                    tools.Add(SkillTools.OpenSkillDef());
-                    tools.Add(SkillTools.ReadSkillFileDef());
-                }
-                if (AgentDispatcher != null && AgentDispatcher.HasAgents)
-                {
-                    if (tools == null) tools = new List<JObject>();
-                    tools.Add(AgentDispatcher.DispatchAgentDef());
-                }
-                if (AskUser != null)
-                {
-                    if (tools == null) tools = new List<JObject>();
-                    tools.Add(AskUser.AskUserDef());
+                    tools.Add(hostTools[h].Def());
                 }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
@@ -863,6 +856,56 @@ namespace GxPT
             if (ui != null) ui.Complete();
         }
 
+        // The host ("meta") tools offered THIS turn, in their fixed position in the exposed tools array
+        // (after reveal_tools and the revealed catalog defs). This is the single source of truth shared by
+        // the exposed-tools builder (which adds each Def) and ExecuteCall (which dispatches each Handle), so
+        // a host tool is exposed IFF it is dispatch-exempt - adding a new one is a single entry here.
+        // Membership is gated on availability (HasSkills/HasAgents/AskUser present), which also tightens
+        // the old behavior: an un-offered host tool is no longer silently handled, it falls through to the
+        // normal path and reports "[Unknown tool]". reveal_tools is the lone exception - the registry-owned
+        // bootstrap meta-tool, whose def is emitted by ExposedFunctionDefs and whose dispatch mutates the
+        // revealed set; it is coupled through RevealToolsName and handled directly in ExecuteCall.
+        private List<HostTool> AvailableHostTools()
+        {
+            List<HostTool> list = new List<HostTool>(4);
+            if (SkillTools != null && SkillTools.HasSkills)
+            {
+                list.Add(new HostTool(SkillTools.OpenSkillName,
+                    delegate { return SkillTools.OpenSkillDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        return SkillTools.Open(ParseRevealNames(c.ArgumentsJson));
+                    }));
+                list.Add(new HostTool(SkillTools.ReadSkillFileName,
+                    delegate { return SkillTools.ReadSkillFileDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        string slug, relpath;
+                        ParseSkillFileArgs(c.ArgumentsJson, out slug, out relpath);
+                        return SkillTools.ReadFile(slug, relpath);
+                    }));
+            }
+            if (AgentDispatcher != null && AgentDispatcher.HasAgents)
+            {
+                list.Add(new HostTool(AgentDispatcher.DispatchAgentName,
+                    delegate { return AgentDispatcher.DispatchAgentDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        return AgentDispatcher.Dispatch(c.ArgumentsJson);
+                    }));
+            }
+            if (AskUser != null)
+            {
+                list.Add(new HostTool(AskUser.AskUserName,
+                    delegate { return AskUser.AskUserDef(); },
+                    delegate(ToolCall c, out bool err) { return AskUser.Ask(c.ArgumentsJson, out err); }));
+            }
+            return list;
+        }
+
         // Executes one tool call, returning the text to feed back as the tool message content.
         // Failures are returned as content (not thrown) so the model can recover; isError flags the
         // UI marker. denied is set only when the user refuses the call at the approval gate (so the
@@ -881,43 +924,20 @@ namespace GxPT
                 return _registry.Reveal(names, ResolutionWorkdir, RevealedToolNames);
             }
 
-            // open_skill is a host meta-tool (no MCP round-trip): load skill bodies by slug. Same
-            // {names:[...]} argument shape as reveal_tools, so the parser is reused.
-            if (SkillTools != null && SkillTools.IsOpenSkill(call.Name))
+            // Host ("meta") tools - open_skill, read_skill_file, dispatch_agent, ask_user - are answered
+            // locally (no MCP round-trip) and are exempt from reveal-before-call. AvailableHostTools() is
+            // the SAME source the exposed-tools builder uses, so a host tool is dispatch-exempt here IFF it
+            // was offered this turn; the exposure and the exemption can no longer drift apart. Each tool's
+            // Handle carries its own argument parsing and isError contract (e.g. ask_user flags malformed
+            // args). reveal_tools is the bootstrap exception, handled by the registry just above.
+            List<HostTool> hostTools = AvailableHostTools();
+            for (int h = 0; h < hostTools.Count; h++)
             {
-                string[] slugs = ParseRevealNames(call.ArgumentsJson);
-                _log.Log("mcp", "[turn " + turnId + "] open_skill: " + slugs.Length + " name(s)");
-                return SkillTools.Open(slugs);
-            }
-
-            // read_skill_file is a host meta-tool too (ReadOnly): read a bundled asset by (slug, relpath).
-            if (SkillTools != null && SkillTools.IsReadSkillFile(call.Name))
-            {
-                string skillSlug, relpath;
-                ParseSkillFileArgs(call.ArgumentsJson, out skillSlug, out relpath);
-                _log.Log("mcp", "[turn " + turnId + "] read_skill_file: "
-                    + (skillSlug != null ? skillSlug : "?") + " / " + (relpath != null ? relpath : "?"));
-                return SkillTools.ReadFile(skillSlug, relpath);
-            }
-
-            // dispatch_agent is a host meta-tool too: run the sub-agent(s) in isolated child orchestrators
-            // and return their final answer(s). No MCP round-trip; the child gets no dispatcher, so it
-            // cannot nest (A12). Failures inside a child come back as content, not an exception.
-            if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name))
-            {
-                _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
-                return AgentDispatcher.Dispatch(call.ArgumentsJson);
-            }
-
-            // ask_user is a host meta-tool too: show a multiple-choice panel and block until the user
-            // answers, returning their selection as the tool result. No MCP round-trip and no approval
-            // gate (the user is the one acting). A dismissed prompt is a non-error sentinel; only
-            // malformed arguments set isError so the model can correct the call.
-            if (AskUser != null && AskUser.IsAskUser(call.Name))
-            {
-                _log.Log("mcp", "[turn " + turnId + "] ask_user");
-                string answer = AskUser.Ask(call.ArgumentsJson, out isError);
-                return answer;
+                if (string.Equals(hostTools[h].Name, call.Name, StringComparison.Ordinal))
+                {
+                    _log.Log("mcp", "[turn " + turnId + "] host tool '" + call.Name + "'");
+                    return hostTools[h].Handle(call, out isError);
+                }
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.
@@ -944,8 +964,8 @@ namespace GxPT
             // a blind guess (e.g. run_skill_script invoked with name/path instead of the real slug/relpath).
             // Block it before the approval gate ever shows and feed back a self-correcting hint: the model
             // reveals the tool next, sees the true schema, and re-issues a well-formed call. The host
-            // meta-tools (reveal_tools/open_skill/read_skill_file/dispatch_agent) returned far above, so
-            // they are exempt by construction.
+            // meta-tools (reveal_tools, plus the AvailableHostTools set: open_skill/read_skill_file/
+            // dispatch_agent/ask_user) returned far above, so they are exempt by construction.
             if (RevealedToolNames == null || !RevealedToolNames.Contains(call.Name))
             {
                 isError = true;

@@ -688,6 +688,26 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Unoffered_host_tool_is_not_silently_dispatched()
+        {
+            // No SkillTools/AgentDispatcher/AskUser are configured, so open_skill is NOT among this turn's
+            // host tools. Exposure and dispatch-exemption are both driven by AvailableHostTools(), so a
+            // host tool that isn't offered must fall through to the normal path ("[Unknown tool]") rather
+            // than being silently handled - the two halves can't disagree.
+            var reg = new McpToolRegistry(null);
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "open_skill", "{\"names\":[\"x\"]}"));
+            streamer.Turns.Add(Chunks.Text("ok"));
+
+            var ui = new RecordingUi();
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            Assert.True(ui.ToolErrors[0]);
+            Assert.Contains("Unknown tool", ui.ToolResults[0]);
+        }
+
+        [Fact]
         public void Malformed_arguments_surface_as_an_error()
         {
             RegistryFakeTransport ft;

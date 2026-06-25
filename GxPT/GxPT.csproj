@@ -209,6 +209,7 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Services\Mcp\ToolCallAssembler.cs" />
+    <Compile Include="Services\Mcp\HostTool.cs" />
     <Compile Include="Services\Mcp\McpToolRegistry.cs" />
     <Compile Include="Services\Mcp\McpChatOrchestrator.cs" />
     <Compile Include="Services\Mcp\McpServerSpec.cs" />
