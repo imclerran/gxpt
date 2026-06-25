@@ -387,7 +387,9 @@ namespace GxPT
                 bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
                 IList<JObject> tools = hasMcpTools
                     ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
-                string manifest = hasMcpTools ? _registry.NamesManifestSystemMessage(resolveDir) : null;
+                // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-call
+                // rule is static framing and lives in the cached agent system prompt, not re-sent here.
+                string manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
                 // Append the host ("meta") tools offered this turn (open_skill/read_skill_file/
                 // dispatch_agent/ask_user) from the SAME list ExecuteCall dispatches against, so a tool is
                 // exposed here exactly when it is dispatch-exempt there (see AvailableHostTools).
@@ -404,9 +406,9 @@ namespace GxPT
                     tools = FilterHiddenDefs(tools, HiddenToolNames);
                     manifest = FilterHiddenManifest(manifest, HiddenToolNames);
                 }
-                // If filtering removed every tool line, drop the manifest entirely - otherwise the model
-                // is left with the framing ("The following MCP tools are available... Available tools:")
-                // over an empty list (e.g. a folderless turn whose only resolvable tools are all hidden).
+                // If filtering removed every tool line, drop the list entirely - otherwise the model is
+                // left with a bare "Available tools:" header over an empty list (e.g. a folderless turn
+                // whose only resolvable tools are all hidden).
                 if (manifest != null && manifest.IndexOf("\n- ", StringComparison.Ordinal) < 0)
                     manifest = null;
                 _lastOfferedTools = tools;
@@ -414,18 +416,19 @@ namespace GxPT
                     + ": requesting model with " + (tools != null ? tools.Count : 0) + " exposed tool(s)");
 
                 // Request layout, designed for prompt-cache reuse (three zones by volatility):
-                //   Zone A - stable head: constant agent prompt + workspace block + AGENTS.md
-                //            project instructions (system messages; byte-identical for the
-                //            conversation's lifetime). Cache breakpoint #1 on
-                //            its last message caches tools + system head together (tools render at
+                //   Zone A - stable head: constant agent prompt + workspace block + AGENTS.md project
+                //            instructions + the skills/agents capability framing (all static system
+                //            messages; byte-identical for the conversation's lifetime). Cache breakpoint
+                //            #1 on its last message caches tools + system head together (tools render at
                 //            position 0 of the prompt).
                 //   Zone B - the persisted history (append-only). Cache breakpoint #2 rides the
                 //            newest message, so each loop iteration / turn reads the previous
                 //            request's prefix from cache and extends it incrementally.
-                //   Zone C - one ephemeral user-role tail message holding everything that may change
-                //            between requests (memory, skills manifest, MCP names manifest). Placed
-                //            AFTER the breakpoints so its churn never invalidates the cached
-                //            transcript. Never persisted; rebuilt every request.
+                //   Zone C - one ephemeral user-role tail message holding the volatile INVENTORY that may
+                //            change between requests (memory, the skills/agents lists, the MCP tool-name
+                //            list). The static how-to framing for these lives in Zone A; only the lists
+                //            are here. Placed AFTER the breakpoints so its churn never invalidates the
+                //            cached transcript. Never persisted; rebuilt every request.
                 List<ChatMessage> requestMessages = BuildStableHead();
                 int headCount = requestMessages.Count;
 
@@ -793,8 +796,10 @@ namespace GxPT
 
         // Zone A: the stable system head, byte-identical for every request of a conversation (the
         // agent prompt is constant; the workspace block is constant while the workspace is; the
-        // project-instructions block is fixed per turn and constant while AGENTS.md is). Fresh
-        // message objects each call, so callers may set CacheControl on them directly.
+        // project-instructions block is fixed per turn and constant while AGENTS.md is; the skills/agents
+        // capability framing is constant text, present while those features are active). Fresh message
+        // objects each call, so callers may set CacheControl on them directly. Self-contained (computes
+        // the framing itself) so the cap-wrap-up path produces a byte-identical head for cache reuse.
         private List<ChatMessage> BuildStableHead()
         {
             List<ChatMessage> head = new List<ChatMessage>();
@@ -812,6 +817,19 @@ namespace GxPT
             }
             if (!string.IsNullOrEmpty(ProjectInstructions))
                 head.Add(new ChatMessage("system", ProjectInstructions));
+
+            // Capability framing (how to use skills / agents): static text, so it caches with the head
+            // instead of being re-sent in every request's ephemeral tail. Gated on the SAME signal as the
+            // tail inventory - the list provider yielding content - so framing and list appear together,
+            // and a feature toggle (which already changes the cached tools array via its host meta-tools)
+            // is the only event that moves it. The MCP reveal rule is already in AgentSystemPrompt, so
+            // there is no separate tool framing here.
+            if (SkillsManifestSystemMessageProvider != null
+                    && !IsEmptyText(SkillsManifestSystemMessageProvider()))
+                head.Add(new ChatMessage("system", SkillInjection.Framing));
+            if (AgentsManifestSystemMessageProvider != null
+                    && !IsEmptyText(AgentsManifestSystemMessageProvider()))
+                head.Add(new ChatMessage("system", AgentInjection.Framing));
             return head;
         }
 

@@ -331,17 +331,44 @@ namespace GxPT
             }
         }
 
-        // Builds the manifest text from an already-sorted, server-qualified name list.
+        // Workdir-aware DYNAMIC inventory (resolvable tool names + the git-steering note), WITHOUT the
+        // reveal-before-call rule framing. For the ephemeral tail: the framing is static and lives in the
+        // cached agent system prompt, so only the volatile list belongs in the per-request tail.
+        public string NamesManifestList(string workdir)
+        {
+            lock (_lock)
+            {
+                List<string> names = new List<string>();
+                foreach (KeyValuePair<string, List<CatalogEntry>> kv in _byFunctionName)
+                    if (ResolvableForWorkdirLocked(kv.Value, workdir)) names.Add(kv.Key);
+                names.Sort(StringComparer.Ordinal);
+                return BuildListText(names);
+            }
+        }
+
+        // The reveal-before-call rule: static framing, duplicated in the agent system prompt (the cached
+        // head). Kept here so the combined NamesManifestSystemMessage stays a complete manifest for tests
+        // and any direct caller; the request path uses NamesManifestList (no framing) instead.
+        private const string RevealRuleText =
+            "The following MCP tools are available, listed by name only. "
+            + "You CANNOT call any of these tools directly from this list. "
+            + "Before calling a tool, you MUST first call reveal_tools({\"names\":[...]}) "
+            + "with the exact names you intend to use; that loads their full definitions "
+            + "and makes them callable on the next step. You may reveal several at once. "
+            + "Only reveal_tools and tools you have already revealed can be called.";
+
+        // Framing + inventory, byte-identical to the original combined manifest.
         private static string BuildManifestText(List<string> names)
         {
+            return RevealRuleText + "\n\n" + BuildListText(names);
+        }
+
+        // The inventory body: "Available tools:" + the name list + the git-steering note. Shared by the
+        // tail-only NamesManifestList and the combined BuildManifestText.
+        private static string BuildListText(List<string> names)
+        {
             StringBuilder sb = new StringBuilder();
-            sb.Append("The following MCP tools are available, listed by name only. ");
-            sb.Append("You CANNOT call any of these tools directly from this list. ");
-            sb.Append("Before calling a tool, you MUST first call reveal_tools({\"names\":[...]}) ");
-            sb.Append("with the exact names you intend to use; that loads their full definitions ");
-            sb.Append("and makes them callable on the next step. You may reveal several at once. ");
-            sb.Append("Only reveal_tools and tools you have already revealed can be called.");
-            sb.Append("\n\nAvailable tools:");
+            sb.Append("Available tools:");
             bool hasGit = false, hasCommand = false;
             for (int i = 0; i < names.Count; i++)
             {

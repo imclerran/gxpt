@@ -122,20 +122,48 @@ namespace GxPT.Tests.Mcp
 
             New(streamer, reg).RunTurn(new List<ChatMessage>(), "hello", new RecordingUi());
 
-            // Request layout (prompt-caching zones): stable system head, then history, then the
-            // ephemeral context tail (a trailing user message carrying the names manifest).
+            // Request layout (prompt-caching zones): stable system head (carries the static reveal-
+            // before-call rule), then history, then the ephemeral context tail (the dynamic tool list).
             var msgs = streamer.SeenMessages[0];
             Assert.Equal("system", msgs[0].Role);
             Assert.Contains("operating as an agent", msgs[0].Content); // agentic behavior guidance
+            Assert.Contains("reveal_tools", msgs[0].Content);          // reveal rule lives in the cached head
             Assert.Equal("user", msgs[1].Role);
             Assert.Equal("hello", msgs[1].Content);
             var tail = msgs[msgs.Count - 1];
             Assert.Equal("user", tail.Role);
             Assert.Contains("Ephemeral context", tail.Content);  // framed as host-appended context
-            Assert.Contains("reveal_tools", tail.Content);       // manifest instructs reveal-before-call
-            Assert.Contains("files__read", tail.Content);        // and lists tool names
+            Assert.Contains("files__read", tail.Content);        // the tail carries the dynamic tool-name list
             // exposed tools always lead with reveal_tools
             Assert.Equal("reveal_tools", (string)streamer.SeenTools[0][0]["function"]["name"]);
+        }
+
+        [Fact]
+        public void Skill_framing_rides_the_cached_head_while_the_inventory_stays_in_the_tail()
+        {
+            // The static how-to framing belongs in the cached system head; only the volatile skill list
+            // belongs in the ephemeral tail. This is the ephemeral->head split: framing cached once,
+            // inventory re-sent.
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("hi"));
+            var orch = new McpChatOrchestrator(streamer, null, null, "test-model", null);
+            orch.SkillsManifestSystemMessageProvider =
+                delegate { return "Available skills:\n- demo - A demo skill."; };
+            orch.RunTurn(new List<ChatMessage>(), "hello", new RecordingUi());
+
+            var msgs = streamer.SeenMessages[0];
+            // framing (how-to) is a system message in the cached head...
+            bool framingInHead = false;
+            foreach (var m in msgs)
+                if (m.Role == "system" && m.Content != null
+                        && m.Content.Contains("open_skill is directly callable"))
+                    framingInHead = true;
+            Assert.True(framingInHead);
+            // ...and the dynamic inventory is in the trailing ephemeral user message, WITHOUT the framing.
+            var tail = msgs[msgs.Count - 1];
+            Assert.Equal("user", tail.Role);
+            Assert.Contains("Available skills:", tail.Content);
+            Assert.DoesNotContain("open_skill is directly callable", tail.Content);
         }
 
         [Fact]
