@@ -368,7 +368,8 @@ namespace GxPT
         private static string BuildListText(List<string> names)
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("Available tools:");
+            sb.Append("Available tools (listed by name only - call reveal_tools to load a tool before you "
+                + "can call it; you may reveal several at once):");
             bool hasGit = false, hasCommand = false;
             for (int i = 0; i < names.Count; i++)
             {

@@ -134,6 +134,7 @@ namespace GxPT.Tests.Mcp
             Assert.Equal("user", tail.Role);
             Assert.Contains("Ephemeral context", tail.Content);  // framed as host-appended context
             Assert.Contains("files__read", tail.Content);        // the tail carries the dynamic tool-name list
+            Assert.Contains("reveal_tools", tail.Content);       // and the list header re-anchors the reveal reminder
             // exposed tools always lead with reveal_tools
             Assert.Equal("reveal_tools", (string)streamer.SeenTools[0][0]["function"]["name"]);
         }
