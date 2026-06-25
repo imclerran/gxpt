@@ -462,14 +462,19 @@ namespace GxPT
             }
         }
 
-        // Pin the counter to the panel's inner bottom-left corner (on the button row). Re-run on resize.
-        // Positioning a hidden label is harmless.
+        // Pin the counter to the panel's lower-left, vertically centered on the button strip so it lines
+        // up with Submit/Skip. Falls back to bottom-aligned if the strip isn't laid out yet. Re-run on
+        // resize; positioning a hidden label is harmless.
         private void PositionCounter()
         {
             if (_counter == null) return;
             int h = _counter.PreferredSize.Height;
             int x = this.Padding.Left;
-            int y = this.ClientSize.Height - this.Padding.Bottom - h;
+            int y;
+            if (_buttons != null && _buttons.Height > 0)
+                y = _buttons.Top + Math.Max(0, (_buttons.Height - h) / 2);
+            else
+                y = this.ClientSize.Height - this.Padding.Bottom - h;
             if (y < this.Padding.Top) y = this.Padding.Top;
             _counter.Location = new Point(x, y);
         }
