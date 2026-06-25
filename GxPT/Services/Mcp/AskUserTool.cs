@@ -107,18 +107,32 @@ namespace GxPT
             return def;
         }
 
+        // The 1-based position / total of the NEXT question among the ask_user calls the model issued
+        // this turn, set by the host just before dispatch and consumed by the next Ask. Kept here rather
+        // than threaded through the orchestrator's generic dispatch signature (which would carry these
+        // ask-specific values on every tool call). Defaults to a lone question (1 of 1).
+        private int _pendingPosition = 1;
+        private int _pendingTotal = 1;
+
+        // Locate the next question among the model's ask_user calls this turn (total > 1 drives the
+        // "Question X of Y" indicator). Set immediately before the matching Ask; consumed and reset there.
+        public void SetNextPosition(int position, int total)
+        {
+            _pendingPosition = position;
+            _pendingTotal = total;
+        }
+
         // Parse the call, show the question (blocking), and format the user's answer as the tool result.
         // isError is set for malformed arguments so the model can correct the call. A dismissed prompt
         // is NOT an error (the user deliberately declined) - it returns the dismissed sentinel.
         public string Ask(string argumentsJson, out bool isError)
         {
-            return Ask(argumentsJson, 1, 1, out isError);
-        }
+            // Consume the pending position atomically (reset to the single-question default) so a parse
+            // failure here, or a later call without SetNextPosition, cannot inherit stale values.
+            int position = _pendingPosition, total = _pendingTotal;
+            _pendingPosition = 1;
+            _pendingTotal = 1;
 
-        // position/total locate this question among the ask_user calls the model issued this turn
-        // (1-based; total > 1 drives the "Question X of Y" indicator). The orchestrator supplies them.
-        public string Ask(string argumentsJson, int position, int total, out bool isError)
-        {
             isError = false;
 
             string question;

@@ -528,13 +528,13 @@ namespace GxPT
                 // immediately instead of leaving the user to reject each queued call (and instead of
                 // read-only calls quietly running after the user has signalled stop).
                 bool batchDenied = false;
-                // Count the ask_user calls in this batch so each question's panel can show "Question X
-                // of Y" (only meaningful when the model asked several in one turn). askOrdinal advances
-                // as each ask_user call is actually dispatched.
-                int askTotal = 0;
-                for (int a = 0; a < asm.Calls.Count; a++)
-                    if (AskUser != null && AskUser.IsAskUser(asm.Calls[a].Name)) askTotal++;
-                int askOrdinal = 0;
+                // Track the current contiguous run of ask_user calls so each question's panel can show
+                // "Question X of Y" with Y = the run length. A run is broken by any non-ask_user call,
+                // which is also the only call that can be denied (ask_user has no approval gate), so a
+                // denial halts the batch at a run boundary: every question in a run either all run or
+                // none do. That keeps the displayed count exact even when a denial cuts the batch short.
+                int runOrdinal = 0; // 1-based position within the current ask_user run (0 = not in a run)
+                int runTotal = 0;   // length of the current run
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
@@ -555,11 +555,26 @@ namespace GxPT
                     }
                     else
                     {
-                        // Position for an ask_user panel's "Question X of Y" (0 for non-ask_user calls).
-                        int askPos = 0;
-                        if (AskUser != null && AskUser.IsAskUser(call.Name)) askPos = ++askOrdinal;
+                        // Maintain the ask_user run and stamp the next question's "X of Y" onto the tool
+                        // just before dispatch (consumed by AskUser.Ask), instead of threading it through
+                        // ExecuteCall's generic signature.
+                        if (AskUser != null && AskUser.IsAskUser(call.Name))
+                        {
+                            if (runOrdinal == 0)
+                            {
+                                runTotal = 0;
+                                for (int k = c; k < asm.Calls.Count
+                                        && AskUser.IsAskUser(asm.Calls[k].Name); k++) runTotal++;
+                            }
+                            runOrdinal++;
+                            AskUser.SetNextPosition(runOrdinal, runTotal);
+                        }
+                        else
+                        {
+                            runOrdinal = 0; // a non-ask_user call breaks the run
+                        }
                         bool denied;
-                        result = ExecuteCall(call, turnId, askPos, askTotal, out isError, out denied);
+                        result = ExecuteCall(call, turnId, out isError, out denied);
                         if (denied)
                         {
                             // The user denied this call at the approval gate. Halt the rest of the batch
@@ -854,8 +869,7 @@ namespace GxPT
         // loop can force the next model call to stop and ask, rather than work around the denial);
         // it stays false for every other isError outcome. reveal_tools is handled locally without an
         // MCP round-trip.
-        private string ExecuteCall(ToolCall call, string turnId, int askPosition, int askTotal,
-                                   out bool isError, out bool denied)
+        private string ExecuteCall(ToolCall call, string turnId, out bool isError, out bool denied)
         {
             isError = false;
             denied = false;
@@ -901,8 +915,8 @@ namespace GxPT
             // malformed arguments set isError so the model can correct the call.
             if (AskUser != null && AskUser.IsAskUser(call.Name))
             {
-                _log.Log("mcp", "[turn " + turnId + "] ask_user (" + askPosition + " of " + askTotal + ")");
-                string answer = AskUser.Ask(call.ArgumentsJson, askPosition, askTotal, out isError);
+                _log.Log("mcp", "[turn " + turnId + "] ask_user");
+                string answer = AskUser.Ask(call.ArgumentsJson, out isError);
                 return answer;
             }
 

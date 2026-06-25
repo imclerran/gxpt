@@ -23,6 +23,7 @@ namespace GxPT
         private readonly Button _submit;
         private readonly Button _skip;
         private Font _headerFont;          // bold header font, rebuilt per show from the live UI font
+        private Font _uiFont;              // panel-created UI font assigned to this.Font (NOT the inherited one)
 
         // Tracks the Other text box's empty state so multi-select can auto-(un)check on the
         // empty<->non-empty transition only (leaving manual toggles untouched), and a build guard so
@@ -219,6 +220,14 @@ namespace GxPT
             // Suppress the Other-row auto-select/toggle side effects while we (re)populate the panel.
             _building = true;
 
+            // Dispose the prior question's selector/description controls before clearing - Controls.Clear
+            // only detaches, it does not Dispose, so without this each shown question would leak its
+            // controls' window handles. The reused _otherText is a field (never in these lists), so it
+            // survives the clear and is re-added below.
+            for (int i = 0; i < _selectors.Count; i++)
+                if (_selectors[i] != null) { try { _selectors[i].Dispose(); } catch { } }
+            for (int i = 0; i < _descriptions.Count; i++)
+                if (_descriptions[i] != null) { try { _descriptions[i].Dispose(); } catch { } }
             _options.Controls.Clear();
             _selectors.Clear();
             _descriptions.Clear();
@@ -266,6 +275,16 @@ namespace GxPT
             this.SendToBack();
             SetPromptVisible(true);
             FocusFirstSelector();
+
+            // Reposition the counter once the docked layout has settled (the button strip's bounds are
+            // only final after layout). The early PositionCounter in UpdateCounter may have run against
+            // stale/zero button bounds; this deferred pass lands it on the button row. Guarded by
+            // visibility so a single-question panel does no work.
+            if (_counter != null && _counter.Visible)
+            {
+                try { BeginInvoke((MethodInvoker)delegate { try { PositionCounter(); } catch { } }); }
+                catch { }
+            }
         }
 
         // Build a selector for the current mode: a RadioButton (single-select; auto-grouped because all
@@ -538,8 +557,11 @@ namespace GxPT
                 }
                 int hScroll = (widest > avail) ? SystemInformation.HorizontalScrollBarHeight : 0;
 
+                // Raise the cap by the scrollbar's height when one is reserved, so content that was just
+                // under the cap doesn't get clamped below (content + scrollbar) and force a vertical
+                // scrollbar anyway - the whole point of reserving hScroll.
                 int optionsContent = _options.GetPreferredSize(new Size(avail, 0)).Height + 6 + hScroll;
-                int optionsH = Math.Max(MinOptionsHeight, Math.Min(MaxOptionsHeight, optionsContent));
+                int optionsH = Math.Max(MinOptionsHeight, Math.Min(MaxOptionsHeight + hScroll, optionsContent));
 
                 int buttonsH = _buttons.GetPreferredSize(new Size(avail, 0)).Height;
                 if (buttonsH < 28) buttonsH = 34;
@@ -575,9 +597,14 @@ namespace GxPT
                 double fs = AppSettings.GetDouble("font_size", 0);
                 if (fs <= 0) return;
                 float size = (float)Math.Max(6, Math.Min(48, fs));
-                if (this.Font == null || Math.Abs(this.Font.Size - size) > 0.01f)
-                    this.Font = new Font(this.Font != null ? this.Font.FontFamily : new Font("Tahoma", size).FontFamily,
-                                         size, this.Font != null ? this.Font.Style : FontStyle.Regular);
+                // Control.Font is never null (ambient default), so no null-guard needed here.
+                if (Math.Abs(this.Font.Size - size) <= 0.01f) return; // already the right size
+                Font created = new Font(this.Font.FontFamily, size, this.Font.Style);
+                this.Font = created;
+                // Dispose only a font WE created previously - never the first inherited/ambient font
+                // (_uiFont starts null, so the inherited one is left alone).
+                if (_uiFont != null) { try { _uiFont.Dispose(); } catch { } }
+                _uiFont = created;
             }
             catch { }
         }
@@ -597,6 +624,7 @@ namespace GxPT
                     catch { }
                 }
                 if (_headerFont != null) { try { _headerFont.Dispose(); } catch { } _headerFont = null; }
+                if (_uiFont != null) { try { _uiFont.Dispose(); } catch { } _uiFont = null; }
             }
             base.Dispose(disposing);
         }
