@@ -924,14 +924,29 @@ namespace GxPT
             catch { }
         }
 
-        // The user prompt seeded into an Explain tab: ask for a plain-language walkthrough of the command
-        // without running it, fenced in the matching language so it renders as a code block.
+        // The user prompt seeded into an Explain tab: ask for a plain-language walkthrough of the
+        // command, an evaluation of the risks it carries (both to the user's system and from sharing
+        // any data it contains), and a short summary at the end. Fenced in the matching language so the
+        // command renders as a code block.
         private static string BuildCommandExplainPrompt(string command, bool isPowerShell)
         {
             string kind = isPowerShell ? "PowerShell" : "Windows command-line";
             string fence = isPowerShell ? "powershell" : "batch";
-            return "Explain, in plain language, what the following " + kind + " command does, "
-                + "step by step. Call out anything destructive or risky. Do not run it.\r\n\r\n"
+            return "Explain, in plain language, what the following " + kind + " command does. "
+                + "Do not run it. Cover these in order:\r\n\r\n"
+                + "1. **What it does** - walk through the command step by step, including each program, "
+                + "flag, argument, pipe, and redirection, and the overall effect.\r\n"
+                + "2. **Risks to the system** - evaluate what could go wrong on the machine that runs it: "
+                + "data loss or overwrites, irreversible or destructive actions, changes to files or "
+                + "system state outside the working directory, elevated-privilege or security-sensitive "
+                + "operations, network access (downloading or uploading data), and anything unexpected or "
+                + "obfuscated. Note if it looks safe.\r\n"
+                + "3. **Risks from sharing the data** - the command text may embed sensitive data (for "
+                + "example a tool result being passed along) that leaves the machine when this request is "
+                + "sent to the model. Point out any secrets, credentials, personal data, or otherwise "
+                + "sensitive content present in the command, and flag the privacy risk of disclosing it.\r\n"
+                + "4. **Summary** - finish with a brief one- or two-sentence summary of the command and "
+                + "its overall risk level.\r\n\r\n"
                 + "```" + fence + "\r\n" + (command ?? string.Empty) + "\r\n```";
         }
 
