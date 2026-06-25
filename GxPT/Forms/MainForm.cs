@@ -4719,6 +4719,15 @@ namespace GxPT
                     string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
                     header = "Ran a command"; body = cmd; language = "batch"; return true;
                 }
+                case "command__powershell":
+                case "command__powershell_v1":
+                case "command__pwsh":
+                {
+                    // The PowerShell tools (registered per discovered host) all carry the script in
+                    // 'command'; show it with PowerShell highlighting so the user can review what ran.
+                    string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
+                    header = "Ran a PowerShell command"; body = cmd; language = "powershell"; return true;
+                }
                 case "dispatch_agent":
                 {
                     Newtonsoft.Json.Linq.JToken arr = args != null ? args["agents"] : null;
