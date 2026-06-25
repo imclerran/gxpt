@@ -88,10 +88,13 @@ namespace GxPT
             JObject fn = new JObject();
             fn["name"] = AskUserName;
             fn["description"] = "Ask the user a multiple-choice question and wait for their answer. Use "
-                + "this when you genuinely need the user to decide between options you cannot resolve "
-                + "yourself (e.g. which approach to take), not for information you can look up or infer. "
-                + "Provide 2-4 concise options; the user can also type their own answer. Their selection "
-                + "is returned to you. Prefer continuing on your own when the choice is clear.";
+                + "it whenever the goal is to get the user's own choice - a decision you need before you "
+                + "can proceed (e.g. which approach to take), an option you want them to pick, or an answer "
+                + "you are deliberately soliciting from them. Set multi_select to let them choose more than "
+                + "one option; otherwise they pick exactly one. Provide 2-4 concise options; the user can "
+                + "also type their own answer. Their selection is returned to you to act on or respond to. "
+                + "Don't use it for routine steps you can handle yourself - just proceed - but when the "
+                + "user's choice genuinely matters, ask rather than guess.";
             fn["parameters"] = schema;
 
             JObject def = new JObject();
