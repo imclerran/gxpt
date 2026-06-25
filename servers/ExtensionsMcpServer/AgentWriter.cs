@@ -46,7 +46,7 @@ namespace ExtensionsMcpServer
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
             if (!WriterIo.NameMatchesSlug(name, slug))
-                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, true, "create_agent"));
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, true));
 
             string toolsValue = FormatTools(tools);            // null => omit the key
             string tierValue = NormalizeTier(maxTier);          // null => omit (host defaults to write)
@@ -82,7 +82,7 @@ namespace ExtensionsMcpServer
             // A new name must still reduce to this agent's slug (the slug is the fixed handle); renaming is
             // create-new + delete-old, not an in-place name swap that would leave name and slug diverged.
             if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
-                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, false, "create_agent"));
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, false));
 
             AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): only a non-blank value changes
@@ -172,7 +172,15 @@ namespace ExtensionsMcpServer
             if (IsBlank(fm.Description))
                 throw new AgentWriteException("agent '" + oldSlug + "' has no description; fix it with update_agent before renaming");
 
-            string resolvedName = ResolveRenameName("agent", newName, newSlug, fm.Name);
+            // A given new_name must reduce to the new slug; otherwise fall back to deriving one. The throw
+            // stays here (not in WriterIo) because the exception type is agent-specific.
+            if (!IsBlank(newName))
+            {
+                RequireSingleLine(newName, "new_name");
+                if (!WriterIo.NameMatchesSlug(newName, newSlug))
+                    throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", newName, newSlug, true));
+            }
+            string resolvedName = WriterIo.ResolveRenamedName(newName, newSlug, fm.Name);
 
             // Write the new file first, then remove the old one. The collision guard above means the new path
             // never overwrites another agent, and the content is preserved (this is a move, not a rewrite).
@@ -181,28 +189,14 @@ namespace ExtensionsMcpServer
             try { File.Delete(oldFile); }
             catch (Exception ex)
             {
-                throw new AgentWriteException("renamed to '" + newSlug + "' but could not remove the old '"
-                    + oldSlug + "': " + ex.Message);
+                // Roll back the just-written copy so a failed delete doesn't leave two agents (the old one
+                // still loadable, plus a duplicate at the new slug).
+                try { File.Delete(newFile); } catch { }
+                throw new AgentWriteException("could not rename '" + oldSlug + "' to '" + newSlug
+                    + "' (removing the old file failed): " + ex.Message);
             }
             return "Renamed agent '" + oldSlug + "' to '" + newSlug + "'. Anything that dispatched '" + oldSlug
                 + "' must now use '" + newSlug + "'.";
-        }
-
-        // The display name a rename should write: an explicit newName (validated against the new slug), else
-        // the current name if it still aligns, else a Title Case name derived from the new slug. Shared shape
-        // with the skill writer (kept here, not in WriterIo, because the domain exception type differs).
-        private static string ResolveRenameName(string noun, string newName, string newSlug, string currentName)
-        {
-            if (!IsBlank(newName))
-            {
-                RequireSingleLine(newName, "new_name");
-                if (!WriterIo.NameMatchesSlug(newName, newSlug))
-                    throw new AgentWriteException(WriterIo.NameSlugMismatchMessage(noun, newName, newSlug, true, "create_agent"));
-                return newName;
-            }
-            if (!IsBlank(currentName) && WriterIo.NameMatchesSlug(currentName, newSlug))
-                return currentName;
-            return WriterIo.TitleCaseFromSlug(newSlug);
         }
 
         // read_agent (ReadOnly): the full <slug>.md text. Reads from ANY root - project, user, or the

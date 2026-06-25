@@ -58,7 +58,7 @@ namespace ExtensionsMcpServer
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
             if (!WriterIo.NameMatchesSlug(name, slug))
-                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, true, "create_skill"));
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, true));
 
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (File.Exists(file))
@@ -113,7 +113,7 @@ namespace ExtensionsMcpServer
             // A new name must still reduce to this skill's slug (the slug is the fixed handle/folder name);
             // renaming is create-new + delete-old, not an in-place name swap that diverges name from slug.
             if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
-                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, false, "create_skill"));
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, false));
 
             SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): passing "" never silently wipes
@@ -155,30 +155,30 @@ namespace ExtensionsMcpServer
             if (IsBlank(fm.Description))
                 throw new SkillWriteException("skill '" + oldSlug + "' has no description; fix it with update_skill before renaming");
 
-            string resolvedName = ResolveRenameName(newName, newSlug, fm.Name);
-
-            // Move the whole folder (assets and scripts come along), then rewrite SKILL.md's name in place.
-            try { Directory.Move(oldDir, newDir); }
-            catch (Exception ex) { throw new SkillWriteException("could not rename skill folder: " + ex.Message); }
-            AtomicWrite(Path.Combine(newDir, "SKILL.md"), BuildSkillMd(resolvedName, fm.Description, fm.Body));
-            return "Renamed skill '" + oldSlug + "' to '" + newSlug + "'. Anything that referenced '" + oldSlug
-                + "' must now use '" + newSlug + "'.";
-        }
-
-        // The display name a rename should write: an explicit newName (validated against the new slug), else
-        // the current name if it still aligns, else a Title Case name derived from the new slug.
-        private static string ResolveRenameName(string newName, string newSlug, string currentName)
-        {
+            // A given new_name must reduce to the new slug; otherwise fall back to deriving one. The throw
+            // stays here (not in WriterIo) because the exception type is skill-specific.
             if (!IsBlank(newName))
             {
                 RequireSingleLine(newName, "new_name");
                 if (!WriterIo.NameMatchesSlug(newName, newSlug))
-                    throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", newName, newSlug, true, "create_skill"));
-                return newName;
+                    throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", newName, newSlug, true));
             }
-            if (!IsBlank(currentName) && WriterIo.NameMatchesSlug(currentName, newSlug))
-                return currentName;
-            return WriterIo.TitleCaseFromSlug(newSlug);
+            string resolvedName = WriterIo.ResolveRenamedName(newName, newSlug, fm.Name);
+
+            // Move the whole folder (assets and scripts come along), then rewrite SKILL.md's name. If the
+            // rewrite fails after the move, roll the folder back so we don't leave it at the new slug with a
+            // stale (now-misaligned) name in its frontmatter.
+            try { Directory.Move(oldDir, newDir); }
+            catch (Exception ex) { throw new SkillWriteException("could not rename skill folder: " + ex.Message); }
+            try { AtomicWrite(Path.Combine(newDir, "SKILL.md"), BuildSkillMd(resolvedName, fm.Description, fm.Body)); }
+            catch (Exception ex)
+            {
+                try { Directory.Move(newDir, oldDir); } catch { }
+                throw new SkillWriteException("could not rename '" + oldSlug + "' to '" + newSlug
+                    + "' (updating SKILL.md failed): " + ex.Message);
+            }
+            return "Renamed skill '" + oldSlug + "' to '" + newSlug + "'. Anything that referenced '" + oldSlug
+                + "' must now use '" + newSlug + "'.";
         }
 
         // edit_skill_file (tier 2): targeted string replace in a supporting file (files__edit parity). For

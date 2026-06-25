@@ -72,14 +72,17 @@ namespace ExtensionsMcpServer
         }
 
         // The shared "name and slug must stay aligned" message, worded once so the two writers can't drift.
-        // noun is "agent"/"skill"; createTool is "create_agent"/"create_skill". On CREATE both sides are
-        // still free, so it offers to fix either; on UPDATE the slug is the fixed identity, so it points at
-        // rename_<noun> for a handle change (update only re-cases the display name).
-        public static string NameSlugMismatchMessage(string noun, string name, string slug, bool isCreate,
-            string createTool)
+        // noun is "agent"/"skill". On CREATE both sides are still free, so it offers to fix either; on UPDATE
+        // the slug is the fixed identity, so it points at rename_<noun> for a handle change (update only
+        // re-cases the display name).
+        public static string NameSlugMismatchMessage(string noun, string name, string slug, bool isCreate)
         {
             string derived = SkillSlug.Make(name);
-            if (string.IsNullOrEmpty(derived)) derived = slug;
+            // A name with no [A-Za-z0-9] yields no slug at all - the real problem isn't a mismatch but that
+            // the name has nothing to align on, so say that instead of the circular "set slug to <slug>".
+            if (string.IsNullOrEmpty(derived))
+                return "name '" + name + "' has no letters or digits to form a handle from - choose a name "
+                    + "whose kebab-case is the slug '" + slug + "'.";
             if (isCreate)
                 return "name '" + name + "' and slug '" + slug + "' don't match - the slug must be the name "
                     + "in kebab-case so the two stay aligned. Either set slug to '" + derived
@@ -87,6 +90,19 @@ namespace ExtensionsMcpServer
             return "name '" + name + "' doesn't match this " + noun + "'s slug '" + slug + "' - the display "
                 + "name must stay aligned with the slug. update_" + noun + " only re-cases the name; to change "
                 + "the handle, use rename_" + noun + " (e.g. new_slug '" + derived + "').";
+        }
+
+        // The display name a rename writes: an explicit newName when given, else the current name if it still
+        // aligns with the new slug, else a Title Case name derived from the slug. PURE - it assumes newName
+        // (when given) was already single-line-checked and alignment-validated by the caller (the throw stays
+        // in each writer because the domain exception type differs). Shared so the decision lives once.
+        public static string ResolveRenamedName(string newName, string newSlug, string currentName)
+        {
+            if (!string.IsNullOrEmpty(newName) && newName.Trim().Length > 0) return newName;
+            if (!string.IsNullOrEmpty(currentName) && currentName.Trim().Length > 0
+                && NameMatchesSlug(currentName, newSlug))
+                return currentName;
+            return TitleCaseFromSlug(newSlug);
         }
 
         // Normalizes a scope arg to "project"/"user", applying the writer's default for null/blank. (RootFor

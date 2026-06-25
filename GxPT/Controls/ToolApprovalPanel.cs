@@ -395,6 +395,22 @@ namespace GxPT
                         handled = true;
                     }
                 }
+                else if (string.Equals(req.FunctionName, "extensions__rename_skill", StringComparison.Ordinal)
+                      || string.Equals(req.FunctionName, "extensions__rename_agent", StringComparison.Ordinal))
+                {
+                    // Show the handle change (old slug -> new slug), plus the new name when one was given.
+                    string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
+                    string ns = req.Arguments.Value<string>("new_slug") ?? string.Empty;
+                    string nn = req.Arguments.Value<string>("new_name") ?? string.Empty;
+                    if (slug.Length > 0 && ns.Length > 0)
+                    {
+                        string text = slug + " -> " + ns + (nn.Length > 0 ? "  (name: " + nn + ")" : "");
+                        _diffPanel.SetContent(string.Empty, text, "text", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                        _previewLabel.Text = string.Equals(req.FunctionName, "extensions__rename_skill", StringComparison.Ordinal)
+                            ? "Rename skill:" : "Rename agent:";
+                        handled = true;
+                    }
+                }
                 else if (string.Equals(req.FunctionName, "command__run", StringComparison.Ordinal))
                 {
                     string cmd = req.Arguments.Value<string>("command") ?? string.Empty;

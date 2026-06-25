@@ -80,6 +80,17 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void CreateAgent_RejectsNameWithNoAlphanumerics()
+        {
+            // A name with no letters/digits can't form a handle - the error should say so, not give the
+            // circular "set slug to <slug>" guidance.
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
+                _writer.CreateAgent(null, "my-agent", "!!!", "desc", null, null, null, 0, "body"));
+            Assert.Contains("no letters or digits", ex.Message);
+            Assert.False(File.Exists(AgentFile("my-agent")));
+        }
+
+        [Fact]
         public void CreateAgent_AllowsAcronymNameAlignment()
         {
             // 'GitHub Researcher' kebab-splits oddly, but ignoring word boundaries it matches the slug.

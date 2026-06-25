@@ -4983,6 +4983,12 @@ namespace GxPT
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Validated skill " + slug; return true;
                 }
+                case "extensions__rename_skill":
+                {
+                    string slug = Str(args, "slug"); string ns = Str(args, "new_slug");
+                    if (slug.Length == 0 || ns.Length == 0) return false;
+                    header = "Renamed skill " + slug + " to " + ns; return true;
+                }
                 case "extensions__create_agent":
                 {
                     string slug = Str(args, "slug"); string agentName = Str(args, "name");
@@ -5021,6 +5027,12 @@ namespace GxPT
                 {
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Deleted agent " + slug; return true;
+                }
+                case "extensions__rename_agent":
+                {
+                    string slug = Str(args, "slug"); string ns = Str(args, "new_slug");
+                    if (slug.Length == 0 || ns.Length == 0) return false;
+                    header = "Renamed agent " + slug + " to " + ns; return true;
                 }
                 case "extensions__validate_agent":
                 {
