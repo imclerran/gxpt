@@ -189,6 +189,12 @@ namespace GxPT
         // A child never gets a dispatcher, so a sub-agent cannot dispatch (no nesting, A12).
         public AgentDispatcher AgentDispatcher { get; set; }
 
+        // Optional "ask the user" surface (ask_user). When set, ask_user is exposed in the tools array
+        // and handled locally without an MCP round-trip (the host shows a multiple-choice panel and the
+        // user's answer becomes the tool result), like reveal_tools. Blocks the turn while the user
+        // decides, the same as the approval gate.
+        public AskUserTool AskUser { get; set; }
+
         // Server-qualified MCP tool names to omit from this turn's context (names manifest + exposed
         // defs) and refuse to call. Used to gate the authoring tools on the meta-skills (ExtensionsToolGate).
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
@@ -379,6 +385,11 @@ namespace GxPT
                 {
                     if (tools == null) tools = new List<JObject>();
                     tools.Add(AgentDispatcher.DispatchAgentDef());
+                }
+                if (AskUser != null)
+                {
+                    if (tools == null) tools = new List<JObject>();
+                    tools.Add(AskUser.AskUserDef());
                 }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
@@ -871,6 +882,17 @@ namespace GxPT
             {
                 _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
                 return AgentDispatcher.Dispatch(call.ArgumentsJson);
+            }
+
+            // ask_user is a host meta-tool too: show a multiple-choice panel and block until the user
+            // answers, returning their selection as the tool result. No MCP round-trip and no approval
+            // gate (the user is the one acting). A dismissed prompt is a non-error sentinel; only
+            // malformed arguments set isError so the model can correct the call.
+            if (AskUser != null && AskUser.IsAskUser(call.Name))
+            {
+                _log.Log("mcp", "[turn " + turnId + "] ask_user");
+                string answer = AskUser.Ask(call.ArgumentsJson, out isError);
+                return answer;
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.

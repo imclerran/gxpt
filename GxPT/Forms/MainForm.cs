@@ -848,6 +848,7 @@ namespace GxPT
                 // Bottom approval panel. Add the docked siblings, then send the transcript to front.
                 ctx.Page.Controls.Add(strip);
                 AttachApprovalPanel(ctx);
+                AttachQuestionPanel(ctx);
                 AttachAgentActivityPanel(ctx);
                 if (ctx.Transcript != null) ctx.Transcript.BringToFront();
                 strip.SetWorkingDir(ctx.WorkingDir);
@@ -881,6 +882,22 @@ namespace GxPT
                 {
                     OpenCommandExplainTab(ctxRef, command, isPowerShell);
                 };
+                ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
+            }
+            catch { }
+        }
+
+        // Create this tab's ask_user question panel (docked at the bottom of its transcript area, hidden
+        // until the model asks a question). Per-tab like the approval panel, so a question appears on the
+        // conversation that asked it; while it's up, the status bar shows "awaiting user...".
+        internal void AttachQuestionPanel(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null || ctx.Page == null) return;
+            try
+            {
+                var panel = new QuestionPanel();
+                ctx.QuestionPanel = panel;
+                panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
@@ -977,6 +994,8 @@ namespace GxPT
                     var ctx = kv.Value;
                     if (ctx != null && ctx.ApprovalPanel != null)
                         ctx.ApprovalPanel.ApplyTheme();
+                    if (ctx != null && ctx.QuestionPanel != null)
+                        ctx.QuestionPanel.ApplyTheme();
                 }
             }
             catch { }
@@ -1055,9 +1074,11 @@ namespace GxPT
             {
                 var act = _tabManager != null ? _tabManager.GetActiveContext() : null;
                 bool busy = act != null && act.IsSending && !act.SendDetached;
-                // The turn is paused at an approval/continuation gate when the active tab's prompt is
-                // up: pause the marquee and show "awaiting user..." in place of the Stop button.
-                bool awaiting = busy && act.ApprovalPanel != null && act.ApprovalPanel.IsPromptVisible;
+                // The turn is paused at an approval/continuation/question gate when the active tab's
+                // prompt is up: pause the marquee and show "awaiting user..." in place of the Stop button.
+                bool awaiting = busy
+                    && ((act.ApprovalPanel != null && act.ApprovalPanel.IsPromptVisible)
+                        || (act.QuestionPanel != null && act.QuestionPanel.IsPromptVisible));
                 // A dispatch_agent fan-out is running: keep the marquee going but show a passive
                 // "Sub-agents running..." label (cancel them from the panel). Approval takes priority.
                 bool agentsRunning = busy && act.AgentsFanOutActive && !awaiting;
@@ -1342,6 +1363,8 @@ namespace GxPT
             // released and the turn wraps up and saves. (Prompts the turn raises AFTER detaching are
             // auto-denied by the send path's panel gate.)
             try { if (ctx.ApprovalPanel != null) ctx.ApprovalPanel.DenyPending(); }
+            catch { }
+            try { if (ctx.QuestionPanel != null) ctx.QuestionPanel.DenyPending(); }
             catch { }
         }
 
@@ -3367,6 +3390,20 @@ namespace GxPT
                             return usable ? p : null;
                         });
                         orch.ContinuationDecider = delegate(int n) { return contPrompt.Ask(n); };
+                    }
+                    // ask_user: expose the question tool, routed to this tab's QuestionPanel. The panel
+                    // resolver uses the same recycled-tab guard as the approval prompt - it yields null
+                    // once the tab no longer hosts this turn's conversation (or the panel is gone), so a
+                    // detached turn's question resolves as dismissed instead of appearing on a blank tab.
+                    if (ctx.QuestionPanel != null)
+                    {
+                        orch.AskUser = new AskUserTool(new TranscriptQuestionPrompt(this, delegate
+                        {
+                            QuestionPanel qp = ctx.QuestionPanel;
+                            bool usable = ReferenceEquals(ctx.Conversation, convo)
+                                && qp != null && !qp.IsDisposed;
+                            return usable ? qp : null;
+                        }));
                     }
                     string modelForTransform = model; // capture for transform closure
                     bool zdrForTransform = zdr;       // capture ZDR for the transform closure
