@@ -95,7 +95,8 @@ namespace GxPT
                 + "question you return to repeatedly over a conversation, or a series of questions you "
                 + "want to put to the user. Set multi_select to let them choose more than one option; "
                 + "otherwise they pick exactly one. Keep options concise; the user can also type their "
-                + "own answer. Don't use it to offload work you can do yourself, to invent a choice that "
+                + "own answer. Write the question, options, and descriptions as plain text - they aren't "
+                + "rendered as markdown. Don't use it to offload work you can do yourself, to invent a choice that "
                 + "isn't there, or when you have more options than fit a short list. Otherwise, whenever "
                 + "you're genuinely presenting a few options, use this instead of plain text.";
             fn["parameters"] = schema;
