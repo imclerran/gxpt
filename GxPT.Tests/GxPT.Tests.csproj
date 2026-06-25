@@ -43,6 +43,8 @@
     <Compile Include="..\GxPT\Services\RequestCancellation.cs" Link="Linked\RequestCancellation.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolCallAssembler.cs" Link="Linked\Mcp\ToolCallAssembler.cs" />
     <Compile Include="..\GxPT\Services\Mcp\IToolApprovalPolicy.cs" Link="Linked\Mcp\IToolApprovalPolicy.cs" />
+    <Compile Include="..\GxPT\Services\Mcp\IQuestionPrompt.cs" Link="Linked\Mcp\IQuestionPrompt.cs" />
+    <Compile Include="..\GxPT\Services\Mcp\AskUserTool.cs" Link="Linked\Mcp\AskUserTool.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolApproval.cs" Link="Linked\Mcp\ToolApproval.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolClassifier.cs" Link="Linked\Mcp\ToolClassifier.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolApprovalPolicy.cs" Link="Linked\Mcp\ToolApprovalPolicy.cs" />

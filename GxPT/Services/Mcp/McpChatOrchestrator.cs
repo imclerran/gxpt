@@ -189,6 +189,12 @@ namespace GxPT
         // A child never gets a dispatcher, so a sub-agent cannot dispatch (no nesting, A12).
         public AgentDispatcher AgentDispatcher { get; set; }
 
+        // Optional "ask the user" surface (ask_user). When set, ask_user is exposed in the tools array
+        // and handled locally without an MCP round-trip (the host shows a multiple-choice panel and the
+        // user's answer becomes the tool result), like reveal_tools. Blocks the turn while the user
+        // decides, the same as the approval gate.
+        public AskUserTool AskUser { get; set; }
+
         // Server-qualified MCP tool names to omit from this turn's context (names manifest + exposed
         // defs) and refuse to call. Used to gate the authoring tools on the meta-skills (ExtensionsToolGate).
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
@@ -380,6 +386,11 @@ namespace GxPT
                     if (tools == null) tools = new List<JObject>();
                     tools.Add(AgentDispatcher.DispatchAgentDef());
                 }
+                if (AskUser != null)
+                {
+                    if (tools == null) tools = new List<JObject>();
+                    tools.Add(AskUser.AskUserDef());
+                }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
                 if (HiddenToolNames != null && HiddenToolNames.Count > 0)
@@ -517,6 +528,13 @@ namespace GxPT
                 // immediately instead of leaving the user to reject each queued call (and instead of
                 // read-only calls quietly running after the user has signalled stop).
                 bool batchDenied = false;
+                // Track the current contiguous run of ask_user calls so each question's panel can show
+                // "Question X of Y" with Y = the run length. A run is broken by any non-ask_user call,
+                // which is also the only call that can be denied (ask_user has no approval gate), so a
+                // denial halts the batch at a run boundary: every question in a run either all run or
+                // none do. That keeps the displayed count exact even when a denial cuts the batch short.
+                int runOrdinal = 0; // 1-based position within the current ask_user run (0 = not in a run)
+                int runTotal = 0;   // length of the current run
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
@@ -537,6 +555,24 @@ namespace GxPT
                     }
                     else
                     {
+                        // Maintain the ask_user run and stamp the next question's "X of Y" onto the tool
+                        // just before dispatch (consumed by AskUser.Ask), instead of threading it through
+                        // ExecuteCall's generic signature.
+                        if (AskUser != null && AskUser.IsAskUser(call.Name))
+                        {
+                            if (runOrdinal == 0)
+                            {
+                                runTotal = 0;
+                                for (int k = c; k < asm.Calls.Count
+                                        && AskUser.IsAskUser(asm.Calls[k].Name); k++) runTotal++;
+                            }
+                            runOrdinal++;
+                            AskUser.SetNextPosition(runOrdinal, runTotal);
+                        }
+                        else
+                        {
+                            runOrdinal = 0; // a non-ask_user call breaks the run
+                        }
                         bool denied;
                         result = ExecuteCall(call, turnId, out isError, out denied);
                         if (denied)
@@ -871,6 +907,17 @@ namespace GxPT
             {
                 _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
                 return AgentDispatcher.Dispatch(call.ArgumentsJson);
+            }
+
+            // ask_user is a host meta-tool too: show a multiple-choice panel and block until the user
+            // answers, returning their selection as the tool result. No MCP round-trip and no approval
+            // gate (the user is the one acting). A dismissed prompt is a non-error sentinel; only
+            // malformed arguments set isError so the model can correct the call.
+            if (AskUser != null && AskUser.IsAskUser(call.Name))
+            {
+                _log.Log("mcp", "[turn " + turnId + "] ask_user");
+                string answer = AskUser.Ask(call.ArgumentsJson, out isError);
+                return answer;
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.
