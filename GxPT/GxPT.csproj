@@ -187,7 +187,13 @@
     <Compile Include="Services\Mcp\ApprovalStore.cs" />
     <Compile Include="Services\Mcp\TranscriptApprovalPrompt.cs" />
     <Compile Include="Services\Mcp\TranscriptContinuationPrompt.cs" />
+    <Compile Include="Services\Mcp\IQuestionPrompt.cs" />
+    <Compile Include="Services\Mcp\AskUserTool.cs" />
+    <Compile Include="Services\Mcp\TranscriptQuestionPrompt.cs" />
     <Compile Include="Controls\ToolApprovalPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\QuestionPanel.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Controls\AgentActivityPanel.cs">

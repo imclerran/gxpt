@@ -14,8 +14,12 @@ namespace GxPT
 
         // A compact "using <tool>" marker, plain (not italic) for consistency with the collapsible
         // tool records. Display() turns the qualified name into "web: search" with no underscores.
+        // ask_user is a host tool that interacts with the user rather than "using" a service, so its
+        // in-progress placeholder reads "Asking a question" (replaced by the "Asked a question" record
+        // once answered).
         public static string Call(string functionName)
         {
+            if (functionName == AskUserTool.AskUserName) return "Asking a question";
             return "using " + Display(functionName);
         }
 

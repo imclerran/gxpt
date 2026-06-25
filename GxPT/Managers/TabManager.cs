@@ -66,6 +66,10 @@ namespace GxPT
             // The per-tab tool-approval panel docked at the bottom of this tab's transcript (set by
             // MainForm). A pending approval shows only on the conversation that requested it.
             public ToolApprovalPanel ApprovalPanel;
+            // The per-tab ask_user question panel docked at the bottom (set by MainForm). A pending
+            // question shows only on the conversation that asked it; released on teardown like the
+            // approval panel so a blocked turn isn't stranded.
+            public QuestionPanel QuestionPanel;
             // The per-tab sub-agents activity panel docked at the bottom (set by MainForm). Shown only
             // while a dispatch_agent fan-out runs on this tab's conversation.
             public AgentActivityPanel AgentActivityPanel;
@@ -503,6 +507,8 @@ namespace GxPT
                 // forever (it would never finalize or save). Resolve it as Deny/Stop first; the
                 // now-detached turn then wraps up on its own.
                 try { if (ctx != null && ctx.ApprovalPanel != null) ctx.ApprovalPanel.DenyPending(); }
+                catch { }
+                try { if (ctx != null && ctx.QuestionPanel != null) ctx.QuestionPanel.DenyPending(); }
                 catch { }
 
                 int desiredIndex = -1;
