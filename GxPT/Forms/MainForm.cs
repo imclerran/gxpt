@@ -4816,7 +4816,7 @@ namespace GxPT
                     // result. No question -> fall back to the generic marker.
                     string q = Str(args, "question");
                     if (q.Trim().Length == 0) return false;
-                    header = "Asked"; body = q; language = "markdown"; return true;
+                    header = "Asked a question"; body = q; language = "markdown"; return true;
                 }
                 case "files__edit":
                 {
