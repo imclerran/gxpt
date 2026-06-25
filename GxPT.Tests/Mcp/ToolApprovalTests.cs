@@ -113,6 +113,12 @@ namespace GxPT.Tests.Mcp
             Assert.Equal(ToolTier.Destructive, sln.Tier);
             Assert.Equal(RememberScope.Argument, sln.Scope);
             Assert.Equal("solution", sln.ScopeArgPath);
+
+            // run_skill_script runs author-written code -> Destructive, but remember-eligible via the
+            // SkillScript scope (per-skill blanket or this-exact-script), not None.
+            var skill = c.Classify("extensions__run_skill_script", null, true);
+            Assert.Equal(ToolTier.Destructive, skill.Tier);
+            Assert.Equal(RememberScope.SkillScript, skill.Scope);
         }
 
         [Fact]
@@ -562,6 +568,103 @@ namespace GxPT.Tests.Mcp
             pol.Check("files__write", Args("{\"path\":\"a.txt\"}"));
             Assert.Equal(1, prompt.Calls);
             pol.Check("files__write", Args("{\"path\":\"a.txt\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
+        // ---- skill-script approvals (run_skill_script's two remember dimensions) ----
+
+        private const string SkillScript = "extensions__run_skill_script";
+
+        [Fact]
+        public void Skill_script_prompts_every_time_until_remembered()
+        {
+            // Destructive/SkillScript with nothing remembered behaves like None: prompts every call.
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.AllowOnce };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(2, prompt.Calls); // AllowOnce never persists
+        }
+
+        [Fact]
+        public void Skill_script_remember_this_script_is_exact_and_slug_qualified()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberSkillScript };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // Same script, different args -> covered (args don't affect matching).
+            Assert.Equal(ApprovalDecision.Allow,
+                pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\",\"args\":[\"--prod\"]}")));
+            Assert.Equal(1, prompt.Calls);
+
+            // A different script in the SAME skill still prompts (exact, not per-skill).
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/other.bat\"}"));
+            Assert.Equal(2, prompt.Calls);
+
+            // The same relpath in a DIFFERENT skill must not collide -> prompts.
+            pol.Check(SkillScript, Args("{\"slug\":\"build\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(3, prompt.Calls);
+        }
+
+        [Fact]
+        public void Skill_script_remember_whole_skill_covers_every_script_in_it()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberSkillScripts };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // Any other script in the same skill is now covered.
+            Assert.Equal(ApprovalDecision.Allow,
+                pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/other.cmd\"}")));
+            Assert.Equal(1, prompt.Calls);
+
+            // A script in a different skill still prompts.
+            pol.Check(SkillScript, Args("{\"slug\":\"build\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
+        [Fact]
+        public void Skill_script_keys_are_case_and_separator_insensitive()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberSkillScript };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+
+            pol.Check(SkillScript, Args("{\"slug\":\"Deploy\",\"relpath\":\"Scripts\\\\Run.bat\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            // Same skill+script spelled with different case/separators -> still matches.
+            Assert.Equal(ApprovalDecision.Allow,
+                pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}")));
+            Assert.Equal(1, prompt.Calls);
+        }
+
+        [Fact]
+        public void Skill_script_deny_and_allow_once_persist_nothing()
+        {
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.Deny };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            Assert.Equal(ApprovalDecision.Deny,
+                pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}")));
+            // Still prompts afterward (nothing remembered).
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(2, prompt.Calls);
+        }
+
+        [Fact]
+        public void Skill_script_injected_other_script_still_prompts_despite_existing_rule()
+        {
+            // Backstop (spec §6): approving one script never auto-allows a different one.
+            var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberSkillScript };
+            var pol = Policy(prompt, new InMemoryApprovalStore());
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/run.bat\"}"));
+            Assert.Equal(1, prompt.Calls);
+
+            pol.Check(SkillScript, Args("{\"slug\":\"deploy\",\"relpath\":\"scripts/evil.bat\"}"));
             Assert.Equal(2, prompt.Calls);
         }
 

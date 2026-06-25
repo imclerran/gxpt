@@ -96,10 +96,13 @@ namespace GxPT
             t["extensions__list_agents"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__validate_agent"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__delete_agent"] = new ToolPolicy(ToolTier.Destructive, RememberScope.None, null);
-            // Skills execution (design S9/S11): running a skill's batch is Destructive and confirmed every
-            // time (like git push / command__run's heavier siblings) - the model can run only a named
-            // skill's declared .bat with literal args, never an arbitrary command.
-            t["extensions__run_skill_script"] = new ToolPolicy(ToolTier.Destructive, RememberScope.None, null);
+            // Skills execution (design S9/S11): running a skill's batch is Destructive (the script body is
+            // author-written and can do anything the user can), so it stays gated - the model can run only a
+            // named skill's declared .bat with literal args, never an arbitrary command. SkillScript scope
+            // offers two narrow remember options (this exact script, or all scripts for this skill) so a
+            // trusted skill needn't be re-confirmed on every run, while a script from any OTHER skill - or a
+            // different script in the same skill, under "this exact script" - still prompts.
+            t["extensions__run_skill_script"] = new ToolPolicy(ToolTier.Destructive, RememberScope.SkillScript, null);
             return t;
         }
 
