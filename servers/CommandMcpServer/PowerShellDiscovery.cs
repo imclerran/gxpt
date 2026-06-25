@@ -14,10 +14,14 @@ namespace CommandMcpServer
     /// </summary>
     internal sealed class PowerShellInstall
     {
-        public string ToolName;   // "powershell" or "pwsh"
+        public string ToolName;   // "powershell", "powershell_v1", or "pwsh"
         public string Label;      // "Windows PowerShell" / "PowerShell"
         public string Exe;        // full path to powershell.exe / pwsh.exe
-        public string Version;    // "5.1.19041.4046", "7.4.1", or null when unknown
+        public string Version;    // "5.1.19041.4046", "1.0", "7.4.1", or null when unknown
+
+        // PowerShell 1.0 predates -EncodedCommand/-ExecutionPolicy/-NonInteractive, so its tool feeds
+        // the script over stdin (`-Command -`) instead. False for every 2.0+ / Core host.
+        public bool LegacyStdin;
     }
 
     /// <summary>
@@ -55,12 +59,18 @@ namespace CommandMcpServer
             string exe = Path.Combine(windir, Path.Combine("System32", Path.Combine("WindowsPowerShell", Path.Combine("v1.0", "powershell.exe"))));
             if (!Exists(exe)) return null;
 
+            string version;
+            bool legacy;
+            DetectVersion(exe, log, out version, out legacy);
+
+            // 1.0 gets its own tool (stdin invocation); 2.0-5.1 keep the standard -EncodedCommand tool.
             return new PowerShellInstall
             {
-                ToolName = "powershell",
+                ToolName = legacy ? "powershell_v1" : "powershell",
                 Label = "Windows PowerShell",
                 Exe = exe,
-                Version = QueryVersion(exe, log)
+                Version = version,
+                LegacyStdin = legacy
             };
         }
 
@@ -77,27 +87,58 @@ namespace CommandMcpServer
             {
                 string exe = Path.Combine(pf, Path.Combine("PowerShell", Path.Combine(major, "pwsh.exe")));
                 if (!Exists(exe)) continue;
+
+                string version;
+                bool legacy;
+                DetectVersion(exe, log, out version, out legacy);
                 return new PowerShellInstall
                 {
                     ToolName = "pwsh",
                     Label = "PowerShell",
                     Exe = exe,
-                    Version = QueryVersion(exe, log)
+                    Version = version,
+                    LegacyStdin = legacy   // always false for Core (6+), which supports -EncodedCommand
                 };
             }
             return null;
         }
 
-        // Ask the interpreter its own version. $PSVersionTable exists from PowerShell 2.0 onward; on the
-        // (vanishingly rare) 1.0 the command yields nothing and Version stays null. Kept short with a
-        // tight timeout so a wedged interpreter can't stall startup discovery.
-        private static string QueryVersion(string exe, ILogSink log)
+        // Detect the interpreter's version and which invocation style its tool must use:
+        //   * 2.0+ : $PSVersionTable.PSVersion gives the exact version; the tool uses -EncodedCommand.
+        //   * 1.0  : $PSVersionTable doesn't exist and -EncodedCommand/-ExecutionPolicy/-NonInteractive
+        //            aren't supported, so we confirm the version via (Get-Host).Version fed over stdin
+        //            and flag the host for the stdin (`-Command -`) invocation style.
+        // Both probes are short, time-boxed, and never throw — a probe failure just leaves version null
+        // (modern style), so a wedged or unexpected interpreter can't stall or crash startup discovery.
+        private static void DetectVersion(string exe, ILogSink log, out string version, out bool legacyStdin)
+        {
+            version = null;
+            legacyStdin = false;
+
+            string modern = RunProbe(exe,
+                "-NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"", null, log);
+            if (!string.IsNullOrEmpty(modern)) { version = modern; return; }
+
+            // No $PSVersionTable → likely 1.0. (Get-Host).Version works there; feed it over stdin via
+            // `-Command -` so no switch or quoting a 1.0 host might reject is involved. Only a 1.x answer
+            // flips to the legacy style; anything else is treated as a normal (modern) host.
+            string legacy = RunProbe(exe, "-NoProfile -Command -",
+                "(Get-Host).Version.ToString()" + Environment.NewLine, log);
+            if (!string.IsNullOrEmpty(legacy))
+            {
+                version = legacy;
+                legacyStdin = legacy.StartsWith("1.", StringComparison.Ordinal);
+            }
+        }
+
+        private static string RunProbe(string exe, string args, string stdin, ILogSink log)
         {
             try
             {
                 ProcessRequest req = new ProcessRequest();
                 req.FileName = exe;
-                req.Arguments = "-NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"";
+                req.Arguments = args;
+                req.StdinText = stdin;
                 req.TimeoutMs = 15000;
 
                 ProcessResult res = new ProcessRunner(null).Run(req);
@@ -107,7 +148,7 @@ namespace CommandMcpServer
             }
             catch (Exception ex)
             {
-                Note(log, "version query failed for " + exe + ": " + ex.Message);
+                Note(log, "version probe failed for " + exe + ": " + ex.Message);
                 return null;
             }
         }

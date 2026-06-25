@@ -9,16 +9,20 @@ using Newtonsoft.Json.Linq;
 namespace CommandMcpServer
 {
     /// <summary>
-    /// Registers one PowerShell tool per discovered host (Windows PowerShell → command__powershell,
-    /// PowerShell Core → command__pwsh), mirroring how the MSBuild server surfaces one tool per
-    /// discovered engine: the tool exists only when PowerShell is found and is simply absent — never
-    /// advertised — on a system without it. The detected $PSVersionTable.PSVersion is woven into the
-    /// tool description so the model can choose cmdlets and language features the installed version
-    /// actually supports.
+    /// Registers one PowerShell tool per discovered host, mirroring how the MSBuild server surfaces one
+    /// tool per discovered engine: the tool exists only when PowerShell is found and is simply absent —
+    /// never advertised — on a system without it. The detected version is woven into the tool
+    /// description so the model can choose cmdlets and language features the installed version supports.
+    ///
+    ///   * command__powershell    — Windows PowerShell 2.0-5.1
+    ///   * command__powershell_v1 — Windows PowerShell 1.0 (a system's powershell.exe is one version, so
+    ///                              exactly one of these is registered, never both)
+    ///   * command__pwsh          — PowerShell 6+ Core
     ///
     /// Like the Command server's run tool, the script is opaque and runs already-approved (the host gate
-    /// showed the user the exact script). It is handed to PowerShell via -EncodedCommand (base64 of the
-    /// UTF-16LE script), so no quoting, newline, or special character in the model's script can be
+    /// showed the user the exact script). For 2.0+ / Core it is handed over via -EncodedCommand (base64
+    /// of the UTF-16LE script); 1.0 predates that switch, so its tool feeds the script over stdin
+    /// (`-Command -`). Either way no quoting, newline, or special character in the model's script can be
     /// misparsed by the shell — the whole script crosses as one opaque token. See servers-spec §5.
     /// </summary>
     internal static class PowerShellTools
@@ -73,11 +77,23 @@ namespace CommandMcpServer
 
             ProcessRequest req = new ProcessRequest();
             req.FileName = ps.Exe;
-            // -EncodedCommand takes base64 of the UTF-16LE script, sidestepping shell quoting entirely
-            // (the host already showed the user the exact script at the approval gate). -NoProfile keeps
-            // a user's $PROFILE from changing behavior; -NonInteractive fails fast rather than hanging on
-            // a prompt; -ExecutionPolicy Bypass lets the inline script run regardless of machine policy.
-            req.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Encode(command);
+            if (ps.LegacyStdin)
+            {
+                // PowerShell 1.0: no -EncodedCommand / -ExecutionPolicy / -NonInteractive. Feed the
+                // script over stdin via `-Command -` (read commands from standard input), which 1.0
+                // supports and which sidesteps shell quoting just as -EncodedCommand does for 2.0+.
+                req.Arguments = "-NoProfile -Command -";
+                req.StdinText = command + Environment.NewLine;
+            }
+            else
+            {
+                // 2.0+: -EncodedCommand takes base64 of the UTF-16LE script, sidestepping shell quoting
+                // entirely (the host already showed the user the exact script at the approval gate).
+                // -NoProfile keeps a user's $PROFILE from changing behavior; -NonInteractive fails fast
+                // rather than hanging on a prompt; -ExecutionPolicy Bypass lets the inline script run
+                // regardless of machine policy.
+                req.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Encode(command);
+            }
             req.WorkingDirectory = config.WorkDir;
             req.TimeoutMs = timeout;
 
