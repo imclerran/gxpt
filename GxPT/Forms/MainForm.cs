@@ -888,14 +888,20 @@ namespace GxPT
 
         // Open a new chat tab that asks the model to explain a pending command (from the approval
         // panel's Explain button), then send it. The new conversation inherits the source tab's model
-        // and ZDR setting so the explanation routes through the same provider/privacy choice; it gets
-        // NO working directory, so it's a plain chat turn that won't itself trigger tool approvals.
-        // The source tab's approval prompt is untouched - it stays up for the user to Allow/Deny.
+        // and ZDR setting so the explanation routes through the same provider/privacy choice. The new
+        // tab gets NO working directory, so it normally runs as a plain chat turn; note that if a
+        // scratch workspace is globally enabled, StartModelTurn can still route folderless tabs through
+        // the tool loop, in which case the explanation could itself call a tool. The source tab's
+        // approval prompt is untouched - it stays up for the user to Allow/Deny.
         internal void OpenCommandExplainTab(TabManager.ChatTabContext sourceCtx, string command, bool isPowerShell)
         {
             try
             {
                 if (_tabManager == null || string.IsNullOrEmpty(command)) return;
+
+                // The message input is a single shared box; capture the source tab's unsent draft so the
+                // overwrite-and-send below doesn't silently discard it (restored at the end).
+                string priorDraft = _inputManager != null ? _inputManager.GetInputText() : null;
 
                 // Snapshot the source conversation's model + effective ZDR before we switch tabs.
                 string model = sourceCtx != null ? sourceCtx.SelectedModel : null;
@@ -920,6 +926,11 @@ namespace GxPT
                 string prompt = BuildCommandExplainPrompt(command, isPowerShell);
                 if (_inputManager != null) _inputManager.SetInputText(prompt, true);
                 btnSend_Click(this, EventArgs.Empty);
+
+                // btnSend_Click cleared the shared input on a successful send; put the user's prior draft
+                // back so switching to the explain tab didn't cost them their typed-but-unsent message.
+                if (!string.IsNullOrEmpty(priorDraft) && _inputManager != null)
+                    _inputManager.SetInputText(priorDraft, false);
             }
             catch { }
         }

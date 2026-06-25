@@ -145,6 +145,10 @@ namespace GxPT
             _explainButton.AutoSize = true;
             _explainButton.Visible = false;
             _explainButton.Margin = new Padding(0);
+            // Keep Explain at the end of the tab cycle so it never intercepts focus ahead of the
+            // Allow/Deny strip (which owns the keyboard default). It lives on the panel, not in the
+            // _buttons strip that SetButtonTabOrder manages, so it needs its own high TabIndex.
+            _explainButton.TabIndex = 1000;
             _explainButton.Click += OnExplainClicked;
             _explainButton.GotFocus += OnButtonFocusChanged;
             _explainButton.LostFocus += OnButtonFocusChanged;
@@ -673,9 +677,13 @@ namespace GxPT
 
         // Pin the Explain button to the panel's inner top-right corner (inside the panel padding),
         // aligned with the header row. Re-run on resize because the panel width changes with the window.
+        // Deliberately NOT gated on _explainButton.Visible: ShowFor positions the button while the panel
+        // itself is still hidden, and the Control.Visible getter reports false whenever a parent is
+        // hidden - so a Visible check here would skip the very placement ShowFor needs, leaving the
+        // button at its default top-left location. Positioning a hidden button is harmless.
         private void PositionExplainButton()
         {
-            if (_explainButton == null || !_explainButton.Visible) return;
+            if (_explainButton == null) return;
             int bw = _explainButton.PreferredSize.Width;
             int x = this.ClientSize.Width - this.Padding.Right - bw;
             int y = this.Padding.Top;
