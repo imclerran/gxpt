@@ -4,7 +4,13 @@ namespace GxPT
 {
     // Approval tiers and remember-scope (approval spec §2).
     internal enum ToolTier { ReadOnly, Write, Destructive }
-    internal enum RememberScope { None, Tool, Argument }
+    //   None      - never remembered (always prompts), e.g. git__push.
+    //   Tool      - remember the whole function name.
+    //   Argument  - remember a rule over one argument (command/path), see ScopeArgPath.
+    //   SkillScript - extensions__run_skill_script only: two remember dimensions (the whole skill,
+    //                 or one exact script). Scoped on (slug) and (slug, relpath) rather than a single
+    //                 argument, so it gets its own scope rather than overloading Argument.
+    internal enum RememberScope { None, Tool, Argument, SkillScript }
 
     // The classification of a tool: how much friction (tier) and how an approval may be remembered.
     internal sealed class ToolPolicy
@@ -57,7 +63,9 @@ namespace GxPT
         RememberTool,        // Tool scope: remember the whole function name
         RememberExactArg,    // Argument scope: ExactArgs rule on ScopeArgPath
         RememberPrefixArg,   // Argument scope: Prefix rule (base+sub / directory-and-below)
-        RememberWorkdirWrites // Workdir scope: every Write-tier files__ tool in the active workspace
+        RememberWorkdirWrites, // Workdir scope: every Write-tier files__ tool in the active workspace
+        RememberSkillScripts, // SkillScript scope: every script bundled with this skill (by slug)
+        RememberSkillScript   // SkillScript scope: this exact script only (by slug + relpath)
     }
 
     // The confirmation surface the policy invokes when a call isn't already allowed. Implemented by

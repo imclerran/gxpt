@@ -388,10 +388,15 @@ the default for any skill with no per-skill setting.
   first open with the approval prompt so the user sees what's being loaded.
 - **Execution is a *narrowed* surface, not `command__run` (S9).** `run_skill_script`
   lets the model run only the **declared entry of a named skill** with **literal
-  args** — it cannot compose an arbitrary command or name a path. It is **Destructive
-  (always-confirm)** but **remember-eligible by exact `(slug, relpath)`** (S15): a
-  remembered allow is narrow and auditable, so it's *less* friction than `command__run`
-  while *more* locked down. The prompt is human-readable ("skill `release-notes` wants
+  args** — it cannot compose an arbitrary command or name a path. It is **Destructive**
+  but **remember-eligible** via the `SkillScript` scope (S15): the prompt offers
+  **"Always allow this script"** (an exact `(slug, relpath)` rule) and the broader
+  **"Always allow scripts for this skill"** (a per-`slug` rule that covers every script
+  the skill bundles). Args are shown each run but are **not** part of the remembered
+  grain. A remembered allow is narrow and auditable, so it's *less* friction than
+  `command__run` while *more* locked down — and a script from any other skill (or, under
+  the exact rule, a different script in the same skill) still prompts. The prompt is
+  human-readable ("skill `release-notes` wants
   to run `scripts/gen.bat --since v1.2` — *bundled*") and distinguishes bundled vs.
   project source.
 - **Skills never operate on their own dir (S14).** cwd is the workspace; the skill

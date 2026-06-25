@@ -333,13 +333,15 @@ namespace GxPT
                 }
                 else if (string.Equals(req.FunctionName, "extensions__run_skill_script", StringComparison.Ordinal))
                 {
-                    // Mirror command__run: the script and its literal arguments.
+                    // Mirror command__run: the script and its literal arguments, with the owning skill in
+                    // the header so the per-skill remember scope is clear before approving.
+                    string slug = req.Arguments.Value<string>("slug") ?? string.Empty;
                     string rel = req.Arguments.Value<string>("relpath") ?? string.Empty;
                     string scriptArgs = PathsOf(req.Arguments, "args");
                     string text = (rel + (scriptArgs.Length > 0 ? " " + scriptArgs : "")).Trim();
                     if (text.Length > 0)
                     {
-                        _diffPanel.SetContent(string.Empty, text, "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                        _diffPanel.SetContent(slug, text, "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
                         _previewLabel.Text = "Run skill script:";
                         handled = true;
                     }
@@ -843,6 +845,19 @@ namespace GxPT
                 // the workspace blanket covers the "trust this working area" case more broadly.
                 AddButton("Allow all edits in this workspace", ApprovalChoice.RememberWorkdirWrites, false);
                 AddButton("Always allow this file", ApprovalChoice.RememberExactArg, false);
+            }
+            else if (scope == RememberScope.SkillScript)
+            {
+                // run_skill_script: a per-skill blanket and a per-script exact rule. Add the broader
+                // option first so (front-insertion, see AddButton) the more specific "this script" lands
+                // nearer "Allow once" and the broader "scripts for this skill" nearer Deny - mirroring
+                // the exact-vs-pattern ordering of the command buttons above.
+                AddButton("Always allow scripts for this skill", ApprovalChoice.RememberSkillScripts, false,
+                    "Allows running any script bundled with this skill, with any arguments. A script "
+                    + "belonging to a different skill still prompts.");
+                AddButton("Always allow this script", ApprovalChoice.RememberSkillScript, false,
+                    "Allows only this exact script (this skill + this script path), with any arguments. "
+                    + "Any other script - including a different one in the same skill - still prompts.");
             }
             // Scope == None: no remember buttons (Allow once / Deny only).
         }

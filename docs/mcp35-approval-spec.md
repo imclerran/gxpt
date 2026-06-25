@@ -50,7 +50,8 @@ Classification yields a **tier** (how much friction) and a **remember scope**
 
 ```csharp
 public enum ToolTier      { ReadOnly, Write, Destructive }
-public enum RememberScope { None, Tool, Argument }     // Argument → pattern over one arg
+public enum RememberScope { None, Tool, Argument, SkillScript } // Argument → pattern over one arg;
+                                                               // SkillScript → run_skill_script only
 
 public sealed class ToolPolicy {
     public ToolTier      Tier;
@@ -78,6 +79,11 @@ public interface IToolClassifier {
   get **granular** allowlisting — never "allow all commands."
 - **None** — never remembered; always prompt (Destructive tools with no
   meaningful scoping arg, e.g. `git__push`).
+- **SkillScript** — `extensions__run_skill_script` only. The call has two
+  remember dimensions, so it gets a dedicated scope rather than overloading
+  `Argument`: a per-skill blanket (keyed by `slug`) **or** this exact script
+  (keyed by `slug` + `relpath`). Both are stored as `ExactArgs` rules; an
+  injected call for a different skill/script never matches.
 
 **Sources, in precedence order:**
 1. `reveal_tools` → exempt.
@@ -95,6 +101,7 @@ public interface IToolClassifier {
    | `web__extract` | ReadOnly | Tool |
    | `web__get` | ReadOnly | Tool |
    | `web__http` | Destructive | None |
+   | `extensions__run_skill_script` | Destructive | **SkillScript** (`slug` / `slug`+`relpath`) |
 3. **Third-party → annotations** (advisory): `destructiveHint:true` →
    Destructive/None; `readOnlyHint:true` → ReadOnly/Tool; otherwise → Write/Tool.
    We can't infer a third-party server's argument semantics, so third-party
@@ -182,6 +189,7 @@ surface.
   | Tool (ReadOnly/Write) | `Allow once` · `Always allow this tool` · `Deny` |
   | Argument · command (`command__run`) | `Allow once` · `Always allow this exact command` · `` Always allow `<base> <sub>` `` · `Deny` |
   | Argument · path (`files__*`) | `Allow once` · `Always allow this path` · `Always allow this directory and below` · `Deny` |
+  | SkillScript (`run_skill_script`) | `Allow once` · `Always allow this script` · `Always allow scripts for this skill` · `Deny` |
   | None (`git__push`, …) | `Allow once` · `Deny` |
 - "this exact command/path" creates an **`ExactArgs`** rule; "base+subcommand" /
   "directory and below" create a **`Prefix`** rule. These fixed buttons are the

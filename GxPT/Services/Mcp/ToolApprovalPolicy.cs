@@ -102,6 +102,10 @@ namespace GxPT
                 return ApprovalDecision.Allow;
             if (pol.Scope == RememberScope.Argument && MatchesAnyRule(functionName, pol, args))
                 return ApprovalDecision.Allow;
+            // Skill-script approvals: either a per-skill blanket (any script in the skill) or this one
+            // exact script (skill + relpath). An injected call for a different skill/script won't match.
+            if (pol.Scope == RememberScope.SkillScript && MatchesSkillScriptRule(functionName, args))
+                return ApprovalDecision.Allow;
 
             // Not remembered (or Scope==None) -> prompt.
             if (_prompt == null) return ApprovalDecision.Deny; // no UI available -> safe default
@@ -151,6 +155,52 @@ namespace GxPT
                 }
             }
             return false;
+        }
+
+        // ---- skill-script rule matching (run_skill_script's two remember dimensions) ----
+
+        // True when a remembered skill-script rule covers this (slug, relpath) call. Two rule shapes,
+        // both stored as ExactArgs (see Persist):
+        //   ArgPath "slug"    -> blanket for the whole skill: matches any relpath in that slug.
+        //   ArgPath "relpath" -> this exact script: Pattern is "<slugKey>\0<relKey>" so a script with
+        //                        the same relative path in a DIFFERENT skill never collides.
+        // Both keys are normalized the same way here and in Persist, so storage and lookup agree.
+        private bool MatchesSkillScriptRule(string functionName, JObject args)
+        {
+            string slug = SkillSlugKey(ArgValue(args, "slug"));
+            if (slug.Length == 0) return false;
+            string exactKey = slug + "\0" + NormalizeRelpath(ArgValue(args, "relpath"));
+
+            IList<ApprovalRule> rules = _store.RulesFor(functionName);
+            for (int i = 0; i < rules.Count; i++)
+            {
+                ApprovalRule r = rules[i];
+                if (r == null || r.Kind != RuleKind.ExactArgs) continue;
+                if (r.ArgPath == "slug")
+                {
+                    if (string.Equals(slug, r.Pattern, StringComparison.Ordinal)) return true;
+                }
+                else if (r.ArgPath == "relpath")
+                {
+                    if (string.Equals(exactKey, r.Pattern, StringComparison.Ordinal)) return true;
+                }
+            }
+            return false;
+        }
+
+        // Stable comparison key for a skill slug: trimmed + lowercased. The host doesn't run the
+        // server's SkillSlug.Make, but a slug is already kebab-case by contract, so this only reconciles
+        // incidental case/whitespace so the stored rule and a later call agree.
+        private static string SkillSlugKey(string slug)
+        {
+            return string.IsNullOrEmpty(slug) ? string.Empty : slug.Trim().ToLowerInvariant();
+        }
+
+        // Stable comparison key for a script's relpath: '/'-normalized (NormalizePath) and lowercased,
+        // since the relpath confines to a folder and Windows paths compare case-insensitively.
+        private static string NormalizeRelpath(string rel)
+        {
+            return NormalizePath(rel).ToLowerInvariant();
         }
 
         // Boundary-aware prefix match (security, spec §3):
@@ -217,6 +267,24 @@ namespace GxPT
                     // workdir (nothing to scope the blanket approval to).
                     if (_workdirKey != null) _store.AddApprovedWorkdir(req.ServerName, _workdirKey);
                     break;
+                case ApprovalChoice.RememberSkillScripts:
+                {
+                    // Blanket for the whole skill: an ExactArgs rule on the slug (any relpath matches).
+                    string slug = SkillSlugKey(ArgValue(req.Arguments, "slug"));
+                    if (slug.Length > 0)
+                        _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.ExactArgs, "slug", slug));
+                    break;
+                }
+                case ApprovalChoice.RememberSkillScript:
+                {
+                    // This exact script: an ExactArgs rule on relpath, keyed by "<slug>\0<relpath>" so a
+                    // same-named script in another skill never matches. No-op without a slug.
+                    string slug = SkillSlugKey(ArgValue(req.Arguments, "slug"));
+                    if (slug.Length > 0)
+                        _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.ExactArgs, "relpath",
+                            slug + "\0" + NormalizeRelpath(ArgValue(req.Arguments, "relpath"))));
+                    break;
+                }
                 // AllowOnce / Deny: nothing persisted.
             }
         }
