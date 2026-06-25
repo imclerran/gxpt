@@ -33,10 +33,13 @@ namespace GxPT
             StringBuilder sb = new StringBuilder();
             sb.Append("# Skills\n\n");
             sb.Append("Skills are reusable procedures available for this conversation, listed below as ");
-            sb.Append("`- <slug> [<scope>] - <description>`. When a task matches one, load its full ");
-            sb.Append("instructions by calling open_skill({\"names\":[\"<slug>\"]}) and then follow them. ");
-            sb.Append("open_skill is directly callable - you do NOT need to reveal it first - and you may ");
-            sb.Append("open several skills at once. The <scope> is where the skill lives (user or project; ");
+            sb.Append("`- <slug> [<scope>] - <description>`. When a task matches one, FIRST call ");
+            sb.Append("open_skill({\"names\":[\"<slug>\"]}) by itself and wait for its instructions, THEN do ");
+            sb.Append("the task as they direct - do not open a skill and act on the task (dispatch agents, ");
+            sb.Append("run other tools) in the same turn, or the action runs before you have the ");
+            sb.Append("instructions. open_skill is directly callable - you do NOT need to reveal it first - ");
+            sb.Append("and you may open several skills at once. The <scope> is where the skill lives (user ");
+            sb.Append("or project; ");
             sb.Append("bundled skills are read-only); pass it as the `scope` argument when editing a skill ");
             sb.Append("so the edit targets the right one. Do not mention skills unless they are relevant ");
             sb.Append("to the request.\n\n");
