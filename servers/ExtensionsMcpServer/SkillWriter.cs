@@ -57,6 +57,8 @@ namespace ExtensionsMcpServer
             if (IsBlank(description)) throw new SkillWriteException("description is required");
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
+            if (!WriterIo.NameMatchesSlug(name, slug))
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, true, "create_skill"));
 
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (File.Exists(file))
@@ -73,7 +75,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -100,7 +102,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -108,6 +110,10 @@ namespace ExtensionsMcpServer
 
             if (!IsBlank(name)) RequireSingleLine(name, "name");
             if (!IsBlank(description)) RequireSingleLine(description, "description");
+            // A new name must still reduce to this skill's slug (the slug is the fixed handle/folder name);
+            // renaming is create-new + delete-old, not an in-place name swap that diverges name from slug.
+            if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, false, "create_skill"));
 
             SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): passing "" never silently wipes
@@ -121,6 +127,60 @@ namespace ExtensionsMcpServer
             return "Updated skill '" + slug + "'. Changes apply on your next message.";
         }
 
+        // rename_skill: change a skill's slug - its folder name and handle. Moves the WHOLE skill folder
+        // (SKILL.md plus any supporting files/scripts) within the same writable scope and rewrites SKILL.md's
+        // name to stay aligned with the new slug. Refuses if the target slug already exists, or if the source
+        // is a bundled (read-only) skill. newName is optional: omitted => a Title Case name derived from the
+        // new slug (kept if the current name already aligns); given => it must reduce to the new slug.
+        public string RenameSkill(string scope, string slugIn, string newSlugIn, string newName)
+        {
+            string root = RootFor(scope);
+            string oldSlug = RequireSlug(slugIn);
+            string newSlug = RequireSlug(newSlugIn);
+            string oldDir = Path.Combine(root, oldSlug);
+            string oldFile = Path.Combine(oldDir, "SKILL.md");
+            if (!File.Exists(oldFile))
+                throw NotWritable(oldSlug, scope, WriterOp.Rename);
+            if (string.Equals(oldSlug, newSlug, StringComparison.Ordinal))
+                throw new SkillWriteException("the new slug is the same as the current one ('" + oldSlug + "')");
+            string newDir = Path.Combine(root, newSlug);
+            if (Directory.Exists(newDir))
+                throw new SkillWriteException("skill '" + newSlug + "' already exists; choose a different slug or delete it first");
+
+            string existing;
+            try { existing = File.ReadAllText(oldFile, Encoding.UTF8); }
+            catch (Exception ex) { throw new SkillWriteException("could not read SKILL.md: " + ex.Message); }
+
+            SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
+            if (IsBlank(fm.Description))
+                throw new SkillWriteException("skill '" + oldSlug + "' has no description; fix it with update_skill before renaming");
+
+            string resolvedName = ResolveRenameName(newName, newSlug, fm.Name);
+
+            // Move the whole folder (assets and scripts come along), then rewrite SKILL.md's name in place.
+            try { Directory.Move(oldDir, newDir); }
+            catch (Exception ex) { throw new SkillWriteException("could not rename skill folder: " + ex.Message); }
+            AtomicWrite(Path.Combine(newDir, "SKILL.md"), BuildSkillMd(resolvedName, fm.Description, fm.Body));
+            return "Renamed skill '" + oldSlug + "' to '" + newSlug + "'. Anything that referenced '" + oldSlug
+                + "' must now use '" + newSlug + "'.";
+        }
+
+        // The display name a rename should write: an explicit newName (validated against the new slug), else
+        // the current name if it still aligns, else a Title Case name derived from the new slug.
+        private static string ResolveRenameName(string newName, string newSlug, string currentName)
+        {
+            if (!IsBlank(newName))
+            {
+                RequireSingleLine(newName, "new_name");
+                if (!WriterIo.NameMatchesSlug(newName, newSlug))
+                    throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", newName, newSlug, true, "create_skill"));
+                return newName;
+            }
+            if (!IsBlank(currentName) && WriterIo.NameMatchesSlug(currentName, newSlug))
+                return currentName;
+            return WriterIo.TitleCaseFromSlug(newSlug);
+        }
+
         // edit_skill_file (tier 2): targeted string replace in a supporting file (files__edit parity). For
         // SKILL.md the replace is confined to the BODY and the frontmatter is re-assembled, so a granular
         // edit can't corrupt it; the name/description are still edited through update_skill.
@@ -130,7 +190,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
             if (IsBlank(oldString)) throw new SkillWriteException("old_string is required");
             if (newString == null) throw new SkillWriteException("new_string is required");
 
@@ -230,7 +290,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -252,7 +312,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             try { Directory.Delete(dir, true); }
             catch (Exception ex) { throw new SkillWriteException("could not delete skill '" + slug + "': " + ex.Message); }
@@ -284,14 +344,13 @@ namespace ExtensionsMcpServer
 
         // ---- internals ----
 
-        // The "not in a writable scope" error for a write/edit/delete: when the skill's SKILL.md isn't in
-        // the target writable root. If the slug names a bundled (shipped, read-only) skill, say so and point
-        // at create_skill to override it - the bare "does not exist" is misleading when the model can see and
-        // read that bundled skill. forDelete tailors the verb (a bundled skill is overridden, not deleted).
-        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
-        // writable scope, or it truly doesn't exist. Probes use the skill file shape (<slug>/SKILL.md); the
-        // wording is shared with AgentWriter via WriterIo so the two can't drift.
-        private SkillWriteException NotWritable(string slug, string targetScope, bool forDelete)
+        // The "not in a writable scope" error for an edit/delete/rename: when the skill's SKILL.md isn't in
+        // the target writable root. It's a bundled shadow (read-only), or it lives in the other writable
+        // scope, or it truly doesn't exist - the bare "does not exist" is misleading when the model can see
+        // and read a bundled skill. `op` tailors the verb and the bundled guidance (a bundled skill is
+        // overridden, deleted, or renamed differently). Probes use the skill file shape (<slug>/SKILL.md);
+        // the wording is shared with AgentWriter via WriterIo so the two can't drift.
+        private SkillWriteException NotWritable(string slug, string targetScope, WriterOp op)
         {
             bool bundled = !string.IsNullOrEmpty(_bundledRoot)
                 && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md"));
@@ -300,7 +359,7 @@ namespace ExtensionsMcpServer
             string otherLabel = eff == "project" ? "user" : "project";
             bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
                 && File.Exists(Path.Combine(Path.Combine(otherRoot, slug), "SKILL.md"));
-            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", forDelete,
+            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", op,
                 bundled, inOther ? otherLabel : null, eff));
         }
 

@@ -12,7 +12,7 @@ namespace GxPT
     //     shared server up via the usual "any enabled skill" launch rule.)
     //   * run_skill_script is hidden when NO skill is enabled at all - the server may still be running
     //     (it is shared across the workdir), but its tools have no business in a turn with no skills.
-    internal static class SkillToolGate
+    internal static class ExtensionsToolGate
     {
         // The meta-skills that own the authoring surfaces (their slugs / folder names).
         public const string SkillWriterSlug = "skill-writer";
@@ -31,6 +31,7 @@ namespace GxPT
             McpConfig.ExtensionsName + "__write_skill_file",
             McpConfig.ExtensionsName + "__update_skill",
             McpConfig.ExtensionsName + "__edit_skill_file",
+            McpConfig.ExtensionsName + "__rename_skill",
             McpConfig.ExtensionsName + "__list_skill_files",
             McpConfig.ExtensionsName + "__delete_skill_file",
             McpConfig.ExtensionsName + "__delete_skill",
@@ -44,6 +45,7 @@ namespace GxPT
             McpConfig.ExtensionsName + "__create_agent",
             McpConfig.ExtensionsName + "__update_agent",
             McpConfig.ExtensionsName + "__edit_agent",
+            McpConfig.ExtensionsName + "__rename_agent",
             McpConfig.ExtensionsName + "__read_agent",
             McpConfig.ExtensionsName + "__list_agents",
             McpConfig.ExtensionsName + "__delete_agent",

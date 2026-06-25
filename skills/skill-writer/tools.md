@@ -55,9 +55,12 @@ what's available rather than hardcoding one name.
 - `read_skill_file(slug, relpath)` - read a skill's bundled file
 - `run_skill_script(slug, relpath, args[])` - run a skill's declared `.bat` (see `scripts.md`)
 - Authoring (what you're using now): `create_skill`, `write_skill_file`, `update_skill`,
-  `edit_skill_file`, `list_skill_files`, `delete_skill_file`, `delete_skill`, `validate_skill`.
-  These are only available while this skill-writer skill is enabled. (The same server also hosts
-  the agent-authoring tools, behind the separate agent-writer skill.)
+  `edit_skill_file`, `rename_skill`, `list_skill_files`, `delete_skill_file`, `delete_skill`,
+  `validate_skill`. These are only available while this skill-writer skill is enabled. (The same
+  server also hosts the agent-authoring tools, behind the separate agent-writer skill.)
+  `rename_skill(slug, new_slug, new_name?)` changes a skill's slug - it moves the whole folder
+  (SKILL.md plus assets/scripts) and realigns the name; `update_skill` only re-cases the name within
+  the same slug.
 
 ## Also check your own current tools - the user may have added their own
 

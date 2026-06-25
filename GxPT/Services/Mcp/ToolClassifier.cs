@@ -75,6 +75,10 @@ namespace GxPT
             t["extensions__write_skill_file"] = new ToolPolicy(ToolTier.Write, RememberScope.Argument, "slug");
             t["extensions__update_skill"] = new ToolPolicy(ToolTier.Write, RememberScope.Argument, "slug");
             t["extensions__edit_skill_file"] = new ToolPolicy(ToolTier.Write, RememberScope.Argument, "slug");
+            // rename moves the folder/file (a slug change); content is preserved and a collision is refused,
+            // so it's Write, but it's a structural change to the handle -> confirmed every time (Scope.None,
+            // never blanket-remembered), like the agent rename below.
+            t["extensions__rename_skill"] = new ToolPolicy(ToolTier.Write, RememberScope.None, null);
             t["extensions__list_skill_files"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__validate_skill"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__delete_skill_file"] = new ToolPolicy(ToolTier.Destructive, RememberScope.None, null);
@@ -85,6 +89,9 @@ namespace GxPT
             t["extensions__create_agent"] = new ToolPolicy(ToolTier.Write, RememberScope.Tool, null);
             t["extensions__update_agent"] = new ToolPolicy(ToolTier.Write, RememberScope.Argument, "slug");
             t["extensions__edit_agent"] = new ToolPolicy(ToolTier.Write, RememberScope.Argument, "slug");
+            // rename moves <slug>.md (a slug change); content preserved, collision refused -> Write, but a
+            // structural handle change, so confirmed every time (Scope.None, never blanket-remembered).
+            t["extensions__rename_agent"] = new ToolPolicy(ToolTier.Write, RememberScope.None, null);
             t["extensions__read_agent"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__list_agents"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);
             t["extensions__validate_agent"] = new ToolPolicy(ToolTier.ReadOnly, RememberScope.Tool, null);

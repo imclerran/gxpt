@@ -51,6 +51,68 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void CreateSkill_RejectsNameThatDoesNotMatchSlug()
+        {
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() =>
+                _writer.CreateSkill(null, "release-notes", "Changelog", "Draft notes.", "body"));
+            Assert.Contains("don't match", ex.Message);
+            Assert.False(File.Exists(SkillFile("release-notes")));
+        }
+
+        [Fact]
+        public void CreateSkill_AllowsAcronymNameAlignment()
+        {
+            _writer.CreateSkill(null, "github-sync", "GitHub Sync", "Syncs a repo.", "body");
+            Assert.True(File.Exists(SkillFile("github-sync")));
+        }
+
+        [Fact]
+        public void UpdateSkill_RejectsNameThatDivergesFromSlug()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Old desc.", "Old body.");
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() =>
+                _writer.UpdateSkill(null, "greeting", "Farewell", null, null));
+            Assert.Contains("rename", ex.Message);
+            SkillFrontmatter fm = SkillFrontmatter.Parse(File.ReadAllText(SkillFile("greeting")));
+            Assert.Equal("Greeting", fm.Name);   // unchanged
+        }
+
+        [Fact]
+        public void RenameSkill_MovesFolderWithAssetsAndDerivesName()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Says hi.", "body");
+            _writer.WriteFile(null, "greeting", "ref.md", "reference content");
+
+            _writer.RenameSkill(null, "greeting", "salutation", null);   // no new_name -> derived
+
+            Assert.False(Directory.Exists(Path.Combine(_project, "greeting")));   // old folder gone
+            string text = File.ReadAllText(SkillFile("salutation"));
+            Assert.Contains("name: Salutation", text);                            // derived from new slug
+            Assert.Contains("Says hi.", text);                                    // description preserved
+            Assert.True(File.Exists(Path.Combine(_project, "salutation", "ref.md")));   // asset came along
+        }
+
+        [Fact]
+        public void RenameSkill_RefusesExistingTarget()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "d", "b");
+            _writer.CreateSkill(null, "farewell", "Farewell", "d", "b");
+            Assert.Throws<SkillWriteException>(() => _writer.RenameSkill(null, "greeting", "farewell", null));
+            Assert.True(File.Exists(SkillFile("greeting")));   // both untouched on refusal
+            Assert.True(File.Exists(SkillFile("farewell")));
+        }
+
+        [Fact]
+        public void RenameSkill_RejectsNameNotMatchingNewSlug()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Says hi.", "body");
+            Assert.Throws<SkillWriteException>(() =>
+                _writer.RenameSkill(null, "greeting", "salutation", "Something Else"));
+            Assert.True(File.Exists(SkillFile("greeting")));                       // not moved
+            Assert.False(Directory.Exists(Path.Combine(_project, "salutation")));
+        }
+
+        [Fact]
         public void CreateSkill_RefusesExisting()
         {
             _writer.CreateSkill(null, "greeting", "Greeting", "Be a pirate.", "body");
@@ -222,7 +284,7 @@ namespace ExtensionsMcpServer.Tests
         public void DefaultScope_TwoArgCtor_DefaultsToProject()
         {
             // The 2-arg ctor keeps the project default: omitting scope targets the project root.
-            _writer.CreateSkill(null, "proj-skill", "Proj", "desc", "body");
+            _writer.CreateSkill(null, "proj-skill", "Proj Skill", "desc", "body");
             Assert.True(File.Exists(SkillFile("proj-skill")));
         }
 
@@ -419,6 +481,22 @@ namespace ExtensionsMcpServer.Tests
             SkillWriteException ex = Assert.Throws<SkillWriteException>(() => w.DeleteSkill(null, "shipped"));
             Assert.Contains("bundled", ex.Message);
             Assert.Contains("read-only", ex.Message);
+        }
+
+        [Fact]
+        public void RenameSkill_BundledOnly_ReportsCannotRename()
+        {
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(
+                () => w.RenameSkill(null, "shipped", "renamed", null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("can't be renamed", ex.Message);   // rename-specific guidance, not the edit message
+            Assert.Contains("create_skill", ex.Message);
         }
 
         [Fact]
