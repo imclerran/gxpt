@@ -102,9 +102,12 @@ Creating a new agent:
   written result must contain; (3) the rules and boundaries (state read-only limits explicitly); and
   (4) the **final instructions** - the closing paragraph that every built-in agent ends on, telling
   it to work by calling tools, not narrating, and that a message with no tool call is its final
-  answer. Do NOT omit the final instructions; the agent's run loop depends on them. Keep the prompt
-  lean and don't script its method step by step - the dispatching model supplies the specific task
-  each time. When in doubt, `read_agent("explore")` and mirror its shape and length.
+  answer. Do NOT omit the final instructions; the agent's run loop depends on them. Pitch the
+  prompt at the altitude the user asked for (step 2): a lean prompt that leaves the method to the
+  agent and dispatcher, or a tighter, more prescriptive script for an agent meant to run a fixed
+  procedure every time. The dispatching model always supplies the specific task, so even a
+  prescriptive prompt sets the *procedure*, not the task. When in doubt, lean - and
+  `read_agent("explore")` to mirror the built-in shape.
 
 Editing an existing agent (first `list_agents` to see which slugs exist, then `read_agent(slug)` to
 read the one you want before changing it):
