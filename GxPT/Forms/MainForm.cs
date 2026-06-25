@@ -4674,6 +4674,18 @@ namespace GxPT
             if (name != null && name.StartsWith("msbuild__build_", StringComparison.Ordinal))
                 return BuildMsBuildRecord(name, args, out header, out body, out language);
 
+            // command__run and the discovered PowerShell tools render the same record: the command/
+            // script from 'command', highlighted (batch for cmd.exe, powershell otherwise). The
+            // PowerShell name set lives in McpConfig.IsPowerShellTool so this and the approval preview
+            // stay in agreement when hosts are added/renamed.
+            if (string.Equals(name, McpConfig.CommandName + "__run", StringComparison.Ordinal) || McpConfig.IsPowerShellTool(name))
+            {
+                string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
+                bool isPs = McpConfig.IsPowerShellTool(name);
+                header = isPs ? "Ran a PowerShell command" : "Ran a command";
+                body = cmd; language = isPs ? "powershell" : "batch"; return true;
+            }
+
             switch (name)
             {
                 case "files__edit":
@@ -4713,20 +4725,6 @@ namespace GxPT
                     string query = Str(args, "query"); if (query.Length == 0) return false;
                     header = "Searched files"; body = query;
                     language = Bool(args, "regex") ? "regex" : "text"; return true;
-                }
-                case "command__run":
-                {
-                    string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
-                    header = "Ran a command"; body = cmd; language = "batch"; return true;
-                }
-                case "command__powershell":
-                case "command__powershell_v1":
-                case "command__pwsh":
-                {
-                    // The PowerShell tools (registered per discovered host) all carry the script in
-                    // 'command'; show it with PowerShell highlighting so the user can review what ran.
-                    string cmd = Str(args, "command"); if (cmd.Trim().Length == 0) return false;
-                    header = "Ran a PowerShell command"; body = cmd; language = "powershell"; return true;
                 }
                 case "dispatch_agent":
                 {

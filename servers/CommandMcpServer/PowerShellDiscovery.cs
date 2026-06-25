@@ -33,6 +33,13 @@ namespace CommandMcpServer
     /// </summary>
     internal static class PowerShellDiscovery
     {
+        // Version detection is best-effort (it only enriches the tool description), so each probe is
+        // kept short: discovery runs synchronously before the server answers its initialize handshake,
+        // and the host tears the connection down if that handshake exceeds its open timeout (~15s). A
+        // probe that overruns just leaves the version unknown; it must never blow the startup budget and
+        // take the always-present `run` tool down with it.
+        private const int ProbeTimeoutMs = 4000;
+
         public static IList<PowerShellInstall> Discover(ILogSink log)
         {
             List<PowerShellInstall> result = new List<PowerShellInstall>();
@@ -59,9 +66,10 @@ namespace CommandMcpServer
             string exe = Path.Combine(windir, Path.Combine("System32", Path.Combine("WindowsPowerShell", Path.Combine("v1.0", "powershell.exe"))));
             if (!Exists(exe)) return null;
 
+            // Only Windows PowerShell can be the legacy 1.0 line, so it is the only host that probes for it.
             string version;
             bool legacy;
-            DetectVersion(exe, log, out version, out legacy);
+            DetectVersion(exe, log, true, out version, out legacy);
 
             // 1.0 gets its own tool (stdin invocation); 2.0-5.1 keep the standard -EncodedCommand tool.
             return new PowerShellInstall
@@ -75,73 +83,95 @@ namespace CommandMcpServer
         }
 
         // PowerShell 6+ (Core, cross-platform): pwsh.exe, installed out-of-band under
-        // %ProgramFiles%\PowerShell\<major>\pwsh.exe (prefer 7, then 6). Optional — absent on most
+        // <ProgramFiles>\PowerShell\<major>\pwsh.exe (prefer 7, then 6). Optional — absent on most
         // XP/7 boxes, present alongside Windows PowerShell on newer ones.
         private static PowerShellInstall DiscoverPowerShellCore(ILogSink log)
         {
-            string pf = Environment.GetEnvironmentVariable("ProgramFiles");
-            if (string.IsNullOrEmpty(pf)) return null;
+            // %ProgramFiles% resolves to the 32-bit "Program Files (x86)" dir when this process runs
+            // under WOW64 (a 32-bit host on 64-bit Windows), where pwsh.exe (64-bit only) is not
+            // installed; %ProgramW6432% always points at the real 64-bit Program Files. Check both,
+            // de-duped, so Core is found regardless of the server's bitness.
+            List<string> roots = new List<string>();
+            AddRoot(roots, Environment.GetEnvironmentVariable("ProgramW6432"));
+            AddRoot(roots, Environment.GetEnvironmentVariable("ProgramFiles"));
+            if (roots.Count == 0) return null;
 
             string[] majors = new string[] { "7", "6" };
-            foreach (string major in majors)
+            foreach (string root in roots)
             {
-                string exe = Path.Combine(pf, Path.Combine("PowerShell", Path.Combine(major, "pwsh.exe")));
-                if (!Exists(exe)) continue;
-
-                string version;
-                bool legacy;
-                DetectVersion(exe, log, out version, out legacy);
-                return new PowerShellInstall
+                foreach (string major in majors)
                 {
-                    ToolName = "pwsh",
-                    Label = "PowerShell",
-                    Exe = exe,
-                    Version = version,
-                    LegacyStdin = legacy   // always false for Core (6+), which supports -EncodedCommand
-                };
+                    string exe = Path.Combine(root, Path.Combine("PowerShell", Path.Combine(major, "pwsh.exe")));
+                    if (!Exists(exe)) continue;
+
+                    // Core (6+) always has $PSVersionTable and -EncodedCommand, so it never needs the
+                    // 1.0 fallback probe (probeLegacy: false) and is never a stdin host.
+                    string version;
+                    bool legacy;
+                    DetectVersion(exe, log, false, out version, out legacy);
+                    return new PowerShellInstall
+                    {
+                        ToolName = "pwsh",
+                        Label = "PowerShell",
+                        Exe = exe,
+                        Version = version,
+                        LegacyStdin = false
+                    };
+                }
             }
             return null;
         }
 
-        // Detect the interpreter's version and which invocation style its tool must use:
-        //   * 2.0+ : $PSVersionTable.PSVersion gives the exact version; the tool uses -EncodedCommand.
-        //   * 1.0  : $PSVersionTable doesn't exist and -EncodedCommand/-ExecutionPolicy/-NonInteractive
-        //            aren't supported, so we confirm the version via (Get-Host).Version fed over stdin
-        //            and flag the host for the stdin (`-Command -`) invocation style.
+        // Detect the interpreter's version and whether its tool must use the legacy stdin invocation:
+        //   * 2.0+ / Core : $PSVersionTable.PSVersion gives the exact version; the tool uses -EncodedCommand.
+        //   * 1.0         : $PSVersionTable doesn't exist and -EncodedCommand/-ExecutionPolicy/
+        //                   -NonInteractive aren't supported, so the version is read via (Get-Host).Version
+        //                   fed over stdin and the host is flagged for the stdin (`-Command -`) style.
         // Both probes are short, time-boxed, and never throw — a probe failure just leaves version null
         // (modern style), so a wedged or unexpected interpreter can't stall or crash startup discovery.
-        private static void DetectVersion(string exe, ILogSink log, out string version, out bool legacyStdin)
+        private static void DetectVersion(string exe, ILogSink log, bool probeLegacy, out string version, out bool legacyStdin)
         {
             version = null;
             legacyStdin = false;
 
+            bool timedOut;
             string modern = RunProbe(exe,
-                "-NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"", null, log);
-            if (!string.IsNullOrEmpty(modern)) { version = modern; return; }
+                "-NoProfile -NonInteractive -Command \"$PSVersionTable.PSVersion.ToString()\"", null, out timedOut, log);
+            if (!string.IsNullOrEmpty(modern)) { version = modern; return; }   // 2.0+ / Core
 
-            // No $PSVersionTable → likely 1.0. (Get-Host).Version works there; feed it over stdin via
-            // `-Command -` so no switch or quoting a 1.0 host might reject is involved. Only a 1.x answer
-            // flips to the legacy style; anything else is treated as a normal (modern) host.
+            // The modern probe came back empty. Only Windows PowerShell needs the 1.0 fallback, and only
+            // when modern failed FAST: a real 1.0 host rejects -NonInteractive/$PSVersionTable
+            // immediately, whereas a host that HUNG is wedged — probing it again would just double the
+            // startup delay for no benefit.
+            if (!probeLegacy || timedOut) return;
+
+            // 1.0-style invocation: (Get-Host).Version (which exists in 1.0) fed over stdin via
+            // `-Command -`, avoiding any switch a 1.0 host rejects. Reaching a non-empty result here
+            // means the host couldn't answer the modern probe yet accepts the old stdin form — i.e. it
+            // IS the legacy line, regardless of how its version string is spelled (so a non-"1." spelling
+            // no longer misclassifies it as modern, which would invoke it with switches 1.0 rejects).
             string legacy = RunProbe(exe, "-NoProfile -Command -",
-                "(Get-Host).Version.ToString()" + Environment.NewLine, log);
+                "(Get-Host).Version.ToString()" + Environment.NewLine, out timedOut, log);
             if (!string.IsNullOrEmpty(legacy))
             {
                 version = legacy;
-                legacyStdin = legacy.StartsWith("1.", StringComparison.Ordinal);
+                legacyStdin = true;
             }
         }
 
-        private static string RunProbe(string exe, string args, string stdin, ILogSink log)
+        private static string RunProbe(string exe, string args, string stdin, out bool timedOut, ILogSink log)
         {
+            timedOut = false;
             try
             {
                 ProcessRequest req = new ProcessRequest();
                 req.FileName = exe;
                 req.Arguments = args;
                 req.StdinText = stdin;
-                req.TimeoutMs = 15000;
+                req.TimeoutMs = ProbeTimeoutMs;
 
                 ProcessResult res = new ProcessRunner(null).Run(req);
+                timedOut = res.TimedOut;
                 if (res.TimedOut || res.ExitCode != 0) return null;
                 string v = (res.StdOut ?? string.Empty).Trim();
                 return string.IsNullOrEmpty(v) ? null : v;
@@ -151,6 +181,11 @@ namespace CommandMcpServer
                 Note(log, "version probe failed for " + exe + ": " + ex.Message);
                 return null;
             }
+        }
+
+        private static void AddRoot(List<string> roots, string path)
+        {
+            if (!string.IsNullOrEmpty(path) && !roots.Contains(path)) roots.Add(path);
         }
 
         private static bool Exists(string path)

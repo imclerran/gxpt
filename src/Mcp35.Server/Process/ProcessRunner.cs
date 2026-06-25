@@ -66,7 +66,19 @@ namespace Mcp35.Server.Process
                 {
                     try
                     {
-                        proc.StandardInput.Write(req.StdinText);
+                        if (req.StdinEncoding != null)
+                        {
+                            // The StandardInput StreamWriter's encoding isn't settable on .NET 3.5, so
+                            // to control how non-ASCII stdin bytes are emitted we write them ourselves in
+                            // the requested encoding via the underlying stream.
+                            byte[] bytes = req.StdinEncoding.GetBytes(req.StdinText);
+                            proc.StandardInput.BaseStream.Write(bytes, 0, bytes.Length);
+                            proc.StandardInput.BaseStream.Flush();
+                        }
+                        else
+                        {
+                            proc.StandardInput.Write(req.StdinText);
+                        }
                     }
                     finally
                     {

@@ -344,6 +344,22 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Command_signature_matches_multiline_scripts_exactly()
+        {
+            // A multi-line script has no meaningful program+operand identity; it must match EXACTLY so
+            // two different scripts that merely share an opening line don't collapse to one signature
+            // (which would let a remembered approval silently auto-allow a script the user never saw).
+            string a = "hostname\r\ndel C:\\temp\\a.txt";
+            string b = "hostname\r\ndel C:\\Windows\\System32\\important";
+            Assert.Equal(a, ToolApprovalPolicy.CommandSignature(a));
+            Assert.Equal(b, ToolApprovalPolicy.CommandSignature(b));
+            Assert.NotEqual(ToolApprovalPolicy.CommandSignature(a), ToolApprovalPolicy.CommandSignature(b));
+            // A bare-newline variant is treated the same.
+            Assert.Equal("Get-Process\nStop-Process x",
+                ToolApprovalPolicy.CommandSignature("Get-Process\nStop-Process x"));
+        }
+
+        [Fact]
         public void Command_pattern_rule_matches_across_quoted_path_with_spaces()
         {
             var prompt = new ScriptedPrompt { Next = ApprovalChoice.RememberPrefixArg };

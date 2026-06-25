@@ -22,6 +22,14 @@ namespace Mcp35.Server.Process
         /// <summary>Optional text to write to the child's stdin (then stdin is closed).</summary>
         public string StdinText;
 
+        /// <summary>
+        /// Encoding for <see cref="StdinText"/>. When null, the process's default StandardInput writer
+        /// is used. Set it when the child reads stdin in a specific code page (e.g. a legacy console
+        /// app) so non-ASCII bytes are written deliberately rather than via .NET's ambiguous default
+        /// StandardInput encoding (which is not settable on .NET 3.5).
+        /// </summary>
+        public System.Text.Encoding StdinEncoding;
+
         /// <summary>Kill the process if it runs longer than this. 0 or less = no timeout.</summary>
         public int TimeoutMs;
     }

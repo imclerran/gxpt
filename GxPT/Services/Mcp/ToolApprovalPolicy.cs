@@ -258,6 +258,12 @@ namespace GxPT
             if (command == null) return string.Empty;
             string trimmed = command.Trim();
             if (trimmed.Length == 0) return string.Empty;
+            // A multi-line command (typically a PowerShell script) has no meaningful "program + first
+            // operand" identity - reducing it to its first line's leading tokens would let a DIFFERENT
+            // multi-line script that merely opens the same way match a remembered "command pattern" rule.
+            // Match such commands EXACTLY instead (the safe direction: re-prompt rather than silently
+            // auto-allow a script the user never approved).
+            if (trimmed.IndexOf('\n') >= 0 || trimmed.IndexOf('\r') >= 0) return trimmed;
             string[] t = TokenizeCommand(trimmed);
             if (t.Length == 0) return string.Empty;
             if (t.Length == 1) return t[0];
@@ -274,13 +280,15 @@ namespace GxPT
             return t[0] + " " + t[1];
         }
 
-        // Split a command line into whitespace-separated tokens, keeping a quoted span ("..." or
+        // Split a single-line command into whitespace-separated tokens, keeping a quoted span ("..." or
         // '...') as ONE token (quotes preserved) so a path with interior spaces — e.g.
-        // powershell "C:\Program Files\app.ps1" — isn't broken at the first space. This is a
-        // signature/display heuristic, not a shell parser: it doesn't process backslash escapes or
-        // nested quotes, which the signature's downstream use (compare-for-equality, ignore flags)
-        // doesn't need. Quotes are kept in the token text so the displayed pattern stays unambiguous;
-        // the path/flag heuristics strip them where needed (LooksLikePath, IsFlagToken).
+        // powershell "C:\Program Files\app.ps1" — isn't broken at the first space. Only space/tab
+        // separate tokens; multi-line commands never reach here (CommandSignature matches them exactly),
+        // so a newline is never a separator. This is a signature/display heuristic, not a shell parser:
+        // it doesn't process backslash escapes or nested quotes, which the signature's downstream use
+        // (compare-for-equality, ignore flags) doesn't need. Quotes are kept in the token text so the
+        // displayed pattern stays unambiguous; the path/flag heuristics strip them where needed
+        // (LooksLikePath, IsFlagToken).
         private static string[] TokenizeCommand(string command)
         {
             List<string> tokens = new List<string>();
@@ -303,10 +311,8 @@ namespace GxPT
                     cur.Append(c);
                     inToken = true;
                 }
-                else if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+                else if (c == ' ' || c == '\t')
                 {
-                    // Newlines separate tokens too (outside quotes): a multi-line script's signature is
-                    // then its first line's command/operand, not a token with an embedded newline.
                     if (inToken) { tokens.Add(cur.ToString()); cur.Length = 0; inToken = false; }
                 }
                 else

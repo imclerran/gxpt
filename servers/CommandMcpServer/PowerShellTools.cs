@@ -29,7 +29,6 @@ namespace CommandMcpServer
     {
         private const int DefaultTimeoutMs = 60000;
         private const int MaxTimeoutMs = 600000;
-        private const int OutputCap = 100000; // chars per stream
 
         public static void Register(McpServer server, CommandConfig config)
         {
@@ -73,7 +72,7 @@ namespace CommandMcpServer
             string command = ctx.Arguments.Value<string>("command");
             if (string.IsNullOrEmpty(command)) return ToolResults.Error("command is required");
 
-            int timeout = IntArg(ctx, "timeout_ms", DefaultTimeoutMs, 1, MaxTimeoutMs);
+            int timeout = CommandToolHelpers.IntArg(ctx.Arguments, "timeout_ms", DefaultTimeoutMs, 1, MaxTimeoutMs);
 
             ProcessRequest req = new ProcessRequest();
             req.FileName = ps.Exe;
@@ -82,8 +81,13 @@ namespace CommandMcpServer
                 // PowerShell 1.0: no -EncodedCommand / -ExecutionPolicy / -NonInteractive. Feed the
                 // script over stdin via `-Command -` (read commands from standard input), which 1.0
                 // supports and which sidesteps shell quoting just as -EncodedCommand does for 2.0+.
+                // Write the bytes in the system code page (what a legacy console host reads) rather than
+                // .NET's ambiguous default StandardInput encoding. Characters outside the system code
+                // page can't be represented to a non-Unicode 1.0 host - an inherent 1.0 limitation, not
+                // something the modern -EncodedCommand path shares.
                 req.Arguments = "-NoProfile -Command -";
                 req.StdinText = command + Environment.NewLine;
+                req.StdinEncoding = Encoding.Default;
             }
             else
             {
@@ -111,15 +115,7 @@ namespace CommandMcpServer
                 return ToolResults.Error("failed to run " + ps.Label + ": " + ex.Message);
             }
 
-            bool outTrunc, errTrunc;
-            JObject outp = new JObject();
-            if (!string.IsNullOrEmpty(ps.Version)) outp["version"] = ps.Version;
-            outp["exitCode"] = result.ExitCode;
-            outp["stdout"] = Cap(result.StdOut, out outTrunc);
-            outp["stderr"] = Cap(result.StdErr, out errTrunc);
-            outp["timedOut"] = result.TimedOut;
-            if (outTrunc || errTrunc) outp["truncated"] = true;
-            return ToolResults.Json(outp);
+            return ToolResults.Json(CommandToolHelpers.BuildResult(result, ps.Version));
         }
 
         // PowerShell's -EncodedCommand expects base64 of the UTF-16LE (little-endian) bytes of the
@@ -128,27 +124,6 @@ namespace CommandMcpServer
         {
             byte[] bytes = Encoding.Unicode.GetBytes(command ?? string.Empty);
             return Convert.ToBase64String(bytes);
-        }
-
-        private static int IntArg(ToolCallContext ctx, string name, int fallback, int min, int max)
-        {
-            JToken t = ctx.Arguments[name];
-            if (t == null || t.Type == JTokenType.Null) return fallback;
-            int n;
-            try { n = t.Value<int>(); }
-            catch { return fallback; }
-            if (n < min) return min;
-            if (n > max) return max;
-            return n;
-        }
-
-        private static string Cap(string s, out bool truncated)
-        {
-            truncated = false;
-            if (s == null) return string.Empty;
-            if (s.Length <= OutputCap) return s;
-            truncated = true;
-            return s.Substring(0, OutputCap);
         }
     }
 }

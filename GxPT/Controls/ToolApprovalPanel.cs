@@ -395,40 +395,25 @@ namespace GxPT
                         handled = true;
                     }
                 }
-                else if (string.Equals(req.FunctionName, "command__run", StringComparison.Ordinal))
+                else if (string.Equals(req.FunctionName, "command__run", StringComparison.Ordinal)
+                      || McpConfig.IsPowerShellTool(req.FunctionName))
                 {
+                    // command__run and the discovered PowerShell tools render identically: the command/
+                    // script itself (highlighted), with the "command pattern" signature surfaced next to
+                    // it when it differs from the full line (i.e. flags/args were dropped) so the broader
+                    // allow-scope is visible without hovering the button's tooltip. Only the highlight
+                    // language and label prefix differ between cmd and PowerShell.
+                    bool isPs = McpConfig.IsPowerShellTool(req.FunctionName);
                     string cmd = req.Arguments.Value<string>("command") ?? string.Empty;
                     if (cmd.Trim().Length > 0)
                     {
-                        _diffPanel.SetContent(string.Empty, cmd, "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
-                        // Surface the "command pattern" signature next to the command when it differs
-                        // from the full line (i.e. flags/args were dropped), so the broader allow-scope
-                        // is visible without hovering the button's tooltip.
+                        _diffPanel.SetContent(string.Empty, cmd, isPs ? "powershell" : "batch", dark, _monoFont, tc.CodeBack, tc.UiForeground);
+                        string label = isPs ? "PowerShell" : "Command";
                         string sig = ToolApprovalPolicy.CommandSignature(cmd);
                         _previewLabel.Text =
                             (!string.IsNullOrEmpty(sig) && !string.Equals(sig, cmd.Trim(), StringComparison.Ordinal))
-                            ? "Command   (pattern: " + sig + ")"
-                            : "Command:";
-                        handled = true;
-                    }
-                }
-                else if (string.Equals(req.FunctionName, "command__powershell", StringComparison.Ordinal)
-                      || string.Equals(req.FunctionName, "command__powershell_v1", StringComparison.Ordinal)
-                      || string.Equals(req.FunctionName, "command__pwsh", StringComparison.Ordinal))
-                {
-                    // Mirror command__run: show the script itself (PowerShell-highlighted) instead of the
-                    // raw JSON, and surface the command-pattern signature next to it when it differs from
-                    // the full script (i.e. flags/args were dropped), so the broader allow-scope is
-                    // visible without hovering the button's tooltip.
-                    string cmd = req.Arguments.Value<string>("command") ?? string.Empty;
-                    if (cmd.Trim().Length > 0)
-                    {
-                        _diffPanel.SetContent(string.Empty, cmd, "powershell", dark, _monoFont, tc.CodeBack, tc.UiForeground);
-                        string sig = ToolApprovalPolicy.CommandSignature(cmd);
-                        _previewLabel.Text =
-                            (!string.IsNullOrEmpty(sig) && !string.Equals(sig, cmd.Trim(), StringComparison.Ordinal))
-                            ? "PowerShell   (pattern: " + sig + ")"
-                            : "PowerShell:";
+                            ? label + "   (pattern: " + sig + ")"
+                            : label + ":";
                         handled = true;
                     }
                 }
