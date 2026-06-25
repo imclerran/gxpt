@@ -75,7 +75,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -102,7 +102,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -140,7 +140,7 @@ namespace ExtensionsMcpServer
             string oldDir = Path.Combine(root, oldSlug);
             string oldFile = Path.Combine(oldDir, "SKILL.md");
             if (!File.Exists(oldFile))
-                throw NotWritable(oldSlug, scope, false);
+                throw NotWritable(oldSlug, scope, WriterOp.Rename);
             if (string.Equals(oldSlug, newSlug, StringComparison.Ordinal))
                 throw new SkillWriteException("the new slug is the same as the current one ('" + oldSlug + "')");
             string newDir = Path.Combine(root, newSlug);
@@ -190,7 +190,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
             if (IsBlank(oldString)) throw new SkillWriteException("old_string is required");
             if (newString == null) throw new SkillWriteException("new_string is required");
 
@@ -290,7 +290,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             string full;
             try { full = new PathSandbox(dir, "skill folder").Resolve(relpath); }
@@ -312,7 +312,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string dir = Path.Combine(root, slug);
             if (!File.Exists(Path.Combine(dir, "SKILL.md")))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             try { Directory.Delete(dir, true); }
             catch (Exception ex) { throw new SkillWriteException("could not delete skill '" + slug + "': " + ex.Message); }
@@ -344,14 +344,13 @@ namespace ExtensionsMcpServer
 
         // ---- internals ----
 
-        // The "not in a writable scope" error for a write/edit/delete: when the skill's SKILL.md isn't in
-        // the target writable root. If the slug names a bundled (shipped, read-only) skill, say so and point
-        // at create_skill to override it - the bare "does not exist" is misleading when the model can see and
-        // read that bundled skill. forDelete tailors the verb (a bundled skill is overridden, not deleted).
-        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
-        // writable scope, or it truly doesn't exist. Probes use the skill file shape (<slug>/SKILL.md); the
-        // wording is shared with AgentWriter via WriterIo so the two can't drift.
-        private SkillWriteException NotWritable(string slug, string targetScope, bool forDelete)
+        // The "not in a writable scope" error for an edit/delete/rename: when the skill's SKILL.md isn't in
+        // the target writable root. It's a bundled shadow (read-only), or it lives in the other writable
+        // scope, or it truly doesn't exist - the bare "does not exist" is misleading when the model can see
+        // and read a bundled skill. `op` tailors the verb and the bundled guidance (a bundled skill is
+        // overridden, deleted, or renamed differently). Probes use the skill file shape (<slug>/SKILL.md);
+        // the wording is shared with AgentWriter via WriterIo so the two can't drift.
+        private SkillWriteException NotWritable(string slug, string targetScope, WriterOp op)
         {
             bool bundled = !string.IsNullOrEmpty(_bundledRoot)
                 && File.Exists(Path.Combine(Path.Combine(_bundledRoot, slug), "SKILL.md"));
@@ -360,7 +359,7 @@ namespace ExtensionsMcpServer
             string otherLabel = eff == "project" ? "user" : "project";
             bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
                 && File.Exists(Path.Combine(Path.Combine(otherRoot, slug), "SKILL.md"));
-            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", forDelete,
+            return new SkillWriteException(WriterIo.NotWritableMessage("skill", slug, "create_skill", op,
                 bundled, inOther ? otherLabel : null, eff));
         }
 

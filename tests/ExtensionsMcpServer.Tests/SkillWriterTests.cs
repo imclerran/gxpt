@@ -484,6 +484,22 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void RenameSkill_BundledOnly_ReportsCannotRename()
+        {
+            string bundled = Path.Combine(_root, "bundled");
+            Directory.CreateDirectory(Path.Combine(bundled, "shipped"));
+            File.WriteAllText(Path.Combine(Path.Combine(bundled, "shipped"), "SKILL.md"),
+                "---\nname: Shipped\ndescription: d\n---\n\nbody\n");
+            SkillWriter w = new SkillWriter(_project, null, bundled, "project");
+
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(
+                () => w.RenameSkill(null, "shipped", "renamed", null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("can't be renamed", ex.Message);   // rename-specific guidance, not the edit message
+            Assert.Contains("create_skill", ex.Message);
+        }
+
+        [Fact]
         public void UpdateSkill_BlankNameKeepsExisting()
         {
             // A present-but-blank name means "keep", not "clear" (mirrors update_agent); passing "" must not

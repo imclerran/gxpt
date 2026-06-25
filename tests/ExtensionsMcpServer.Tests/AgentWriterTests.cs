@@ -159,7 +159,11 @@ namespace ExtensionsMcpServer.Tests
         public void RenameAgent_RefusesBundledSource()
         {
             MakeBundled("explore", "bundled body");   // lives only in the read-only bundled root
-            Assert.Throws<AgentWriteException>(() => _writer.RenameAgent(null, "explore", "code-explore", null));
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(
+                () => _writer.RenameAgent(null, "explore", "code-explore", null));
+            Assert.Contains("bundled", ex.Message);
+            Assert.Contains("can't be renamed", ex.Message);   // rename-specific, not the generic edit message
+            Assert.Contains("create_agent", ex.Message);
         }
 
         [Fact]

@@ -71,7 +71,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -111,7 +111,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
             if (IsBlank(oldString)) throw new AgentWriteException("old_string is required");
             if (newString == null) throw new AgentWriteException("new_string is required");
 
@@ -157,7 +157,7 @@ namespace ExtensionsMcpServer
             string newSlug = RequireSlug(newSlugIn);
             string oldFile = Path.Combine(root, oldSlug + ".md");
             if (!File.Exists(oldFile))
-                throw NotWritable(oldSlug, scope, false);
+                throw NotWritable(oldSlug, scope, WriterOp.Rename);
             if (string.Equals(oldSlug, newSlug, StringComparison.Ordinal))
                 throw new AgentWriteException("the new slug is the same as the current one ('" + oldSlug + "')");
             string newFile = Path.Combine(root, newSlug + ".md");
@@ -251,7 +251,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             try { File.Delete(file); }
             catch (Exception ex) { throw new AgentWriteException("could not delete agent '" + slug + "': " + ex.Message); }
@@ -416,14 +416,13 @@ namespace ExtensionsMcpServer
             throw new AgentWriteException("unknown scope '" + scope + "' (use 'project' or 'user')");
         }
 
-        // The "not in a writable scope" error for a write/edit/delete: when <slug>.md isn't in the target
-        // writable root. If the slug names a bundled (shipped, read-only) agent, say so and point at
-        // create_agent to override it - the bare "does not exist" is misleading when the model can see and
-        // read that bundled agent. forDelete tailors the verb (a bundled agent is overridden, not deleted).
-        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
-        // writable scope, or it truly doesn't exist. Probes use the agent file shape (<slug>.md); the
-        // wording is shared with SkillWriter via WriterIo so the two can't drift.
-        private AgentWriteException NotWritable(string slug, string targetScope, bool forDelete)
+        // The "not in a writable scope" error for an edit/delete/rename: when <slug>.md isn't in the target
+        // writable root. It's a bundled shadow (read-only), or it lives in the other writable scope, or it
+        // truly doesn't exist - the bare "does not exist" is misleading when the model can see and read a
+        // bundled agent. `op` tailors the verb and the bundled guidance (a bundled agent is overridden,
+        // deleted, or renamed differently). Probes use the agent file shape (<slug>.md); the wording is
+        // shared with SkillWriter via WriterIo so the two can't drift.
+        private AgentWriteException NotWritable(string slug, string targetScope, WriterOp op)
         {
             bool bundled = !string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md"));
             string eff = WriterIo.NormalizeScope(targetScope, _defaultScope);
@@ -431,7 +430,7 @@ namespace ExtensionsMcpServer
             string otherLabel = eff == "project" ? "user" : "project";
             bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
                 && File.Exists(Path.Combine(otherRoot, slug + ".md"));
-            return new AgentWriteException(WriterIo.NotWritableMessage("agent", slug, "create_agent", forDelete,
+            return new AgentWriteException(WriterIo.NotWritableMessage("agent", slug, "create_agent", op,
                 bundled, inOther ? otherLabel : null, eff));
         }
 

@@ -117,7 +117,7 @@ namespace ExtensionsMcpServer
                 SchemaBuilder.Object()
                     .Str("slug", true, "The skill's slug (it must already exist).")
                     .Str("name", false, "New name, or omit to keep. It must still reduce to the slug; to "
-                        + "rename the handle, create a new skill and delete this one.")
+                        + "change the handle, use rename_skill.")
                     .Str("description", false, "New description, or omit to keep.")
                     .Str("body", false, "New instructions, or omit to keep.")
                     .Str("scope", false, scopeDesc)
@@ -287,7 +287,7 @@ namespace ExtensionsMcpServer
                 SchemaBuilder.Object()
                     .Str("slug", true, "The agent's slug (it must already exist).")
                     .Str("name", false, "New name, or omit to keep. It must still reduce to the slug; to "
-                        + "rename the handle, create a new agent and delete this one.")
+                        + "change the handle, use rename_agent.")
                     .Str("description", false, "New description, or omit to keep.")
                     .Str("body", false, "New system prompt, or omit to keep. (For a focused change use edit_agent.)")
                     .Arr("tools", "string", false, "New tool allowlist, or omit to keep. Pass [] to clear it.")
