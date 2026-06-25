@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -257,7 +258,8 @@ namespace GxPT
             if (command == null) return string.Empty;
             string trimmed = command.Trim();
             if (trimmed.Length == 0) return string.Empty;
-            string[] t = trimmed.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] t = TokenizeCommand(trimmed);
+            if (t.Length == 0) return string.Empty;
             if (t.Length == 1) return t[0];
 
             if (!IsFlagToken(t[1])) return t[0] + " " + t[1];
@@ -270,6 +272,51 @@ namespace GxPT
             }
             // No concrete operand -> keep today's behavior (command + first flag).
             return t[0] + " " + t[1];
+        }
+
+        // Split a command line into whitespace-separated tokens, keeping a quoted span ("..." or
+        // '...') as ONE token (quotes preserved) so a path with interior spaces — e.g.
+        // powershell "C:\Program Files\app.ps1" — isn't broken at the first space. This is a
+        // signature/display heuristic, not a shell parser: it doesn't process backslash escapes or
+        // nested quotes, which the signature's downstream use (compare-for-equality, ignore flags)
+        // doesn't need. Quotes are kept in the token text so the displayed pattern stays unambiguous;
+        // the path/flag heuristics strip them where needed (LooksLikePath, IsFlagToken).
+        private static string[] TokenizeCommand(string command)
+        {
+            List<string> tokens = new List<string>();
+            if (string.IsNullOrEmpty(command)) return tokens.ToArray();
+
+            StringBuilder cur = new StringBuilder();
+            bool inToken = false;
+            char quote = '\0';
+            for (int i = 0; i < command.Length; i++)
+            {
+                char c = command[i];
+                if (quote != '\0')
+                {
+                    cur.Append(c);
+                    if (c == quote) quote = '\0';
+                }
+                else if (c == '"' || c == '\'')
+                {
+                    quote = c;
+                    cur.Append(c);
+                    inToken = true;
+                }
+                else if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
+                {
+                    // Newlines separate tokens too (outside quotes): a multi-line script's signature is
+                    // then its first line's command/operand, not a token with an embedded newline.
+                    if (inToken) { tokens.Add(cur.ToString()); cur.Length = 0; inToken = false; }
+                }
+                else
+                {
+                    cur.Append(c);
+                    inToken = true;
+                }
+            }
+            if (inToken) tokens.Add(cur.ToString());
+            return tokens.ToArray();
         }
 
         private static bool IsFlagToken(string tok)
