@@ -875,9 +875,93 @@ namespace GxPT
                 // While this tab's prompt awaits the user, pause the status-bar marquee and swap the
                 // Stop button for an "awaiting user..." label (only when this is the active tab).
                 panel.PromptVisibleChanged += delegate { SyncGenerationIndicatorFromActiveTab(); };
+                // The approval panel's Explain button opens a fresh tab that describes the pending
+                // command, carrying over this conversation's model + ZDR. The approval itself stays up.
+                panel.ExplainRequested = delegate(string command, bool isPowerShell)
+                {
+                    OpenCommandExplainTab(ctxRef, command, isPowerShell);
+                };
                 ctx.Page.Controls.Add(panel); // self-docks Bottom, starts hidden
             }
             catch { }
+        }
+
+        // Open a new chat tab that asks the model to explain a pending command (from the approval
+        // panel's Explain button), then send it. The new conversation inherits the source tab's model
+        // and ZDR setting so the explanation routes through the same provider/privacy choice. The new
+        // tab gets NO working directory, so it normally runs as a plain chat turn; note that if a
+        // scratch workspace is globally enabled, StartModelTurn can still route folderless tabs through
+        // the tool loop, in which case the explanation could itself call a tool. The source tab's
+        // approval prompt is untouched - it stays up for the user to Allow/Deny.
+        internal void OpenCommandExplainTab(TabManager.ChatTabContext sourceCtx, string command, bool isPowerShell)
+        {
+            try
+            {
+                if (_tabManager == null || string.IsNullOrEmpty(command)) return;
+
+                // The message input is a single shared box; capture the source tab's unsent draft so the
+                // overwrite-and-send below doesn't silently discard it (restored at the end).
+                string priorDraft = _inputManager != null ? _inputManager.GetInputText() : null;
+
+                // Snapshot the source conversation's model + effective ZDR before we switch tabs.
+                string model = sourceCtx != null ? sourceCtx.SelectedModel : null;
+                bool zdr = sourceCtx != null && sourceCtx.Conversation != null
+                           && (sourceCtx.Conversation.Zdr || sourceCtx.Conversation.ZdrFirstMessageIndex >= 0);
+
+                var ctx = _tabManager.CreateConversationTab(); // creates and selects the new tab
+                if (ctx == null) return;
+
+                if (!string.IsNullOrEmpty(model))
+                {
+                    ctx.SelectedModel = model;
+                    if (ctx.Conversation != null) ctx.Conversation.SelectedModel = model;
+                }
+                if (ctx.Conversation != null) ctx.Conversation.Zdr = zdr;
+
+                // Reflect the carried-over model + ZDR on the toolbar now that this tab is active, so the
+                // send below (which reads the combo) uses them.
+                SyncComboModelFromActiveTab();
+                SyncZdrCheckboxFromActiveTab();
+
+                string prompt = BuildCommandExplainPrompt(command, isPowerShell);
+                if (_inputManager != null) _inputManager.SetInputText(prompt, true);
+                btnSend_Click(this, EventArgs.Empty);
+
+                // btnSend_Click cleared the shared input on a successful send; put the user's prior draft
+                // back so switching to the explain tab didn't cost them their typed-but-unsent message.
+                if (!string.IsNullOrEmpty(priorDraft) && _inputManager != null)
+                    _inputManager.SetInputText(priorDraft, false);
+            }
+            catch { }
+        }
+
+        // The user prompt seeded into an Explain tab: ask for a plain-language walkthrough of the
+        // command, an evaluation of the risks it carries (both to the user's system and from the data
+        // its results would expose / send off the machine), and a short summary at the end. Fenced in
+        // the matching language so the command renders as a code block.
+        private static string BuildCommandExplainPrompt(string command, bool isPowerShell)
+        {
+            string kind = isPowerShell ? "PowerShell" : "Windows command-line";
+            string fence = isPowerShell ? "powershell" : "batch";
+            return "Explain, in plain language, what the following " + kind + " command does. "
+                + "Do not run it. Cover these in order:\r\n\r\n"
+                + "1. **What it does** - walk through the command step by step, including each program, "
+                + "flag, argument, pipe, and redirection, and the overall effect.\r\n"
+                + "2. **Risks to the system** - evaluate what could go wrong on the machine that runs it: "
+                + "data loss or overwrites, irreversible or destructive actions, changes to files or "
+                + "system state outside the working directory, elevated-privilege or security-sensitive "
+                + "operations, and anything unexpected or obfuscated. Note if it looks safe.\r\n"
+                + "3. **Data-sharing / exfiltration risk** - this is about what running the command would "
+                + "*expose or send*, not about the command text itself. Two things to evaluate: (a) does "
+                + "the command move data off the machine - uploading, posting, or otherwise transmitting "
+                + "data to a network or external service? and (b) would its output or results surface "
+                + "sensitive data (secrets, credentials, keys, tokens, personal data, private file "
+                + "contents)? Such results are returned to the model and could be retained, so flag any "
+                + "sensitive data the command would read or emit, and any external destination it would "
+                + "send data to.\r\n"
+                + "4. **Summary** - finish with a brief one- or two-sentence summary of the command and "
+                + "its overall risk level.\r\n\r\n"
+                + "```" + fence + "\r\n" + (command ?? string.Empty) + "\r\n```";
         }
 
         // Re-theme every tab's tool-approval panel after a light<->dark switch: a currently-visible
