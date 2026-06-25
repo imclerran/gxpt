@@ -21,7 +21,18 @@ namespace GxPT
         private readonly TextBox _otherText;
         private readonly Button _submit;
         private readonly Button _skip;
-        private readonly Font _descFont;   // shared by all description subtitles (created once)
+        private Font _headerFont;          // bold header font, rebuilt per show from the live UI font
+
+        // Tracks the Other text box's empty state so multi-select can auto-(un)check on the
+        // empty<->non-empty transition only (leaving manual toggles untouched), and a build guard so
+        // populating the panel doesn't fire the auto-select/toggle side effects.
+        private bool _otherWasEmpty = true;
+        private bool _building;
+
+        // Left indent (px) for content that should align under an option's TITLE text rather than its
+        // radio/checkbox glyph: the description subtitles and the Other text box. Approximates the glyph
+        // width plus the selector's left margin.
+        private const int LabelIndent = 18;
 
         // The option selectors in display order (RadioButton when single-select, CheckBox when multi);
         // Tag carries the option label. _otherSelector is the always-present free-text row's selector.
@@ -55,8 +66,8 @@ namespace GxPT
             _header.Dock = DockStyle.Top;
             _header.AutoSize = false;
             _header.Height = 20;
-            _header.Font = new Font(this.Font, FontStyle.Bold);
-            _descFont = new Font(this.Font.FontFamily, Math.Max(7f, this.Font.Size - 1f));
+            // _header.Font (bold) is built per show in ShowQuestion from the live UI font, so it tracks
+            // the user-chosen font size; all other controls inherit this.Font ambiently.
 
             _options = new FlowLayoutPanel();
             _options.Dock = DockStyle.Fill;
@@ -64,10 +75,13 @@ namespace GxPT
             _options.WrapContents = false;
             _options.AutoScroll = true;
 
+            // The Other text box is always enabled so the user can click/type in it directly: focusing it
+            // selects the Other option (single-select), and typing auto-checks it (multi-select). Aligned
+            // under the option title text (LabelIndent); width is set to the full panel in LayoutToContent.
             _otherText = new TextBox();
-            _otherText.Width = 240;
-            _otherText.Enabled = false; // enabled only while the Other row is selected
-            _otherText.TextChanged += delegate { UpdateSubmitEnabled(); };
+            _otherText.Margin = new Padding(LabelIndent, 2, 8, 4);
+            _otherText.TextChanged += OnOtherTextChanged;
+            _otherText.Enter += OnOtherTextEnter;
 
             _buttons = new FlowLayoutPanel();
             _buttons.Dock = DockStyle.Bottom;
@@ -184,6 +198,17 @@ namespace GxPT
             _onAnswer = answerCallback;
             _multi = req != null && req.MultiSelect;
 
+            // Adopt the user-chosen font size before building, so every control (which inherits this.Font
+            // ambiently) and the bold header below render at that size.
+            ApplyUserFont();
+            Font oldHeader = _headerFont;
+            _headerFont = new Font(this.Font, FontStyle.Bold);
+            _header.Font = _headerFont;
+            if (oldHeader != null) { try { oldHeader.Dispose(); } catch { } }
+
+            // Suppress the Other-row auto-select/toggle side effects while we (re)populate the panel.
+            _building = true;
+
             _options.Controls.Clear();
             _selectors.Clear();
             _descriptions.Clear();
@@ -215,10 +240,11 @@ namespace GxPT
             _otherSelector.Tag = null; // null Tag distinguishes the custom row from a preset option
             _selectors.Add(_otherSelector);
             _options.Controls.Add(_otherSelector);
-            _otherText.Enabled = false;
             _otherText.Text = string.Empty;
+            _otherWasEmpty = true;
             _options.Controls.Add(_otherText);
 
+            _building = false;
             UpdateSubmitEnabled();
             ApplyTheme();
             LayoutToContent();
@@ -259,8 +285,8 @@ namespace GxPT
             Label d = new Label();
             d.Text = text;
             d.AutoSize = true;
-            d.Margin = new Padding(22, 0, 2, 4); // indented under the selector
-            d.Font = _descFont;
+            d.Margin = new Padding(LabelIndent, 0, 2, 4); // aligned under the option title text
+            // No explicit Font: inherits this.Font (the user-chosen size); distinguished by a muted color.
             return d;
         }
 
@@ -272,16 +298,54 @@ namespace GxPT
             return cb != null && cb.Checked;
         }
 
+        private void SetChecked(ButtonBase b, bool value)
+        {
+            RadioButton rb = b as RadioButton;
+            if (rb != null) { rb.Checked = value; return; }
+            CheckBox cb = b as CheckBox;
+            if (cb != null) cb.Checked = value;
+        }
+
         private void OnSelectionChanged(object sender, EventArgs e)
         {
-            // Enable the Other text box only while its row is selected; clear it when deselected so a
-            // stale custom answer can't ride along.
-            if (_otherSelector != null)
+            if (_building) return;
+            // When the Other row becomes selected, focus its text box so the user can type immediately.
+            // The text box stays enabled regardless, so typing/clicking it can also drive the selection
+            // (see OnOtherTextEnter / OnOtherTextChanged); we never clear the text on deselect, so a
+            // manual toggle off and back on keeps what they typed.
+            if (_otherSelector != null && ReferenceEquals(sender, _otherSelector) && IsChecked(_otherSelector))
             {
-                bool otherOn = IsChecked(_otherSelector);
-                _otherText.Enabled = otherOn;
-                if (otherOn) { try { _otherText.Focus(); } catch { } }
+                try { _otherText.Focus(); }
+                catch { }
             }
+            UpdateSubmitEnabled();
+        }
+
+        // Single-select: focusing (clicking or tabbing into) the Other text box selects the Other radio,
+        // so the user doesn't have to click the radio separately. Multi-select intentionally does NOT
+        // check on focus alone - only typing does (OnOtherTextChanged) - so the user can leave it unchecked.
+        private void OnOtherTextEnter(object sender, EventArgs e)
+        {
+            if (_building) return;
+            if (!_multi && _otherSelector != null && !IsChecked(_otherSelector))
+                SetChecked(_otherSelector, true);
+        }
+
+        // Multi-select: typing the first character auto-checks the Other box and deleting the last
+        // character auto-unchecks it (the empty<->non-empty transition only), while a manual toggle with
+        // text present is preserved. Single-select tracks emptiness for Submit validation only.
+        private void OnOtherTextChanged(object sender, EventArgs e)
+        {
+            if (_building) { UpdateSubmitEnabled(); return; }
+            bool nowEmpty = string.IsNullOrEmpty(_otherText.Text);
+            if (_multi && _otherSelector != null)
+            {
+                if (_otherWasEmpty && !nowEmpty && !IsChecked(_otherSelector))
+                    SetChecked(_otherSelector, true);
+                else if (!_otherWasEmpty && nowEmpty && IsChecked(_otherSelector))
+                    SetChecked(_otherSelector, false);
+            }
+            _otherWasEmpty = nowEmpty;
             UpdateSubmitEnabled();
         }
 
@@ -402,7 +466,17 @@ namespace GxPT
                     new Size(avail, int.MaxValue), TextFormatFlags.WordBreak);
                 _header.Height = Math.Max(20, hsz.Height + 4);
                 foreach (Label d in _descriptions)
-                    d.MaximumSize = new Size(Math.Max(80, avail - 24), 0);
+                    d.MaximumSize = new Size(Math.Max(80, avail - LabelIndent - 8), 0);
+
+                // The Other text box spans the full content width (minus its indent + a right gap), using
+                // the options area's client width when available so a vertical scrollbar is accounted for.
+                if (_otherText != null)
+                {
+                    int baseW = _options.ClientSize.Width > 10 ? _options.ClientSize.Width : avail;
+                    int otherW = baseW - LabelIndent - 8;
+                    if (otherW < 80) otherW = 80;
+                    if (_otherText.Width != otherW) _otherText.Width = otherW;
+                }
 
                 int optionsContent = _options.GetPreferredSize(new Size(avail, 0)).Height + 6;
                 int optionsH = Math.Max(MinOptionsHeight, Math.Min(MaxOptionsHeight, optionsContent));
@@ -429,6 +503,24 @@ namespace GxPT
             if (this.Visible) LayoutToContent();
         }
 
+        // Set this.Font to the user-chosen UI font size (settings.json font_size), the same clamp the
+        // rest of the UI uses (ThemeManager). Child controls without their own Font inherit it ambiently,
+        // so the whole panel renders at that size. No-op when the setting is unset (keeps the inherited
+        // page font).
+        private void ApplyUserFont()
+        {
+            try
+            {
+                double fs = AppSettings.GetDouble("font_size", 0);
+                if (fs <= 0) return;
+                float size = (float)Math.Max(6, Math.Min(48, fs));
+                if (this.Font == null || Math.Abs(this.Font.Size - size) > 0.01f)
+                    this.Font = new Font(this.Font != null ? this.Font.FontFamily : new Font("Tahoma", size).FontFamily,
+                                         size, this.Font != null ? this.Font.Style : FontStyle.Regular);
+            }
+            catch { }
+        }
+
         // If the panel is torn down (e.g. its tab is closed) while a question still awaits an answer,
         // resolve it as dismissed so the blocked tool-loop worker is released rather than left waiting
         // on the signal forever. Mirrors ToolApprovalPanel.Dispose.
@@ -443,6 +535,7 @@ namespace GxPT
                     try { cb(QuestionAnswer.DismissedAnswer()); }
                     catch { }
                 }
+                if (_headerFont != null) { try { _headerFont.Dispose(); } catch { } _headerFont = null; }
             }
             base.Dispose(disposing);
         }
