@@ -16,6 +16,7 @@ namespace GxPT
     internal sealed class QuestionPanel : Panel
     {
         private readonly Label _header;            // the question (wraps)
+        private readonly Label _counter;           // "Question X of Y", pinned top-right (multi-question turns)
         private readonly FlowLayoutPanel _options; // option rows (radios/checks + descriptions + Other)
         private readonly FlowLayoutPanel _buttons;  // Submit / Skip
         private readonly TextBox _otherText;
@@ -69,6 +70,13 @@ namespace GxPT
             // _header.Font (bold) is built per show in ShowQuestion from the live UI font, so it tracks
             // the user-chosen font size; all other controls inherit this.Font ambiently.
 
+            // "Question X of Y" indicator, overlaid on the panel's top-right corner (not docked), shown
+            // only when the model asked several questions this turn. Mirrors ToolApprovalPanel's Explain
+            // button placement (PositionCounter / reserved header padding).
+            _counter = new Label();
+            _counter.AutoSize = true;
+            _counter.Visible = false;
+
             _options = new FlowLayoutPanel();
             _options.Dock = DockStyle.Fill;
             _options.FlowDirection = FlowDirection.TopDown;
@@ -112,6 +120,7 @@ namespace GxPT
             this.Controls.Add(_options);
             this.Controls.Add(_header);
             this.Controls.Add(_buttons);
+            this.Controls.Add(_counter); // overlay; brought to front when shown
 
             ApplyTheme();
         }
@@ -140,6 +149,7 @@ namespace GxPT
                 this.BackColor = tc.AssistantBubbleBack;
                 this.ForeColor = tc.UiForeground;
                 if (_header != null) { _header.BackColor = tc.AssistantBubbleBack; _header.ForeColor = tc.UiForeground; }
+                if (_counter != null) { _counter.BackColor = tc.AssistantBubbleBack; _counter.ForeColor = MutedFore(tc, dark); }
                 if (_options != null) _options.BackColor = tc.AssistantBubbleBack;
                 if (_buttons != null) _buttons.BackColor = tc.AssistantBubbleBack;
 
@@ -215,6 +225,7 @@ namespace GxPT
             _otherSelector = null;
 
             _header.Text = req != null ? req.Question : string.Empty;
+            UpdateCounter(req != null ? req.Position : 1, req != null ? req.Total : 1);
 
             if (req != null && req.Options != null)
             {
@@ -435,6 +446,40 @@ namespace GxPT
             }
         }
 
+        // Show/hide the top-right "Question X of Y" indicator (only when the model asked more than one
+        // question this turn) and reserve header space on the right so a long question doesn't draw under
+        // it. Mirrors ToolApprovalPanel.UpdateExplainButton.
+        private void UpdateCounter(int position, int total)
+        {
+            if (_counter == null) return;
+            bool show = total > 1 && position >= 1;
+            _counter.Visible = show;
+            if (show)
+            {
+                _counter.Text = "Question " + position + " of " + total;
+                int reserve = _counter.PreferredSize.Width + 8;
+                _header.Padding = new Padding(0, 0, reserve, 0);
+                PositionCounter();
+                _counter.BringToFront(); // paint over the docked header it overlaps
+            }
+            else
+            {
+                _header.Padding = Padding.Empty;
+            }
+        }
+
+        // Pin the counter to the panel's inner top-right corner, aligned with the header row. Re-run on
+        // resize. Positioning a hidden label is harmless (same rationale as PositionExplainButton).
+        private void PositionCounter()
+        {
+            if (_counter == null) return;
+            int w = _counter.PreferredSize.Width;
+            int x = this.ClientSize.Width - this.Padding.Right - w;
+            int y = this.Padding.Top;
+            if (x < this.Padding.Left) x = this.Padding.Left;
+            _counter.Location = new Point(x, y);
+        }
+
         private void SetPromptVisible(bool v)
         {
             if (_promptVisible == v) return;
@@ -478,7 +523,23 @@ namespace GxPT
                     if (_otherText.Width != otherW) _otherText.Width = otherW;
                 }
 
-                int optionsContent = _options.GetPreferredSize(new Size(avail, 0)).Height + 6;
+                // If any option is wider than the content area, the options panel shows a horizontal
+                // scrollbar. Reserve its height so the scrollbar doesn't eat into the content area and
+                // force a (redundant) vertical scrollbar too - grow the panel instead. Compared against
+                // the no-scrollbar content width (avail); descriptions wrap (MaximumSize) and the Other
+                // box is sized to fit, so only a long single-line option can overflow.
+                // Measure regardless of Control.Visible: this runs from ShowQuestion while the panel is
+                // still hidden (so children report Visible==false), and PreferredSize is valid anyway.
+                int widest = 0;
+                foreach (Control c in _options.Controls)
+                {
+                    if (c == null) continue;
+                    int w = c.PreferredSize.Width + c.Margin.Horizontal;
+                    if (w > widest) widest = w;
+                }
+                int hScroll = (widest > avail) ? SystemInformation.HorizontalScrollBarHeight : 0;
+
+                int optionsContent = _options.GetPreferredSize(new Size(avail, 0)).Height + 6 + hScroll;
                 int optionsH = Math.Max(MinOptionsHeight, Math.Min(MaxOptionsHeight, optionsContent));
 
                 int buttonsH = _buttons.GetPreferredSize(new Size(avail, 0)).Height;
@@ -501,6 +562,7 @@ namespace GxPT
         {
             base.OnSizeChanged(e);
             if (this.Visible) LayoutToContent();
+            PositionCounter(); // keep the counter anchored to the (now moved) right edge
         }
 
         // Set this.Font to the user-chosen UI font size (settings.json font_size), the same clamp the

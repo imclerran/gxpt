@@ -34,11 +34,26 @@ namespace GxPT
         public readonly IList<QuestionOption> Options;
         public readonly bool MultiSelect;
 
+        // 1-based position of this question among the ask_user calls the model issued in the current
+        // turn, and the total number of them. Total > 1 means the model asked several questions this
+        // turn (multiple ask_user tool calls in one assistant message); the UI shows "Question X of Y"
+        // so the back-to-back panels aren't a surprise. Defaults to 1 of 1 (a lone question).
+        public readonly int Position;
+        public readonly int Total;
+
         public QuestionRequest(string question, IList<QuestionOption> options, bool multiSelect)
+            : this(question, options, multiSelect, 1, 1)
+        {
+        }
+
+        public QuestionRequest(string question, IList<QuestionOption> options, bool multiSelect,
+                               int position, int total)
         {
             Question = question;
             Options = options;
             MultiSelect = multiSelect;
+            Position = position;
+            Total = total;
         }
     }
 

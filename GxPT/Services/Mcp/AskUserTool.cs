@@ -87,14 +87,17 @@ namespace GxPT
 
             JObject fn = new JObject();
             fn["name"] = AskUserName;
-            fn["description"] = "Ask the user a multiple-choice question and wait for their answer. Use "
-                + "it whenever the goal is to get the user's own choice - a decision you need before you "
-                + "can proceed (e.g. which approach to take), an option you want them to pick, or an answer "
-                + "you are deliberately soliciting from them. Set multi_select to let them choose more than "
-                + "one option; otherwise they pick exactly one. Provide 2-4 concise options; the user can "
-                + "also type their own answer. Their selection is returned to you to act on or respond to. "
-                + "Don't use it for routine steps you can handle yourself - just proceed - but when the "
-                + "user's choice genuinely matters, ask rather than guess.";
+            fn["description"] = "Ask the user a multiple-choice question and wait for their answer. "
+                + "Whenever you would offer the user a short set of options to pick from (roughly 2-4), "
+                + "present them through this tool rather than writing them out as text for the user to "
+                + "type back - the options render as clickable choices and the selection is returned to "
+                + "you. This applies whether it's a one-off decision you need before you can proceed, a "
+                + "question you return to repeatedly over a conversation, or a series of questions you "
+                + "want to put to the user. Set multi_select to let them choose more than one option; "
+                + "otherwise they pick exactly one. Keep options concise; the user can also type their "
+                + "own answer. Don't use it to offload work you can do yourself, to invent a choice that "
+                + "isn't there, or when you have more options than fit a short list. Otherwise, whenever "
+                + "you're genuinely presenting a few options, use this instead of plain text.";
             fn["parameters"] = schema;
 
             JObject def = new JObject();
@@ -108,6 +111,13 @@ namespace GxPT
         // is NOT an error (the user deliberately declined) - it returns the dismissed sentinel.
         public string Ask(string argumentsJson, out bool isError)
         {
+            return Ask(argumentsJson, 1, 1, out isError);
+        }
+
+        // position/total locate this question among the ask_user calls the model issued this turn
+        // (1-based; total > 1 drives the "Question X of Y" indicator). The orchestrator supplies them.
+        public string Ask(string argumentsJson, int position, int total, out bool isError)
+        {
             isError = false;
 
             string question;
@@ -120,7 +130,7 @@ namespace GxPT
             }
 
             QuestionAnswer answer = _prompt != null
-                ? _prompt.Ask(new QuestionRequest(question, options, multiSelect))
+                ? _prompt.Ask(new QuestionRequest(question, options, multiSelect, position, total))
                 : QuestionAnswer.DismissedAnswer();
             if (answer == null) answer = QuestionAnswer.DismissedAnswer();
 

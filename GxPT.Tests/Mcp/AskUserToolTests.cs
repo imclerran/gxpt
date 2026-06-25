@@ -7,13 +7,19 @@ namespace GxPT.Tests.Mcp
 {
     public class AskUserToolTests
     {
-        // A scripted IQuestionPrompt: records the request it was shown and returns a canned answer.
+        // A scripted IQuestionPrompt: records the requests it was shown and returns a canned answer.
         private sealed class StubPrompt : IQuestionPrompt
         {
             public QuestionRequest LastRequest;
+            public readonly List<QuestionRequest> Requests = new List<QuestionRequest>();
             public readonly QuestionAnswer Next;
             public StubPrompt(QuestionAnswer next) { Next = next; }
-            public QuestionAnswer Ask(QuestionRequest request) { LastRequest = request; return Next; }
+            public QuestionAnswer Ask(QuestionRequest request)
+            {
+                LastRequest = request;
+                Requests.Add(request);
+                return Next;
+            }
         }
 
         private sealed class DenyAllPolicy : IToolApprovalPolicy
@@ -203,6 +209,52 @@ namespace GxPT.Tests.Mcp
             foreach (JObject def in streamer.SeenTools[0])
                 if ((string)def["function"]["name"] == "ask_user") offered = true;
             Assert.True(offered);
+        }
+
+        [Fact]
+        public void Orchestrator_threads_position_and_total_for_a_batch_of_questions()
+        {
+            // One assistant turn emitting TWO ask_user calls -> the orchestrator should report them as
+            // "1 of 2" and "2 of 2" so the panel can show "Question X of Y".
+            var reg = new McpToolRegistry(null);
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(new[]
+            {
+                Chunks.ToolChunk(0, "c1", "ask_user", TwoOptionArgs(), null),
+                Chunks.ToolChunk(1, "c2", "ask_user", TwoOptionArgs(), "tool_calls")
+            });
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            var stub = new StubPrompt(Pick("A"));
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.AskUser = new AskUserTool(stub);
+
+            orch.RunTurn(new List<ChatMessage>(), "ask me two things", new RecordingUi());
+
+            Assert.Equal(2, stub.Requests.Count);
+            Assert.Equal(1, stub.Requests[0].Position);
+            Assert.Equal(2, stub.Requests[0].Total);
+            Assert.Equal(2, stub.Requests[1].Position);
+            Assert.Equal(2, stub.Requests[1].Total);
+        }
+
+        [Fact]
+        public void Single_question_reports_total_of_one()
+        {
+            var reg = new McpToolRegistry(null);
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "ask_user", TwoOptionArgs()));
+            streamer.Turns.Add(Chunks.Text("ok"));
+
+            var stub = new StubPrompt(Pick("A"));
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.AskUser = new AskUserTool(stub);
+
+            orch.RunTurn(new List<ChatMessage>(), "ask me one thing", new RecordingUi());
+
+            Assert.Single(stub.Requests);
+            Assert.Equal(1, stub.Requests[0].Position);
+            Assert.Equal(1, stub.Requests[0].Total);
         }
     }
 }
