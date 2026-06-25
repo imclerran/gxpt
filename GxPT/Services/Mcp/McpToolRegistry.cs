@@ -335,15 +335,12 @@ namespace GxPT
         private static string BuildManifestText(List<string> names)
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("The following MCP tools are available, listed by NAME ONLY - their parameters ");
-            sb.Append("are not shown here yet. You CANNOT call any tool straight from this list: a call ");
-            sb.Append("to a tool you have not revealed is REJECTED, and without its definition you would ");
-            sb.Append("only be guessing its arguments (wrong argument names are a common failure). So ");
-            sb.Append("before calling a tool you MUST first call reveal_tools({\"names\":[...]}) with the ");
-            sb.Append("exact names you intend to use - that returns their full definitions, including the ");
-            sb.Append("real parameter names, and makes them callable on the NEXT step. List every tool you ");
-            sb.Append("expect to need in a single reveal_tools call (you may reveal several at once), then ");
-            sb.Append("call them. Only reveal_tools and tools you have already revealed can be called.");
+            sb.Append("The following MCP tools are available, listed by name only. ");
+            sb.Append("You CANNOT call any of these tools directly from this list. ");
+            sb.Append("Before calling a tool, you MUST first call reveal_tools({\"names\":[...]}) ");
+            sb.Append("with the exact names you intend to use; that loads their full definitions ");
+            sb.Append("and makes them callable on the next step. You may reveal several at once. ");
+            sb.Append("Only reveal_tools and tools you have already revealed can be called.");
             sb.Append("\n\nAvailable tools:");
             bool hasGit = false, hasCommand = false;
             for (int i = 0; i < names.Count; i++)
