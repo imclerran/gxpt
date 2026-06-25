@@ -44,26 +44,64 @@ You are a code-exploration specialist working inside the user's workspace.
 
 ## Choosing the tool allowlist
 
-Tools are addressed as `server__tool`; globs are allowed (`files__*`, `git__*`, `*`). The common
-built-in servers and what an agent might want from them:
+Tools are addressed as `server__tool`; globs are allowed (`files__*`, `git__*`, `*`).
+
+Every tool has a fixed **tier** - ReadOnly, Write, or Destructive - that the host assigns from an
+authoritative internal table; it is not something you can query at authoring time, and
+`validate_agent` does not report it. The `max_tier` you set is a **ceiling**: at dispatch the host
+classifies each tool the agent would get and **drops any whose tier exceeds the ceiling** (so a
+`readonly` agent never gains a Write tool even if its allowlist names one - it is silently dropped,
+leaving the agent under-powered). So you must know each tool's tier to choose both the allowlist and
+the ceiling. The full first-party table follows - keep `max_tier` at or above the highest tier in
+the allowlist, and pick the lowest ceiling that still covers the job.
 
 - **files** - `files__read`, `files__list`, `files__search` (read-only); `files__write`,
   `files__edit` (write); `files__delete` (destructive).
-- **git** - `git__status`, `git__diff`, `git__log` (read-only); `git__add`, `git__commit`,
-  `git__branch` (write); `git__push`, `git__reset`, `git__checkout`, … (destructive).
-- **command** - `command__run` runs a shell command (destructive tier - it can do anything).
-- **web** - `web__search`, `web__extract` (read-only) for research agents.
-- **msbuild** - `msbuild__build_*` for agents that build .NET projects (names are discovered per
-  machine; a build agent should be told to pick an available one).
-- **github** - `github__*` for agents that read PRs/issues.
+- **git** - `git__status`, `git__diff`, `git__log`, `git__fetch` (read-only - `fetch` only updates
+  remote-tracking refs, it does not touch the working tree); `git__add`, `git__commit`,
+  `git__branch`, `git__stash` (write - they stage/record but don't discard work); `git__push`,
+  `git__pull`, `git__checkout`, `git__restore`, `git__reset`, `git__merge`, `git__rebase`,
+  `git__rm`, `git__cherry_pick` (destructive - can lose uncommitted work, move HEAD, or rewrite
+  history).
+- **command** - `command__run` runs a shell command (destructive - it can do anything). This is the
+  only tool in the server.
+- **web** - `web__search`, `web__extract`, `web__get` (read-only - `get` is an HTTP GET, `extract`
+  fetches page content); `web__http` (destructive - issues state-changing requests like POST/PUT/
+  DELETE, a remote-mutation and data-egress surface).
+- **memory** - `memory__read_memory` (read-only); `memory__remember`, `memory__update_memory`,
+  `memory__forget`, `memory__consolidate` (write - low-risk local `.gxpt` edits). Rarely needed by a
+  sub-agent.
+- **msbuild** - builds .NET projects. Tool names are discovered per machine (`msbuild__build_4_0`,
+  `msbuild__build_solution_2022`, …), so match them with a glob like `msbuild__*`; every build tool
+  is destructive (a build runs arbitrary targets/Exec tasks). Tell a build agent to pick an
+  available one.
+- **extensions** - skill and agent authoring (`.gxpt/skills`, `.gxpt/agents`). Read-only:
+  `extensions__list_skill_files`, `extensions__validate_skill`, `extensions__read_agent`,
+  `extensions__list_agents`, `extensions__validate_agent`. Write: `extensions__create_skill`,
+  `extensions__write_skill_file`, `extensions__update_skill`, `extensions__edit_skill_file`,
+  `extensions__create_agent`, `extensions__update_agent`, `extensions__edit_agent`. Destructive:
+  `extensions__delete_skill_file`, `extensions__delete_skill`, `extensions__delete_agent`,
+  `extensions__run_skill_script`. Rarely granted to a sub-agent (an agent cannot author agents in a
+  way that escalates - the same tier rules apply).
+
+Third-party MCP servers the user has configured (commonly **github** - `github__*` for reading PRs
+and issues) are **not** in the table. The host classifies them from each tool's advisory
+annotations: a `readOnlyHint` makes it read-only, a `destructiveHint` makes it destructive, and a
+tool with neither (or an unknown one) is treated as **write**. You can't see these hints at
+authoring time, so for a read-only agent that should reach a third-party server, set
+`max_tier: readonly` and trust the ceiling to drop anything that isn't actually read-only rather
+than assuming a `github__*` glob is safe.
 
 Guidance:
 - Match the allowlist to the job, and let `max_tier` enforce the ceiling. A read-only reviewer:
   `tools: [files__read, files__list, files__search, git__status, git__diff, git__log]` +
   `max_tier: readonly`.
 - A writer that fixes code: add `files__write`, `files__edit` and `max_tier: write`.
-- Don't grant `command__run` or git history-rewriting tools unless the job needs them - and then
-  set `max_tier: destructive` deliberately.
+- Don't grant `command__run`, `web__http`, or the destructive git tools unless the job needs them -
+  and then set `max_tier: destructive` deliberately.
+- After writing, run `validate_agent` to confirm the contract parses (it checks the `max_tier`
+  spelling and that `tools` is well-formed - it does not check that the tier matches the allowlist,
+  so that judgment is yours).
 - The agent runs in the same workspace; it cannot dispatch other agents (one level of delegation
   only), so don't bother listing `dispatch_agent`.
 
