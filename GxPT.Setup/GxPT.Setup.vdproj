@@ -498,8 +498,8 @@
         {
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_1F1A270D5F354EDABFA1CD331F34382A"
             {
-            "SourcePath" = "8:..\\agents\\code-reviewer.md"
-            "TargetName" = "8:code-reviewer.md"
+            "SourcePath" = "8:..\\agents\\code-review.md"
+            "TargetName" = "8:code-review.md"
             "Tag" = "8:"
             "Folder" = "8:_0B0AC2A83AD1489C8B1E8F5E1410070B"
             "Condition" = "8:"
@@ -913,8 +913,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_A4DE60DFE825402FA09CB42E708DAA91"
             {
-            "SourcePath" = "8:..\\agents\\explore.md"
-            "TargetName" = "8:explore.md"
+            "SourcePath" = "8:..\\agents\\code-explore.md"
+            "TargetName" = "8:code-explore.md"
             "Tag" = "8:"
             "Folder" = "8:_0B0AC2A83AD1489C8B1E8F5E1410070B"
             "Condition" = "8:"

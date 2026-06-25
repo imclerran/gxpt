@@ -107,8 +107,8 @@ Guidance:
 
 ## Writing the system prompt (the body)
 
-The body is the agent's system prompt. The built-in agents (`explore`, `plan`, `verify`,
-`web-research`, `code-reviewer`, `general-purpose`) are the model to follow - read one with
+The body is the agent's system prompt. The built-in agents (`code-explore`, `plan`, `verify`,
+`web-research`, `code-review`, `general-purpose`) are the model to follow - read one with
 `read_agent` before you draft, and match its shape.
 
 **How prescriptive to make it depends on what the user told you in the interview** (step 2 of the
@@ -133,8 +133,9 @@ Every built-in agent body follows the same four parts, in this order. Use them a
 2. **The job + what to return.** One short paragraph (or a lead-in sentence) on the job, then a
    bullet list of what the written result must contain. The agent returns text that the main
    assistant folds back in, so this is the whole value - make the deliverable concrete. Describe
-   *what the result contains*, not the *procedure to produce it*. E.g. the explorer returns "where
-   the thing lives (file path + line), how it works at a high level, anything surprising."
+   *what the result contains*, not the *procedure to produce it*. E.g. the code-explore agent
+   returns "where the thing lives (file path + line), how it works at a high level, anything
+   surprising."
 
 3. **Rules and boundaries.** A short paragraph of the guardrails and gotchas: what it must NOT do
    (state read-only limits explicitly - "Do NOT modify any files" - even though `max_tier` already
@@ -161,7 +162,7 @@ work is safer, cheaper, and gets picked for the right tasks.
 
 ### A complete body, annotated
 
-This is the `explore` agent's body - the canonical shape. Notice how short each part is:
+This is the `code-explore` agent's body - the canonical shape. Notice how short each part is:
 
 ```
 You are a code-exploration specialist working inside the user's workspace.      ← 1. identity

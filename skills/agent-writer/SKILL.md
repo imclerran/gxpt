@@ -90,10 +90,10 @@ Every write tool takes an optional `scope`: `project` (the default - this worksp
 `.gxpt/agents`) or `user` (this machine's agents, available in every project). Pass `scope: "user"`
 on every call for an agent the user wants everywhere; otherwise omit it.
 
-To model a new agent on an existing one (e.g. "like the explore agent"), run `list_agents` to see
-what exists, then `read_agent(slug)` to read it - this works for the bundled agents shipped with the
-app (like `explore`) as well as user/project ones - and adapt it. `read_agent` finds an agent in any
-scope, so you don't pass a scope to it.
+To model a new agent on an existing one (e.g. "like the code-explore agent"), run `list_agents` to
+see what exists, then `read_agent(slug)` to read it - this works for the bundled agents shipped with
+the app (like `code-explore`) as well as user/project ones - and adapt it. `read_agent` finds an
+agent in any scope, so you don't pass a scope to it.
 
 Creating a new agent:
 - `create_agent(slug, name, description, body, tools, max_tier, model, max_turns)` - the body is the
@@ -107,7 +107,7 @@ Creating a new agent:
   agent and dispatcher, or a tighter, more prescriptive script for an agent meant to run a fixed
   procedure every time. The dispatching model always supplies the specific task, so even a
   prescriptive prompt sets the *procedure*, not the task. When in doubt, lean - and
-  `read_agent("explore")` to mirror the built-in shape.
+  `read_agent("code-explore")` to mirror the built-in shape.
 
 Editing an existing agent (first `list_agents` to see which slugs exist, then `read_agent(slug)` to
 read the one you want before changing it):
