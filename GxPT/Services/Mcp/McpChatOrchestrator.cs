@@ -892,6 +892,22 @@ namespace GxPT
                 return "[Unknown tool: " + call.Name + "]";
             }
 
+            // Reveal-before-call is ENFORCED here, not merely advised in the names manifest. A resolvable
+            // tool the model never revealed has no schema in this turn's context, so its argument shape is
+            // a blind guess (e.g. run_skill_script invoked with name/path instead of the real slug/relpath).
+            // Block it before the approval gate ever shows and feed back a self-correcting hint: the model
+            // reveals the tool next, sees the true schema, and re-issues a well-formed call. The host
+            // meta-tools (reveal_tools/open_skill/read_skill_file/dispatch_agent) returned far above, so
+            // they are exempt by construction.
+            if (RevealedToolNames == null || !RevealedToolNames.Contains(call.Name))
+            {
+                isError = true;
+                _log.Log("mcp", "[turn " + turnId + "] blocked unrevealed tool '" + call.Name + "'");
+                return "[Tool '" + call.Name + "' is not revealed yet, so its parameters are unknown. "
+                    + "Call reveal_tools({\"names\":[\"" + call.Name + "\"]}) first to load its schema, "
+                    + "then call " + call.Name + " with the correct arguments.]";
+            }
+
             // An actively-called tool moves to the end of the recency-ordered reveal list, so the
             // provider-gated eviction (non-caching models only) trims idle defs first. Reordering the
             // list is cache-safe: the emitted tools array is sorted by name, not list order.

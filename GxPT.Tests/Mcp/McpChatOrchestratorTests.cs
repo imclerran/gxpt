@@ -17,7 +17,13 @@ namespace GxPT.Tests.Mcp
 
         private static McpChatOrchestrator New(ScriptedStreamer s, McpToolRegistry reg)
         {
-            return new McpChatOrchestrator(s, reg, null, "test-model", null);
+            var orch = new McpChatOrchestrator(s, reg, null, "test-model", null);
+            // ExecuteCall now enforces reveal-before-call. Real turns reveal a tool before invoking it,
+            // so pre-reveal the whole catalog here to keep dispatch tests focused on the call path. Tests
+            // that need the unrevealed-tool or exposure behavior construct the orchestrator directly or
+            // overwrite RevealedToolNames after New().
+            if (reg != null) orch.RevealedToolNames = new List<string>(reg.NamesForWorkdir(null));
+            return orch;
         }
 
         [Fact]
@@ -658,6 +664,27 @@ namespace GxPT.Tests.Mcp
             Assert.True(ui.ToolErrors[0]);
             Assert.Contains("Unknown tool", ui.ToolResults[0]);
             Assert.Empty(ft.CalledTools);
+        }
+
+        [Fact]
+        public void Unrevealed_tool_is_blocked_before_approval_and_hits_no_transport()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__read", "{}"));
+            streamer.Turns.Add(Chunks.Text("ok"));
+
+            var ui = new RecordingUi();
+            // Constructed directly (not via New()) so the tool stays unrevealed - the model "called" it
+            // straight off the names manifest, the very case the enforcement gate must catch.
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            Assert.True(ui.ToolErrors[0]);
+            Assert.Contains("reveal_tools", ui.ToolResults[0]); // self-correcting hint, not a malformed run
+            Assert.Empty(ft.CalledTools);                       // never reached the transport (nor approval)
         }
 
         [Fact]
