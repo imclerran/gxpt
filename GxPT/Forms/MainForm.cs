@@ -925,9 +925,9 @@ namespace GxPT
         }
 
         // The user prompt seeded into an Explain tab: ask for a plain-language walkthrough of the
-        // command, an evaluation of the risks it carries (both to the user's system and from sharing
-        // any data it contains), and a short summary at the end. Fenced in the matching language so the
-        // command renders as a code block.
+        // command, an evaluation of the risks it carries (both to the user's system and from the data
+        // its results would expose / send off the machine), and a short summary at the end. Fenced in
+        // the matching language so the command renders as a code block.
         private static string BuildCommandExplainPrompt(string command, bool isPowerShell)
         {
             string kind = isPowerShell ? "PowerShell" : "Windows command-line";
@@ -939,12 +939,15 @@ namespace GxPT
                 + "2. **Risks to the system** - evaluate what could go wrong on the machine that runs it: "
                 + "data loss or overwrites, irreversible or destructive actions, changes to files or "
                 + "system state outside the working directory, elevated-privilege or security-sensitive "
-                + "operations, network access (downloading or uploading data), and anything unexpected or "
-                + "obfuscated. Note if it looks safe.\r\n"
-                + "3. **Risks from sharing the data** - the command text may embed sensitive data (for "
-                + "example a tool result being passed along) that leaves the machine when this request is "
-                + "sent to the model. Point out any secrets, credentials, personal data, or otherwise "
-                + "sensitive content present in the command, and flag the privacy risk of disclosing it.\r\n"
+                + "operations, and anything unexpected or obfuscated. Note if it looks safe.\r\n"
+                + "3. **Data-sharing / exfiltration risk** - this is about what running the command would "
+                + "*expose or send*, not about the command text itself. Two things to evaluate: (a) does "
+                + "the command move data off the machine - uploading, posting, or otherwise transmitting "
+                + "data to a network or external service? and (b) would its output or results surface "
+                + "sensitive data (secrets, credentials, keys, tokens, personal data, private file "
+                + "contents)? Such results are returned to the model and could be retained, so flag any "
+                + "sensitive data the command would read or emit, and any external destination it would "
+                + "send data to.\r\n"
                 + "4. **Summary** - finish with a brief one- or two-sentence summary of the command and "
                 + "its overall risk level.\r\n\r\n"
                 + "```" + fence + "\r\n" + (command ?? string.Empty) + "\r\n```";
