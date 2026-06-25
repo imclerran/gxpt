@@ -16,7 +16,7 @@ namespace GxPT
     internal sealed class QuestionPanel : Panel
     {
         private readonly Label _header;            // the question (wraps)
-        private readonly Label _counter;           // "Question X of Y", pinned top-right (multi-question turns)
+        private readonly Label _counter;           // "Question X of Y", pinned bottom-left (multi-question turns)
         private readonly FlowLayoutPanel _options; // option rows (radios/checks + descriptions + Other)
         private readonly FlowLayoutPanel _buttons;  // Submit / Skip
         private readonly TextBox _otherText;
@@ -70,9 +70,9 @@ namespace GxPT
             // _header.Font (bold) is built per show in ShowQuestion from the live UI font, so it tracks
             // the user-chosen font size; all other controls inherit this.Font ambiently.
 
-            // "Question X of Y" indicator, overlaid on the panel's top-right corner (not docked), shown
-            // only when the model asked several questions this turn. Mirrors ToolApprovalPanel's Explain
-            // button placement (PositionCounter / reserved header padding).
+            // "Question X of Y" indicator, overlaid on the panel's bottom-left corner (not docked, on the
+            // button row), shown only when the model asked several questions this turn. Kept off the
+            // header row so it never steals width from the (wrapping) question text.
             _counter = new Label();
             _counter.AutoSize = true;
             _counter.Visible = false;
@@ -446,9 +446,9 @@ namespace GxPT
             }
         }
 
-        // Show/hide the top-right "Question X of Y" indicator (only when the model asked more than one
-        // question this turn) and reserve header space on the right so a long question doesn't draw under
-        // it. Mirrors ToolApprovalPanel.UpdateExplainButton.
+        // Show/hide the bottom-left "Question X of Y" indicator (only when the model asked more than one
+        // question this turn). Deliberately not on the header row, so it never reserves width from the
+        // wrapping question text.
         private void UpdateCounter(int position, int total)
         {
             if (_counter == null) return;
@@ -457,26 +457,20 @@ namespace GxPT
             if (show)
             {
                 _counter.Text = "Question " + position + " of " + total;
-                int reserve = _counter.PreferredSize.Width + 8;
-                _header.Padding = new Padding(0, 0, reserve, 0);
                 PositionCounter();
-                _counter.BringToFront(); // paint over the docked header it overlaps
-            }
-            else
-            {
-                _header.Padding = Padding.Empty;
+                _counter.BringToFront(); // paint over the docked button strip's empty left area
             }
         }
 
-        // Pin the counter to the panel's inner top-right corner, aligned with the header row. Re-run on
-        // resize. Positioning a hidden label is harmless (same rationale as PositionExplainButton).
+        // Pin the counter to the panel's inner bottom-left corner (on the button row). Re-run on resize.
+        // Positioning a hidden label is harmless.
         private void PositionCounter()
         {
             if (_counter == null) return;
-            int w = _counter.PreferredSize.Width;
-            int x = this.ClientSize.Width - this.Padding.Right - w;
-            int y = this.Padding.Top;
-            if (x < this.Padding.Left) x = this.Padding.Left;
+            int h = _counter.PreferredSize.Height;
+            int x = this.Padding.Left;
+            int y = this.ClientSize.Height - this.Padding.Bottom - h;
+            if (y < this.Padding.Top) y = this.Padding.Top;
             _counter.Location = new Point(x, y);
         }
 
