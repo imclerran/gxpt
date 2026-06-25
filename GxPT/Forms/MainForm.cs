@@ -1043,7 +1043,7 @@ namespace GxPT
                     // Tools may include a folderless conversation's scratch command server; skills/project
                     // discovery above stays on the real workspace (scratch has no project skills).
                     IList<string> names = _mcpRegistry.NamesForWorkdir(ResolutionWorkdirForContext(ctx));
-                    ICollection<string> hidden = SkillToolGate.HiddenTools(enabledSkills);
+                    ICollection<string> hidden = ExtensionsToolGate.HiddenTools(enabledSkills);
                     for (int i = 0; i < names.Count; i++)
                         if (!hidden.Contains(names[i])) toolCount++;
                 }
@@ -1576,7 +1576,7 @@ namespace GxPT
                 // The extensions MCP server (skill + agent authoring + run_skill_script) follows skill
                 // enablement: it runs whenever the active conversation has at least one enabled skill, and
                 // is off when none are (so a skill-less chat pays nothing). Because agent-writer is itself a
-                // skill, enabling it brings the server up too; the per-turn SkillToolGate then reveals the
+                // skill, enabling it brings the server up too; the per-turn ExtensionsToolGate then reveals the
                 // agent tools. SlashRefreshSkillsServer re-applies this when enablement changes. There is no
                 // separate server toggle - /toggle-skills is the control.
                 opts.SkillsEnabled = ActiveConversationHasEnabledSkills();
@@ -3333,7 +3333,7 @@ namespace GxPT
                     }
                     // The skill-authoring tools are owned by the skill-writer meta-skill: omit them from
                     // context unless that skill is enabled for this conversation.
-                    ICollection<string> hiddenTools = SkillToolGate.HiddenTools(enabledSkills);
+                    ICollection<string> hiddenTools = ExtensionsToolGate.HiddenTools(enabledSkills);
                     if (hiddenTools.Count > 0) orch.HiddenToolNames = hiddenTools;
 
                     // Sub-agents: when the agents feature is enabled (settings.json `agents_enabled`),
@@ -4990,6 +4990,12 @@ namespace GxPT
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Validated skill " + slug; return true;
                 }
+                case "extensions__rename_skill":
+                {
+                    string slug = Str(args, "slug"); string ns = Str(args, "new_slug");
+                    if (slug.Length == 0 || ns.Length == 0) return false;
+                    header = "Renamed skill " + slug + " to " + ns; return true;
+                }
                 case "extensions__create_agent":
                 {
                     string slug = Str(args, "slug"); string agentName = Str(args, "name");
@@ -5028,6 +5034,12 @@ namespace GxPT
                 {
                     string slug = Str(args, "slug"); if (slug.Length == 0) return false;
                     header = "Deleted agent " + slug; return true;
+                }
+                case "extensions__rename_agent":
+                {
+                    string slug = Str(args, "slug"); string ns = Str(args, "new_slug");
+                    if (slug.Length == 0 || ns.Length == 0) return false;
+                    header = "Renamed agent " + slug + " to " + ns; return true;
                 }
                 case "extensions__validate_agent":
                 {

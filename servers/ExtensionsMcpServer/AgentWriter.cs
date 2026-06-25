@@ -45,6 +45,8 @@ namespace ExtensionsMcpServer
             if (IsBlank(description)) throw new AgentWriteException("description is required");
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
+            if (!WriterIo.NameMatchesSlug(name, slug))
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, true));
 
             string toolsValue = FormatTools(tools);            // null => omit the key
             string tierValue = NormalizeTier(maxTier);          // null => omit (host defaults to write)
@@ -69,7 +71,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
 
             string existing;
             try { existing = File.ReadAllText(file, Encoding.UTF8); }
@@ -77,6 +79,10 @@ namespace ExtensionsMcpServer
 
             if (!IsBlank(name)) RequireSingleLine(name, "name");
             if (!IsBlank(description)) RequireSingleLine(description, "description");
+            // A new name must still reduce to this agent's slug (the slug is the fixed handle); renaming is
+            // create-new + delete-old, not an in-place name swap that would leave name and slug diverged.
+            if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, false));
 
             AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): only a non-blank value changes
@@ -105,7 +111,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, false);
+                throw NotWritable(slug, scope, WriterOp.Edit);
             if (IsBlank(oldString)) throw new AgentWriteException("old_string is required");
             if (newString == null) throw new AgentWriteException("new_string is required");
 
@@ -136,6 +142,61 @@ namespace ExtensionsMcpServer
                 fm.ModelRaw, fm.MaxTurnsRaw, updatedBody));
             return "Edited agent '" + slug + "''s body ("
                 + (replaceAll ? count + " replacement" + (count == 1 ? "" : "s") : "1 replacement") + ").";
+        }
+
+        // rename_agent: change an agent's slug - its <slug>.md file name and dispatch handle. Moves the file
+        // within the same writable scope and rewrites the frontmatter name to stay aligned with the new slug.
+        // Refuses if the target slug already exists, or if the source is a bundled (read-only) agent. newName
+        // is optional: omitted => a Title Case name derived from the new slug (kept if the current name already
+        // aligns); given => it must reduce to the new slug. Renaming a handle has no other safe shortcut - the
+        // slug is the identity, so references to the old slug must be updated by the caller.
+        public string RenameAgent(string scope, string slugIn, string newSlugIn, string newName)
+        {
+            string root = RootFor(scope);
+            string oldSlug = RequireSlug(slugIn);
+            string newSlug = RequireSlug(newSlugIn);
+            string oldFile = Path.Combine(root, oldSlug + ".md");
+            if (!File.Exists(oldFile))
+                throw NotWritable(oldSlug, scope, WriterOp.Rename);
+            if (string.Equals(oldSlug, newSlug, StringComparison.Ordinal))
+                throw new AgentWriteException("the new slug is the same as the current one ('" + oldSlug + "')");
+            string newFile = Path.Combine(root, newSlug + ".md");
+            if (File.Exists(newFile))
+                throw new AgentWriteException("agent '" + newSlug + "' already exists; choose a different slug or delete it first");
+
+            string existing;
+            try { existing = File.ReadAllText(oldFile, Encoding.UTF8); }
+            catch (Exception ex) { throw new AgentWriteException("could not read agent: " + ex.Message); }
+
+            AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
+            if (IsBlank(fm.Description))
+                throw new AgentWriteException("agent '" + oldSlug + "' has no description; fix it with update_agent before renaming");
+
+            // A given new_name must reduce to the new slug; otherwise fall back to deriving one. The throw
+            // stays here (not in WriterIo) because the exception type is agent-specific.
+            if (!IsBlank(newName))
+            {
+                RequireSingleLine(newName, "new_name");
+                if (!WriterIo.NameMatchesSlug(newName, newSlug))
+                    throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", newName, newSlug, true));
+            }
+            string resolvedName = WriterIo.ResolveRenamedName(newName, newSlug, fm.Name);
+
+            // Write the new file first, then remove the old one. The collision guard above means the new path
+            // never overwrites another agent, and the content is preserved (this is a move, not a rewrite).
+            AtomicWrite(newFile, BuildAgentMd(resolvedName, fm.Description, fm.ToolsRaw, fm.MaxTierRaw,
+                fm.ModelRaw, fm.MaxTurnsRaw, fm.Body));
+            try { File.Delete(oldFile); }
+            catch (Exception ex)
+            {
+                // Roll back the just-written copy so a failed delete doesn't leave two agents (the old one
+                // still loadable, plus a duplicate at the new slug).
+                try { File.Delete(newFile); } catch { }
+                throw new AgentWriteException("could not rename '" + oldSlug + "' to '" + newSlug
+                    + "' (removing the old file failed): " + ex.Message);
+            }
+            return "Renamed agent '" + oldSlug + "' to '" + newSlug + "'. Anything that dispatched '" + oldSlug
+                + "' must now use '" + newSlug + "'.";
         }
 
         // read_agent (ReadOnly): the full <slug>.md text. Reads from ANY root - project, user, or the
@@ -184,7 +245,7 @@ namespace ExtensionsMcpServer
             string slug = RequireSlug(slugIn);
             string file = Path.Combine(root, slug + ".md");
             if (!File.Exists(file))
-                throw NotWritable(slug, scope, true);
+                throw NotWritable(slug, scope, WriterOp.Delete);
 
             try { File.Delete(file); }
             catch (Exception ex) { throw new AgentWriteException("could not delete agent '" + slug + "': " + ex.Message); }
@@ -349,14 +410,13 @@ namespace ExtensionsMcpServer
             throw new AgentWriteException("unknown scope '" + scope + "' (use 'project' or 'user')");
         }
 
-        // The "not in a writable scope" error for a write/edit/delete: when <slug>.md isn't in the target
-        // writable root. If the slug names a bundled (shipped, read-only) agent, say so and point at
-        // create_agent to override it - the bare "does not exist" is misleading when the model can see and
-        // read that bundled agent. forDelete tailors the verb (a bundled agent is overridden, not deleted).
-        // The "not in a writable scope" error: a bundled shadow (read-only), or it lives in the other
-        // writable scope, or it truly doesn't exist. Probes use the agent file shape (<slug>.md); the
-        // wording is shared with SkillWriter via WriterIo so the two can't drift.
-        private AgentWriteException NotWritable(string slug, string targetScope, bool forDelete)
+        // The "not in a writable scope" error for an edit/delete/rename: when <slug>.md isn't in the target
+        // writable root. It's a bundled shadow (read-only), or it lives in the other writable scope, or it
+        // truly doesn't exist - the bare "does not exist" is misleading when the model can see and read a
+        // bundled agent. `op` tailors the verb and the bundled guidance (a bundled agent is overridden,
+        // deleted, or renamed differently). Probes use the agent file shape (<slug>.md); the wording is
+        // shared with SkillWriter via WriterIo so the two can't drift.
+        private AgentWriteException NotWritable(string slug, string targetScope, WriterOp op)
         {
             bool bundled = !string.IsNullOrEmpty(_bundledRoot) && File.Exists(Path.Combine(_bundledRoot, slug + ".md"));
             string eff = WriterIo.NormalizeScope(targetScope, _defaultScope);
@@ -364,7 +424,7 @@ namespace ExtensionsMcpServer
             string otherLabel = eff == "project" ? "user" : "project";
             bool inOther = !bundled && !string.IsNullOrEmpty(otherRoot)
                 && File.Exists(Path.Combine(otherRoot, slug + ".md"));
-            return new AgentWriteException(WriterIo.NotWritableMessage("agent", slug, "create_agent", forDelete,
+            return new AgentWriteException(WriterIo.NotWritableMessage("agent", slug, "create_agent", op,
                 bundled, inOther ? otherLabel : null, eff));
         }
 

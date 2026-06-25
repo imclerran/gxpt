@@ -115,7 +115,7 @@
     <Compile Include="Services\Skills\SkillTools.cs" />
     <Compile Include="Services\Skills\SkillEnablement.cs" />
     <Compile Include="Services\Skills\SkillResolve.cs" />
-    <Compile Include="Services\Skills\SkillToolGate.cs" />
+    <Compile Include="Services\Skills\ExtensionsToolGate.cs" />
     <Compile Include="Services\Agents\Agent.cs" />
     <Compile Include="Services\Agents\AgentFrontmatter.cs" />
     <Compile Include="Services\Agents\AgentCatalog.cs" />
