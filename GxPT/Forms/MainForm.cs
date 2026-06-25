@@ -4809,6 +4809,15 @@ namespace GxPT
 
             switch (name)
             {
+                case "ask_user":
+                {
+                    // "Asked" collapses to the question text (rendered as prose). The chosen answer isn't
+                    // shown here - like command__run, the record reflects the call (the question), not its
+                    // result. No question -> fall back to the generic marker.
+                    string q = Str(args, "question");
+                    if (q.Trim().Length == 0) return false;
+                    header = "Asked"; body = q; language = "markdown"; return true;
+                }
                 case "files__edit":
                 {
                     string path = Str(args, "path");
