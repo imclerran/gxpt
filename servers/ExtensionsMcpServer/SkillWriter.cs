@@ -57,6 +57,8 @@ namespace ExtensionsMcpServer
             if (IsBlank(description)) throw new SkillWriteException("description is required");
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
+            if (!WriterIo.NameMatchesSlug(name, slug))
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, true, "create_skill"));
 
             string file = Path.Combine(Path.Combine(root, slug), "SKILL.md");
             if (File.Exists(file))
@@ -108,6 +110,10 @@ namespace ExtensionsMcpServer
 
             if (!IsBlank(name)) RequireSingleLine(name, "name");
             if (!IsBlank(description)) RequireSingleLine(description, "description");
+            // A new name must still reduce to this skill's slug (the slug is the fixed handle/folder name);
+            // renaming is create-new + delete-old, not an in-place name swap that diverges name from slug.
+            if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
+                throw new SkillWriteException(WriterIo.NameSlugMismatchMessage("skill", name, slug, false, "create_skill"));
 
             SkillFrontmatter fm = SkillFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): passing "" never silently wipes

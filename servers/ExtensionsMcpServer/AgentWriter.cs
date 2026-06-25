@@ -45,6 +45,8 @@ namespace ExtensionsMcpServer
             if (IsBlank(description)) throw new AgentWriteException("description is required");
             RequireSingleLine(name, "name");
             RequireSingleLine(description, "description");
+            if (!WriterIo.NameMatchesSlug(name, slug))
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, true, "create_agent"));
 
             string toolsValue = FormatTools(tools);            // null => omit the key
             string tierValue = NormalizeTier(maxTier);          // null => omit (host defaults to write)
@@ -77,6 +79,10 @@ namespace ExtensionsMcpServer
 
             if (!IsBlank(name)) RequireSingleLine(name, "name");
             if (!IsBlank(description)) RequireSingleLine(description, "description");
+            // A new name must still reduce to this agent's slug (the slug is the fixed handle); renaming is
+            // create-new + delete-old, not an in-place name swap that would leave name and slug diverged.
+            if (!IsBlank(name) && !WriterIo.NameMatchesSlug(name, slug))
+                throw new AgentWriteException(WriterIo.NameSlugMismatchMessage("agent", name, slug, false, "create_agent"));
 
             AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): only a non-blank value changes

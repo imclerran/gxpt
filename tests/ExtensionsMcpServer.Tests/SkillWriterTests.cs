@@ -51,6 +51,33 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void CreateSkill_RejectsNameThatDoesNotMatchSlug()
+        {
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() =>
+                _writer.CreateSkill(null, "release-notes", "Changelog", "Draft notes.", "body"));
+            Assert.Contains("don't match", ex.Message);
+            Assert.False(File.Exists(SkillFile("release-notes")));
+        }
+
+        [Fact]
+        public void CreateSkill_AllowsAcronymNameAlignment()
+        {
+            _writer.CreateSkill(null, "github-sync", "GitHub Sync", "Syncs a repo.", "body");
+            Assert.True(File.Exists(SkillFile("github-sync")));
+        }
+
+        [Fact]
+        public void UpdateSkill_RejectsNameThatDivergesFromSlug()
+        {
+            _writer.CreateSkill(null, "greeting", "Greeting", "Old desc.", "Old body.");
+            SkillWriteException ex = Assert.Throws<SkillWriteException>(() =>
+                _writer.UpdateSkill(null, "greeting", "Farewell", null, null));
+            Assert.Contains("rename", ex.Message);
+            SkillFrontmatter fm = SkillFrontmatter.Parse(File.ReadAllText(SkillFile("greeting")));
+            Assert.Equal("Greeting", fm.Name);   // unchanged
+        }
+
+        [Fact]
         public void CreateSkill_RefusesExisting()
         {
             _writer.CreateSkill(null, "greeting", "Greeting", "Be a pirate.", "body");
@@ -222,7 +249,7 @@ namespace ExtensionsMcpServer.Tests
         public void DefaultScope_TwoArgCtor_DefaultsToProject()
         {
             // The 2-arg ctor keeps the project default: omitting scope targets the project root.
-            _writer.CreateSkill(null, "proj-skill", "Proj", "desc", "body");
+            _writer.CreateSkill(null, "proj-skill", "Proj Skill", "desc", "body");
             Assert.True(File.Exists(SkillFile("proj-skill")));
         }
 

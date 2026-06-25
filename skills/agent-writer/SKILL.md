@@ -67,7 +67,11 @@ task touches tools so you propose the right allowlist.
 
 Propose, in plain terms:
 
-- **name** and **slug** (kebab-case handle).
+- **name** and **slug** (kebab-case handle). These must stay aligned: the slug is the name in
+  kebab-case (name "Code Explore" -> slug `code-explore`). The writer enforces it - `create_agent`
+  and `update_agent` reject a name that doesn't reduce to the slug - so propose them as a matched
+  pair. The slug is the stable identity (filename and dispatch handle); the name is its display
+  form.
 - **description** - one line stating when to dispatch this agent.
 - **tools** - the allowlist (server-qualified names or globs like `files__*`). Give it only what
   the job needs; fewer tools is safer and clearer.
@@ -119,6 +123,13 @@ read the one you want before changing it):
   change; the rest stay. Pass `tools: []` to clear the allowlist.
 - `delete_agent(slug)` removes the whole agent. It's destructive - the user confirms, so only reach
   for it when asked.
+
+**Renaming an agent.** There is no rename tool, and the slug can't change in place (it's the
+filename). `update_agent` only changes the display name, and it must still reduce to the same slug -
+so it can re-case a name, not re-handle it. To genuinely rename (new slug), do it as create-new +
+delete-old: `read_agent(old-slug)` for the full contract and body, `create_agent(new-slug, ...)`
+with the new name and slug, `validate_agent(new-slug)`, then `delete_agent(old-slug)`. Tell the user
+the handle changed, since anything that dispatched the old slug must use the new one.
 
 After writing, run `validate_agent(slug)` to confirm the file loads (its description is what makes
 it dispatchable) and the contract is well-formed.

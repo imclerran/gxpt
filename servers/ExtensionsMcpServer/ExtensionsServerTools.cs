@@ -67,7 +67,8 @@ namespace ExtensionsMcpServer
                 SchemaBuilder.Object()
                     .Str("slug", true, "Kebab-case handle (lowercase words joined by single hyphens, e.g. "
                         + "release-notes); normalized automatically. This is the skill's folder name and handle.")
-                    .Str("name", true, "Human-readable name (Title Case).")
+                    .Str("name", true, "Human-readable name (Title Case). Must match the slug - the slug is "
+                        + "this name in kebab-case (e.g. name 'Release Notes' -> slug 'release-notes').")
                     .Str("description", true, "Single line shown in the skills list - phrase it as 'use this when ...'.")
                     .Str("body", true, "The skill's instructions (markdown). Tell the model how to do the task.")
                     .Str("scope", false, scopeDesc)
@@ -115,7 +116,8 @@ namespace ExtensionsMcpServer
                 + "unchanged. The server re-assembles valid frontmatter.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The skill's slug (it must already exist).")
-                    .Str("name", false, "New name, or omit to keep.")
+                    .Str("name", false, "New name, or omit to keep. It must still reduce to the slug; to "
+                        + "rename the handle, create a new skill and delete this one.")
                     .Str("description", false, "New description, or omit to keep.")
                     .Str("body", false, "New instructions, or omit to keep.")
                     .Str("scope", false, scopeDesc)
@@ -228,7 +230,8 @@ namespace ExtensionsMcpServer
                 SchemaBuilder.Object()
                     .Str("slug", true, "Kebab-case handle (lowercase words joined by single hyphens, e.g. "
                         + "release-notes); normalized automatically. This is the agent's file name and handle.")
-                    .Str("name", true, "Human-readable name (Title Case).")
+                    .Str("name", true, "Human-readable name (Title Case). Must match the slug - the slug is "
+                        + "this name in kebab-case (e.g. name 'Release Notes' -> slug 'release-notes').")
                     .Str("description", true, "Single line shown in the agents list - phrase it as 'use this "
                         + "agent when ...', so the model knows when to delegate to it.")
                     .Str("body", true, "The agent's system prompt (markdown): who it is, what to do, how to finish.")
@@ -260,7 +263,8 @@ namespace ExtensionsMcpServer
                 + "clear it. The server re-assembles valid frontmatter.",
                 SchemaBuilder.Object()
                     .Str("slug", true, "The agent's slug (it must already exist).")
-                    .Str("name", false, "New name, or omit to keep.")
+                    .Str("name", false, "New name, or omit to keep. It must still reduce to the slug; to "
+                        + "rename the handle, create a new agent and delete this one.")
                     .Str("description", false, "New description, or omit to keep.")
                     .Str("body", false, "New system prompt, or omit to keep. (For a focused change use edit_agent.)")
                     .Arr("tools", "string", false, "New tool allowlist, or omit to keep. Pass [] to clear it.")

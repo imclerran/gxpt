@@ -70,6 +70,45 @@ namespace ExtensionsMcpServer.Tests
         }
 
         [Fact]
+        public void CreateAgent_RejectsNameThatDoesNotMatchSlug()
+        {
+            // slug 'code-review' but name 'Code Reviewer' -> they describe different handles.
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
+                _writer.CreateAgent(null, "code-review", "Code Reviewer", "Reviews code.", null, null, null, 0, "body"));
+            Assert.Contains("don't match", ex.Message);
+            Assert.False(File.Exists(AgentFile("code-review")));  // nothing written on rejection
+        }
+
+        [Fact]
+        public void CreateAgent_AllowsAcronymNameAlignment()
+        {
+            // 'GitHub Researcher' kebab-splits oddly, but ignoring word boundaries it matches the slug.
+            _writer.CreateAgent(null, "github-researcher", "GitHub Researcher", "Researches a repo.",
+                null, null, null, 0, "body");
+            Assert.True(File.Exists(AgentFile("github-researcher")));
+            Assert.Contains("name: GitHub Researcher", File.ReadAllText(AgentFile("github-researcher")));
+        }
+
+        [Fact]
+        public void UpdateAgent_RejectsNameThatDivergesFromSlug()
+        {
+            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, 0, "body");
+            AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
+                _writer.UpdateAgent(null, "code-explore", "Code Reviewer", null, null, null, null, 0, null));
+            Assert.Contains("rename", ex.Message);
+            // The original name is left intact - the rejected update wrote nothing.
+            Assert.Contains("name: Code Explore", File.ReadAllText(AgentFile("code-explore")));
+        }
+
+        [Fact]
+        public void UpdateAgent_AllowsNameReCasingThatPreservesSlug()
+        {
+            _writer.CreateAgent(null, "release-notes", "Release Notes", "Drafts notes.", null, null, null, 0, "body");
+            _writer.UpdateAgent(null, "release-notes", "RELEASE notes", null, null, null, null, 0, null);
+            Assert.Contains("name: RELEASE notes", File.ReadAllText(AgentFile("release-notes")));
+        }
+
+        [Fact]
         public void CreateAgent_OmitsOptionalFieldsWhenAbsent()
         {
             _writer.CreateAgent(null, "minimal", "Minimal", "A minimal agent.", null, null, null, 0, "body");

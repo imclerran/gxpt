@@ -23,6 +23,49 @@ namespace ExtensionsMcpServer
             return value != null && (value.IndexOf('\n') >= 0 || value.IndexOf('\r') >= 0);
         }
 
+        // True when a human NAME and a kebab SLUG denote the same handle, ignoring the word boundaries that
+        // legitimately differ between Title Case / acronyms and kebab-case. Compares the lowercase
+        // alphanumeric run of each, so "GitHub Researcher" matches "github-researcher" while "Code Reviewer"
+        // does NOT match "code-review". The slug stays the stable identity/handle; the name is its display
+        // form, and this keeps the two from drifting (centralized so both writers enforce it identically).
+        public static bool NameMatchesSlug(string name, string slug)
+        {
+            return string.Equals(AlnumLower(name), AlnumLower(slug), StringComparison.Ordinal);
+        }
+
+        // The lowercase [a-z0-9] run of a string, all other characters dropped (the boundary-insensitive
+        // key NameMatchesSlug compares on).
+        private static string AlnumLower(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            StringBuilder sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c >= 'A' && c <= 'Z') sb.Append((char)(c - 'A' + 'a'));
+                else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // The shared "name and slug must stay aligned" message, worded once so the two writers can't drift.
+        // noun is "agent"/"skill"; createTool is "create_agent"/"create_skill". On CREATE both sides are
+        // still free, so it offers to fix either; on UPDATE the slug is the fixed identity, so it points at
+        // the create-new + delete-old rename path (renaming a handle in place isn't supported).
+        public static string NameSlugMismatchMessage(string noun, string name, string slug, bool isCreate,
+            string createTool)
+        {
+            string derived = SkillSlug.Make(name);
+            if (string.IsNullOrEmpty(derived)) derived = slug;
+            if (isCreate)
+                return "name '" + name + "' and slug '" + slug + "' don't match - the slug must be the name "
+                    + "in kebab-case so the two stay aligned. Either set slug to '" + derived
+                    + "', or change name to match slug '" + slug + "'.";
+            return "name '" + name + "' doesn't match this " + noun + "'s slug '" + slug + "' - the display "
+                + "name must stay aligned with the slug. To rename, " + createTool + " a new " + noun
+                + " (slug '" + derived + "') and delete this one.";
+        }
+
         // Normalizes a scope arg to "project"/"user", applying the writer's default for null/blank. (RootFor
         // validates the value; this is the post-validation normalization shared by the writers.)
         public static string NormalizeScope(string scope, string defaultScope)
