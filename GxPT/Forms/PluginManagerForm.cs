@@ -1,26 +1,23 @@
 using System;
 using System.Drawing;
-using System.IO;
 using System.Windows.Forms;
 
 namespace GxPT
 {
     // The Manage Plugins dialog (File > Plugins > Manage): a list of installed plugins with per-row
-    // Enable/Disable, Export, Uninstall, and Reveal, plus an Install button. State is read live from the
-    // plugin registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and
-    // the list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
+    // Enable/Disable, Export, and Uninstall, plus an Install button. State is read live from the plugin
+    // registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and the
+    // list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
     internal sealed class PluginManagerForm : Form
     {
         private readonly ListView _list;
         private readonly Button _toggle;
         private readonly Button _export;
         private readonly Button _uninstall;
-        private readonly Button _reveal;
         private readonly ContextMenuStrip _menu;
         private readonly ToolStripMenuItem _miToggle;
         private readonly ToolStripMenuItem _miExport;
         private readonly ToolStripMenuItem _miUninstall;
-        private readonly ToolStripMenuItem _miReveal;
 
         public PluginManagerForm()
         {
@@ -46,7 +43,6 @@ namespace GxPT
             _list.Columns.Add("Agents", 70);
             _list.SelectedIndexChanged += new EventHandler(OnSelectionChanged);
             _list.MouseDown += new MouseEventHandler(OnListMouseDown);
-            _list.DoubleClick += new EventHandler(OnReveal);
 
             Button install = new Button();
             install.Text = "&Install...";
@@ -58,7 +54,6 @@ namespace GxPT
             _toggle = MakeButton("Disa&ble", 108, OnToggle);
             _export = MakeButton("&Export...", 187, OnExport);
             _uninstall = MakeButton("&Uninstall", 266, OnUninstall);
-            _reveal = MakeButton("&Reveal", 350, OnReveal);
 
             Button close = new Button();
             close.Text = "&Close";
@@ -71,7 +66,6 @@ namespace GxPT
             _miExport = AddMenuItem("Export...", OnExport);
             _menu.Items.Add(new ToolStripSeparator());
             _miUninstall = AddMenuItem("Uninstall", OnUninstall);
-            _miReveal = AddMenuItem("Reveal Files", OnReveal);
             _menu.Opening += new System.ComponentModel.CancelEventHandler(OnMenuOpening);
             _list.ContextMenuStrip = _menu;
 
@@ -80,13 +74,19 @@ namespace GxPT
             Controls.Add(_toggle);
             Controls.Add(_export);
             Controls.Add(_uninstall);
-            Controls.Add(_reveal);
             Controls.Add(close);
 
             AcceptButton = close;
             CancelButton = close;
 
             Reload();
+        }
+
+        // Adopt the owner window's title-bar icon (the main form's) once the dialog is shown with its owner set.
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            PluginImportExportManager.ApplyOwnerIcon(this);
         }
 
         private Button MakeButton(string text, int x, EventHandler onClick)
@@ -157,7 +157,6 @@ namespace GxPT
             _toggle.Enabled = has;
             _export.Enabled = has;
             _uninstall.Enabled = has;
-            _reveal.Enabled = has;
         }
 
         private void OnSelectionChanged(object sender, EventArgs e) { UpdateButtons(); }
@@ -202,21 +201,6 @@ namespace GxPT
         {
             PluginManifest m = Selected();
             if (m != null && PluginImportExportManager.Uninstall(this, m.Name)) Reload();
-        }
-
-        // Opens the GxPT user data folder (the parent of skills/, agents/, plugins/) in Explorer. A plugin's
-        // member files live across those roots, so the data folder is the one always-valid reveal target.
-        private void OnReveal(object sender, EventArgs e)
-        {
-            if (Selected() == null) return;
-            try
-            {
-                string skillsRoot = SkillRoots.UserRoot();
-                string dataDir = !string.IsNullOrEmpty(skillsRoot) ? Path.GetDirectoryName(skillsRoot) : null;
-                if (!string.IsNullOrEmpty(dataDir) && Directory.Exists(dataDir))
-                    System.Diagnostics.Process.Start("explorer.exe", dataDir);
-            }
-            catch { }
         }
     }
 }

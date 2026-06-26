@@ -226,6 +226,23 @@ namespace GxPT
 
         // ---- helpers ----
 
+        // Gives a dialog the app's title-bar icon, matching the main window. The owner form's icon (the
+        // MainForm's) is cloned so the dialog owns its own copy to dispose; falls back to the running exe's
+        // associated icon if there's no owner. Best-effort - a missing icon just leaves the default.
+        public static void ApplyOwnerIcon(Form form)
+        {
+            if (form == null) return;
+            try
+            {
+                Form o = form.Owner;
+                if (o != null && o.Icon != null)
+                    form.Icon = (System.Drawing.Icon)o.Icon.Clone();
+                else
+                    form.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch { }
+        }
+
         private static bool ResolveRoots(IWin32Window owner, out string skillsRoot,
             out string agentsRoot, out string pluginsRoot)
         {

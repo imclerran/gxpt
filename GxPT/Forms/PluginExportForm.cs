@@ -84,6 +84,13 @@ namespace GxPT
             CancelButton = cancel;
         }
 
+        // Adopt the owner window's title-bar icon (the main form's) once shown with its owner set.
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            PluginImportExportManager.ApplyOwnerIcon(this);
+        }
+
         private static Label MakeLabel(string text, int x, int y, int w)
         {
             Label l = new Label();
