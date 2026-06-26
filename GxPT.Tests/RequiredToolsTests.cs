@@ -188,6 +188,33 @@ namespace GxPT.Tests
             Assert.Contains("custom__tool", custom.Tools);      // not-connected concrete id still required
         }
 
+        [Fact]
+        public void AddPowerShellRequirement_adds_any_host_group_pre_checked()
+        {
+            List<ToolGroupSeed> seed = new List<ToolGroupSeed>();
+            RequiredToolsDetect.AddPowerShellRequirement(seed, new string[] { "command__pwsh", "command__run" });
+
+            ToolGroupSeed cmd = Find(seed, "command");
+            Assert.NotNull(cmd);
+            Assert.Equal(3, cmd.Items.Count);                                  // all three hosts
+            Assert.True(cmd.Items.TrueForAll(delegate(ToolSeedItem t) { return t.Checked; }));
+            Assert.True(cmd.ServerConnected);
+            Assert.True(Item(cmd, "command__pwsh").Connected);                  // present in catalog
+            Assert.False(Item(cmd, "command__powershell_v1").Connected);       // absent but still listed
+
+            // The resulting requirement is "any of the hosts".
+            RequiredToolGroup g = FindGroup(RequiredToolsDetect.ToGroups(seed), "command");
+            Assert.Contains("command__pwsh", g.Tools);
+            Assert.Equal(RequiredToolMode.AnyOf, g.Mode);
+        }
+
+        private static ToolSeedItem Item(ToolGroupSeed g, string id)
+        {
+            for (int i = 0; i < g.Items.Count; i++)
+                if (string.Equals(g.Items[i].Id, id, StringComparison.OrdinalIgnoreCase)) return g.Items[i];
+            return null;
+        }
+
         private static RequiredToolGroup FindGroup(List<RequiredToolGroup> groups, string server)
         {
             for (int i = 0; i < groups.Count; i++)

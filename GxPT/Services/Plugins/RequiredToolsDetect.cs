@@ -103,6 +103,47 @@ namespace GxPT
             return list;
         }
 
+        // The interchangeable PowerShell host tools the command server may expose (Windows PowerShell 2.0-5.1,
+        // PowerShell 1.0, PowerShell Core). A skill shipping a .ps1 needs ANY of these.
+        public static readonly string[] PowerShellHostTools = new string[]
+        {
+            "command__powershell", "command__pwsh", "command__powershell_v1"
+        };
+
+        // Ensures the seed requires a PowerShell host (any-of the known hosts), pre-checked. Used when a
+        // bundled skill ships a .ps1 - the requirement is "some PowerShell", independent of which host the
+        // author happens to have. Hosts present in the catalog are flagged connected; absent ones are still
+        // listed so the requirement stays satisfiable by whichever host the installer has.
+        public static void AddPowerShellRequirement(IList<ToolGroupSeed> seed, IEnumerable<string> available)
+        {
+            if (seed == null) return;
+            HashSet<string> avail = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (available != null) foreach (string n in available) if (!string.IsNullOrEmpty(n)) avail.Add(n);
+
+            string server = RequiredTool.ServerOf(PowerShellHostTools[0]); // "command"
+            ToolGroupSeed g = null;
+            for (int i = 0; i < seed.Count; i++)
+                if (string.Equals(seed[i].Server, server, StringComparison.OrdinalIgnoreCase)) { g = seed[i]; break; }
+            if (g == null) { g = new ToolGroupSeed(); g.Server = server; seed.Add(g); }
+
+            for (int i = 0; i < PowerShellHostTools.Length; i++)
+            {
+                string id = PowerShellHostTools[i];
+                bool present = false;
+                for (int k = 0; k < g.Items.Count; k++)
+                    if (string.Equals(g.Items[k].Id, id, StringComparison.OrdinalIgnoreCase))
+                    { g.Items[k].Checked = true; present = true; break; }
+                if (!present)
+                {
+                    ToolSeedItem it = new ToolSeedItem();
+                    it.Id = id; it.Checked = true; it.Connected = avail.Contains(id);
+                    g.Items.Add(it);
+                }
+                if (avail.Contains(id)) g.ServerConnected = true;
+            }
+            g.Items.Sort(delegate(ToolSeedItem x, ToolSeedItem y) { return string.CompareOrdinal(x.Id, y.Id); });
+        }
+
         // Converts a (possibly author-edited) seed into manifest requiredTools groups. Per server: when the
         // whole-server option is selected, a single "<server>__*" glob (at the server's tier); otherwise the
         // checked concrete tool ids. Servers with nothing selected are dropped.

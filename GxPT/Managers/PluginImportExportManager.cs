@@ -48,7 +48,7 @@ namespace GxPT
                 if (dlg.ShowDialog(owner) != DialogResult.OK) return false;
 
                 bool cancelled;
-                IList<RequiredToolGroup> required = DetectRequiredTools(owner, dlg.SelectedAgents, out cancelled);
+                IList<RequiredToolGroup> required = DetectRequiredTools(owner, dlg.SelectedAgents, dlg.SelectedSkills, out cancelled);
                 if (cancelled) return false;
 
                 return SaveAndExport(owner, dlg.PluginName, dlg.PluginVersion, dlg.PluginDescription,
@@ -59,17 +59,21 @@ namespace GxPT
         // Probes the live tools, seeds the picker from the selected agents, and returns the author-confirmed
         // requiredTools groups - or null when there's nothing to require (no agents / no probe / no declared
         // tools). Sets cancelled=true only when the author cancels the picker (the export aborts).
-        private static IList<RequiredToolGroup> DetectRequiredTools(IWin32Window owner, IList<Agent> agents, out bool cancelled)
+        private static IList<RequiredToolGroup> DetectRequiredTools(IWin32Window owner,
+            IList<Agent> agents, IList<Skill> skills, out bool cancelled)
         {
             cancelled = false;
             List<Agent> list = new List<Agent>();
             if (agents != null) foreach (Agent a in agents) if (a != null) list.Add(a);
-            if (list.Count == 0 || ProbeTools == null) return null;
+
+            bool hasPs1 = AnySkillHasPs1(skills);
+            if ((list.Count == 0 && !hasPs1) || ProbeTools == null) return null;
 
             ToolSnapshot snap = ProbeTools();
             if (snap == null) return null;
 
             IList<ToolGroupSeed> seed = RequiredToolsDetect.Seed(list, snap.Names, snap.TierOf);
+            if (hasPs1) RequiredToolsDetect.AddPowerShellRequirement(seed, snap.Names);
             if (seed.Count == 0) return null;
 
             using (RequiredToolsForm rt = new RequiredToolsForm(seed))
@@ -77,6 +81,24 @@ namespace GxPT
                 if (rt.ShowDialog(owner) != DialogResult.OK) { cancelled = true; return null; }
                 return RequiredToolsDetect.ToGroups(rt.Result);
             }
+        }
+
+        // True when any bundled skill ships a .ps1 script (which needs a PowerShell host at run time).
+        private static bool AnySkillHasPs1(IList<Skill> skills)
+        {
+            if (skills == null) return false;
+            for (int i = 0; i < skills.Count; i++)
+            {
+                Skill s = skills[i];
+                if (s == null || string.IsNullOrEmpty(s.Directory)) continue;
+                try
+                {
+                    string[] hits = System.IO.Directory.GetFiles(s.Directory, "*.ps1", System.IO.SearchOption.AllDirectories);
+                    if (hits != null && hits.Length > 0) return true;
+                }
+                catch { }
+            }
+            return false;
         }
 
         // Exports a single skill as a one-item .gxpl (the plugin is named after the skill). This is the
