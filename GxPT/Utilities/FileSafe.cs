@@ -56,5 +56,19 @@ namespace GxPT
             try { if (!string.IsNullOrEmpty(path) && File.Exists(path)) File.Delete(path); }
             catch { }
         }
+
+        // Recursively copies every file and subdirectory from sourceDir into targetDir, overwriting files
+        // that already exist. Creates targetDir (and intermediate dirs) as needed. Shared by the skill and
+        // plugin importers so a single copy implementation covers both.
+        public static void CopyDirectory(string sourceDir, string targetDir)
+        {
+            Directory.CreateDirectory(targetDir);
+            string[] files = Directory.GetFiles(sourceDir);
+            for (int i = 0; i < files.Length; i++)
+                File.Copy(files[i], Path.Combine(targetDir, Path.GetFileName(files[i])), true);
+            string[] dirs = Directory.GetDirectories(sourceDir);
+            for (int i = 0; i < dirs.Length; i++)
+                CopyDirectory(dirs[i], Path.Combine(targetDir, Path.GetFileName(dirs[i])));
+        }
     }
 }

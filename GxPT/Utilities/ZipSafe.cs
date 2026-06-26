@@ -103,6 +103,30 @@ namespace GxPT
             }
         }
 
+        /// <summary>
+        /// Returns true if the archive holds any file entry whose normalized name (forward slashes, no
+        /// leading slash) satisfies <paramref name="nameMatches"/>. A best-effort routing helper shared by
+        /// the skill and plugin importers: any read failure yields false rather than throwing.
+        /// </summary>
+        public static bool ContainsEntry(string archivePath, Predicate<string> nameMatches)
+        {
+            if (string.IsNullOrEmpty(archivePath) || nameMatches == null) return false;
+            try
+            {
+                using (var zip = ZipFile.Read(archivePath, new ReadOptions { Encoding = Encoding.UTF8 }))
+                {
+                    foreach (ZipEntry entry in zip)
+                    {
+                        if (entry == null || entry.IsDirectory) continue;
+                        string name = (entry.FileName ?? string.Empty).Replace('\\', '/').TrimStart('/');
+                        if (nameMatches(name)) return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private static void ValidateEntryPath(ZipEntry entry)
         {
             if (entry == null) throw new InvalidOperationException("Null zip entry.");

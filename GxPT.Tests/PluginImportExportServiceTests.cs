@@ -311,5 +311,93 @@ namespace GxPT.Tests
             Assert.False(new PluginRegistry(_pluginsRoot).Exists("pack"));
             Assert.False(Directory.Exists(new PluginRegistry(_pluginsRoot).PluginDir("pack")));
         }
+
+        // ---- ownership / provenance (review fixes) ----
+
+        // Writes a non-plugin, hand-authored skill straight into the active skills root.
+        private void WriteForeignSkill(string slug, string body)
+        {
+            string dir = Path.Combine(_skillsRoot, slug);
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "SKILL.md"), body, new UTF8Encoding(false));
+        }
+
+        [Fact]
+        public void Install_over_another_plugins_slug_transfers_ownership()
+        {
+            string a = ExportSample("plugin-a", "1", new[] { WriteSkill("shared", "A's.") }, null);
+            PluginImportExportService.ImportPlugin(a, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            string b = ExportSample("plugin-b", "1", new[] { WriteSkill("shared", "B's.") }, null);
+            bool asked = false;
+            PluginInstallResult r = PluginImportExportService.ImportPlugin(b, _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { asked = true; Assert.Contains("skill: shared", c); return true; });
+            Assert.True(asked);
+            Assert.NotNull(r);
+
+            PluginRegistry reg = new PluginRegistry(_pluginsRoot);
+            Assert.DoesNotContain("shared", reg.Load("plugin-a").Skills); // ownership transferred away from A
+            Assert.Contains("shared", reg.Load("plugin-b").Skills);
+
+            // Uninstalling A must NOT delete the skill B now owns.
+            PluginImportExportService.UninstallPlugin("plugin-a", _skillsRoot, _agentsRoot, _pluginsRoot);
+            Assert.True(Directory.Exists(Path.Combine(_skillsRoot, "shared")));
+        }
+
+        [Fact]
+        public void Upgrading_a_disabled_plugin_prompts_before_overwriting_a_foreign_active_item()
+        {
+            string v1 = ExportSample("pack", "1", new[] { WriteSkill("s1", "v1.") }, null);
+            PluginImportExportService.ImportPlugin(v1, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.DisablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            // The user creates their own 's1' in the now-empty active root.
+            WriteForeignSkill("s1", "user copy");
+
+            string v2 = ExportSample("pack", "2", new[] { WriteSkill("s1", "v2.") }, null);
+            bool asked = false;
+            PluginInstallResult declined = PluginImportExportService.ImportPlugin(v2, _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { asked = true; Assert.Contains("skill: s1", c); return false; });
+
+            Assert.True(asked);
+            Assert.Null(declined);
+            Assert.Equal("user copy", File.ReadAllText(Path.Combine(_skillsRoot, "s1", "SKILL.md")));
+        }
+
+        [Fact]
+        public void Enabling_refuses_to_overwrite_a_foreign_active_item()
+        {
+            string v1 = ExportSample("pack", "1", new[] { WriteSkill("s1", "plugin.") }, null);
+            PluginImportExportService.ImportPlugin(v1, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.DisablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            WriteForeignSkill("s1", "user copy");
+
+            Assert.Throws<IOException>(delegate
+            {
+                PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+            });
+            Assert.Equal("user copy", File.ReadAllText(Path.Combine(_skillsRoot, "s1", "SKILL.md")));
+            Assert.False(new PluginRegistry(_pluginsRoot).Load("pack").Enabled);
+        }
+
+        [Fact]
+        public void Upgrade_drop_of_a_disabled_plugin_keeps_a_foreign_active_item()
+        {
+            string v1 = ExportSample("pack", "1",
+                new[] { WriteSkill("keep", "k."), WriteSkill("drop", "d.") }, null);
+            PluginImportExportService.ImportPlugin(v1, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.DisablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            // The user creates their own 'drop' in the active root while the plugin is disabled.
+            WriteForeignSkill("drop", "user copy");
+
+            string v2 = ExportSample("pack", "2", new[] { WriteSkill("keep", "k2.") }, null);
+            PluginImportExportService.ImportPlugin(v2, _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { return true; });
+
+            // The drop happened against the plugin's parked copy, not the user's active 'drop'.
+            Assert.Equal("user copy", File.ReadAllText(Path.Combine(_skillsRoot, "drop", "SKILL.md")));
+        }
     }
 }

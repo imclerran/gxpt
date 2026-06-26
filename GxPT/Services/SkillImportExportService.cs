@@ -79,7 +79,7 @@ namespace GxPT
                     Directory.Delete(target, true);
                 }
                 Directory.CreateDirectory(targetRoot);
-                CopyDirectory(skillDir, target);
+                FileSafe.CopyDirectory(skillDir, target);
                 return slug;
             }
             finally
@@ -94,25 +94,14 @@ namespace GxPT
         // by extension and never get here.
         public static bool ArchiveContainsSkill(string archivePath)
         {
-            try
+            return ZipSafe.ContainsEntry(archivePath, delegate(string name)
             {
-                using (var zip = ZipFile.Read(archivePath, new ReadOptions { Encoding = Encoding.UTF8 }))
-                {
-                    foreach (ZipEntry entry in zip)
-                    {
-                        if (entry == null || entry.IsDirectory) continue;
-                        string name = (entry.FileName ?? string.Empty).Replace('\\', '/').TrimStart('/');
-                        if (string.Equals(name, "SKILL.md", StringComparison.OrdinalIgnoreCase))
-                            return true;
-                        int slash = name.IndexOf('/');
-                        if (slash >= 0 && name.IndexOf('/', slash + 1) < 0 &&
-                            string.Equals(name.Substring(slash + 1), "SKILL.md", StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
-                }
-            }
-            catch { }
-            return false;
+                if (string.Equals(name, "SKILL.md", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                int slash = name.IndexOf('/');
+                return slash >= 0 && name.IndexOf('/', slash + 1) < 0 &&
+                    string.Equals(name.Substring(slash + 1), "SKILL.md", StringComparison.OrdinalIgnoreCase);
+            });
         }
 
         // The extracted skill folder: the staging root itself (flat layout), else the single top-level
@@ -134,17 +123,6 @@ namespace GxPT
             if (found == null)
                 throw new InvalidDataException("The archive does not contain a skill (no SKILL.md found).");
             return found;
-        }
-
-        private static void CopyDirectory(string sourceDir, string targetDir)
-        {
-            Directory.CreateDirectory(targetDir);
-            string[] files = Directory.GetFiles(sourceDir);
-            for (int i = 0; i < files.Length; i++)
-                File.Copy(files[i], Path.Combine(targetDir, Path.GetFileName(files[i])), true);
-            string[] dirs = Directory.GetDirectories(sourceDir);
-            for (int i = 0; i < dirs.Length; i++)
-                CopyDirectory(dirs[i], Path.Combine(targetDir, Path.GetFileName(dirs[i])));
         }
     }
 }
