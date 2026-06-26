@@ -148,6 +148,10 @@ namespace GxPT.Tests.Mcp
             var streamer = new ScriptedStreamer();
             streamer.Turns.Add(Chunks.Text("hi"));
             var orch = new McpChatOrchestrator(streamer, null, null, "test-model", null);
+            // Skills active (SkillTools has a skill) - the single signal that gates both the head framing
+            // and the tail inventory; the provider supplies the list text.
+            var skill = new Skill("demo", "Demo", "A demo skill.", null, null, SkillSource.Bundled);
+            orch.SkillTools = new SkillTools(new List<Skill> { skill }, null);
             orch.SkillsManifestSystemMessageProvider =
                 delegate { return "Available skills:\n- demo - A demo skill."; };
             orch.RunTurn(new List<ChatMessage>(), "hello", new RecordingUi());
@@ -720,7 +724,7 @@ namespace GxPT.Tests.Mcp
         public void Unoffered_host_tool_is_not_silently_dispatched()
         {
             // No SkillTools/AgentDispatcher/AskUser are configured, so open_skill is NOT among this turn's
-            // host tools. Exposure and dispatch-exemption are both driven by AvailableHostTools(), so a
+            // host tools. Exposure and dispatch-exemption are both driven by BuildHostTools(), so a
             // host tool that isn't offered must fall through to the normal path ("[Unknown tool]") rather
             // than being silently handled - the two halves can't disagree.
             var reg = new McpToolRegistry(null);

@@ -309,7 +309,7 @@ namespace GxPT
                 {
                     List<string> names = new List<string>(_byFunctionName.Keys);
                     names.Sort(StringComparer.Ordinal); // server__ prefix groups visually
-                    _manifestCache = BuildManifestText(names);
+                    _manifestCache = BuildListText(names);
                     _manifestDirty = false;
                 }
                 return _manifestCache;
@@ -319,21 +319,15 @@ namespace GxPT
         // Workdir-aware manifest: only the tools usable on a turn with this working directory (an exact
         // workdir match or a workdir-independent tool). Keeps a folderless turn from advertising another
         // folder's scoped tools (files/git/run_skill_script, ...), which would only fail at call time.
+        // Same content as NamesManifestList (the request path uses that name); kept for tests/callers.
         public string NamesManifestSystemMessage(string workdir)
         {
-            lock (_lock)
-            {
-                List<string> names = new List<string>();
-                foreach (KeyValuePair<string, List<CatalogEntry>> kv in _byFunctionName)
-                    if (ResolvableForWorkdirLocked(kv.Value, workdir)) names.Add(kv.Key);
-                names.Sort(StringComparer.Ordinal);
-                return BuildManifestText(names);
-            }
+            return NamesManifestList(workdir);
         }
 
-        // Workdir-aware DYNAMIC inventory (resolvable tool names + the git-steering note), WITHOUT the
-        // reveal-before-call rule framing. For the ephemeral tail: the framing is static and lives in the
-        // cached agent system prompt, so only the volatile list belongs in the per-request tail.
+        // Workdir-aware tool inventory: the resolvable tool names + the git-steering note. The reveal-
+        // before-call rule itself is static and lives in the cached agent system prompt, so only this
+        // volatile list goes in the per-request ephemeral tail.
         public string NamesManifestList(string workdir)
         {
             lock (_lock)
@@ -346,25 +340,9 @@ namespace GxPT
             }
         }
 
-        // The reveal-before-call rule: static framing, duplicated in the agent system prompt (the cached
-        // head). Kept here so the combined NamesManifestSystemMessage stays a complete manifest for tests
-        // and any direct caller; the request path uses NamesManifestList (no framing) instead.
-        private const string RevealRuleText =
-            "The following MCP tools are available, listed by name only. "
-            + "You CANNOT call any of these tools directly from this list. "
-            + "Before calling a tool, you MUST first call reveal_tools({\"names\":[...]}) "
-            + "with the exact names you intend to use; that loads their full definitions "
-            + "and makes them callable on the next step. You may reveal several at once. "
-            + "Only reveal_tools and tools you have already revealed can be called.";
-
-        // Framing + inventory, byte-identical to the original combined manifest.
-        private static string BuildManifestText(List<string> names)
-        {
-            return RevealRuleText + "\n\n" + BuildListText(names);
-        }
-
-        // The inventory body: "Available tools:" + the name list + the git-steering note. Shared by the
-        // tail-only NamesManifestList and the combined BuildManifestText.
+        // The tool inventory body: a "call reveal_tools first" header + the name list + the git-steering
+        // note. The full reveal-before-call rule lives in the agent system prompt (cached head); this is
+        // the volatile list with only a short reminder.
         private static string BuildListText(List<string> names)
         {
             StringBuilder sb = new StringBuilder();
@@ -590,7 +568,7 @@ namespace GxPT
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static JObject RevealToolsDef()
+        public static JObject RevealToolsDef()
         {
             JObject props = new JObject();
             JObject namesProp = new JObject();
