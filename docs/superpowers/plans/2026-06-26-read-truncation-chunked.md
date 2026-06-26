@@ -1,7 +1,15 @@
 # files__read Truncation & Chunked Reads — Implementation Spec
 
+> **Addendum (post-review).** A code review revised several details after this plan was written;
+> `docs/mcp35-servers-spec.md` is authoritative. Deltas: the output cap is **128 KiB** (~32K
+> tokens), not 1 MiB; a **boundary cut returns `next_start_line` AND `next_offset`** so a resume
+> passing both seeks **O(1)** (no rescan from the top) while continuing line numbering — `offset`
+> alone is still the raw byte window for a single over-cap line; the line scanner is **lone-CR
+> aware** (matches `SplitLines`); a **malformed/negative `offset` errors**; and the host's
+> `FormatResult` was fixed so a `ToolResults.Json` envelope is no longer sent to the model twice.
+
 **Goal:** Make `files__read` (FilesMcpServer's `read` tool) handle files larger than the
-1 MiB output cap by **truncating with a continuation token** instead of erroring, and make
+output cap by **truncating with a continuation token** instead of erroring, and make
 **minified / zero-newline files readable** by paginating with a byte offset when a single line
 is itself larger than the cap.
 

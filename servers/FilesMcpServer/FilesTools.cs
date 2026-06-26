@@ -22,7 +22,14 @@ namespace FilesMcpServer
     internal static class FilesTools
     {
         // Caps (servers-spec §2).
-        private const long MaxReadBytes = 1024 * 1024;       // 1 MiB
+        // Read OUTPUT cap: the rendered text of a single read lands in the model context, so this is
+        // a token guard. 128 KiB is ~32K tokens (1 MiB would be ~250K+ — larger than most context
+        // windows). Over-cap reads truncate with a continuation token rather than failing.
+        // (internal so the tests can size fixtures off it instead of hard-coding the value.)
+        internal const long MaxReadBytes = 128 * 1024;       // 128 KiB
+        // Multiline search reads a whole file into memory to match across lines; this bounds that
+        // memory (not model context), so it stays at 1 MiB independent of the read output cap.
+        private const long MaxMultilineFileBytes = 1024 * 1024;   // 1 MiB
         private const int MaxListEntries = 1000;
         private const int MaxRecursiveDepth = 16;
         private const int BinarySniffBytes = 8000;
@@ -40,17 +47,18 @@ namespace FilesMcpServer
             server.AddTool("read", "Read the UTF-8 text contents of a file under the workspace root. "
                 + "Optionally read a line range (1-based, inclusive) and/or prefix each line with its number. "
                 + "Reads larger than the size cap are TRUNCATED rather than failing: the result is then a JSON "
-                + "object {content, truncated:true, next_start_line | next_offset}. Continue by passing "
-                + "next_start_line to the next read's start_line; for a single line longer than the cap you "
-                + "instead get next_offset (a byte offset) — pass it as offset to read the next chunk. Loop "
+                + "object {content, truncated:true, next_start_line?, next_offset}. To continue a truncated "
+                + "read, pass the returned next_start_line AND next_offset back as start_line and offset; if "
+                + "only next_offset is returned (a single line longer than the cap), pass just offset. Loop "
                 + "until a read comes back as plain (non-truncated) text.",
                 SchemaBuilder.Object()
                     .Str("path", true, "Path relative to the workspace root")
                     .Int("start_line", false, "First line to return (1-based, inclusive)")
                     .Int("end_line", false, "Last line to return (1-based, inclusive)")
                     .Bool("line_numbers", false, "Prefix each returned line with its 1-based line number")
-                    .Int("offset", false, "Byte offset to resume a truncated read from (used with next_offset "
-                        + "to page through a single line longer than the cap); ignores start_line/end_line")
+                    .Int("offset", false, "Byte offset to resume a truncated read from. Combine with start_line "
+                        + "(both come back together as next_offset/next_start_line) to continue by line; pass "
+                        + "offset alone to read a raw byte window of a single over-cap line")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx) { return Read(sandbox, ctx); });
@@ -102,8 +110,8 @@ namespace FilesMcpServer
                     .Int("max_results", false, "Maximum matches to return (default 100, max 1000)")
                     .Bool("multiline", false, "Match against whole-file text with line endings intact, so the "
                         + "query/pattern may contain or span newlines (grep -U). In regex mode ^/$ become line "
-                        + "anchors. 'line' is where each match starts. Bounded by the read cap; line-mode streams "
-                        + "files of any size, multiline skips files over the cap.")
+                        + "anchors. 'line' is where each match starts. line-mode streams files of any size; "
+                        + "multiline reads the whole file into memory and skips files over 1 MiB.")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx) { return Search(sandbox, ctx); });
@@ -139,15 +147,17 @@ namespace FilesMcpServer
 
             bool lineNumbers = BoolArg(ctx, "line_numbers", false);
 
-            // Resuming a truncated single-line read: a byte window (O(1) seek), no line semantics.
-            if (HasArg(ctx, "offset"))
-            {
-                long offset = LongArg(ctx, "offset", 0, 0, long.MaxValue);
-                return RenderRead(ReadByteWindow(full, offset, MaxReadBytes));
-            }
+            // offset is a byte position (int64) used to resume a truncated read. Reject a present-but-
+            // malformed value rather than silently restarting at 0 (which would re-read the head).
+            bool hasOffset = HasArg(ctx, "offset");
+            long offset = 0;
+            if (hasOffset && (!TryLongArg(ctx, "offset", out offset) || offset < 0))
+                return ToolResults.Error("offset must be a non-negative integer");
 
-            // A line range streams and is now truncated (not rejected) when its rendered output would
-            // exceed the cap: ordinary ranges resume by line, a single over-cap line by byte offset.
+            // A line range streams and is truncated (not rejected) when its rendered output would
+            // exceed the cap. When `offset` is also supplied it is the byte where `start` begins, so
+            // we seek there directly (O(1)) instead of rescanning from the top — the continuation a
+            // prior boundary-cut handed back. (offset alone, below, is a raw byte window.)
             bool hasStart = HasArg(ctx, "start_line");
             bool hasEnd = HasArg(ctx, "end_line");
             if (hasStart || hasEnd)
@@ -156,8 +166,18 @@ namespace FilesMcpServer
                 int end = hasEnd ? IntArg(ctx, "end_line", int.MaxValue, 1, int.MaxValue) : int.MaxValue;
                 if (end < start)
                     return ToolResults.Error("end_line (" + end + ") is before start_line (" + start + ")");
-                return RenderRead(ReadLineWindow(full, start, end, lineNumbers, MaxReadBytes));
+                if (hasOffset)
+                {
+                    long len = new FileInfo(full).Length;
+                    if (offset > len)
+                        return ToolResults.Error("offset " + offset + " exceeds file length (" + len + " bytes)");
+                }
+                return RenderRead(ReadLineWindow(full, start, end, lineNumbers, MaxReadBytes, hasOffset ? offset : 0));
             }
+
+            // offset alone: a raw byte window (resuming a single over-cap line), no line semantics.
+            if (hasOffset)
+                return RenderRead(ReadByteWindow(full, offset, MaxReadBytes));
 
             // Whole-file read. If it fits the cap, return it in full (verbatim when no numbering, so
             // exact bytes are preserved). If it is over the cap, truncate from line 1 instead of
@@ -185,7 +205,7 @@ namespace FilesMcpServer
                 return ToolResults.Text(sb.ToString());
             }
 
-            return RenderRead(ReadLineWindow(full, 1, int.MaxValue, lineNumbers, MaxReadBytes));
+            return RenderRead(ReadLineWindow(full, 1, int.MaxValue, lineNumbers, MaxReadBytes, 0));
         }
 
         // Turn a streaming ReadResult into a tool result: error, plain text (not truncated), or a
@@ -200,11 +220,16 @@ namespace FilesMcpServer
             o["truncated"] = true;
             if (rr.HasNextLine)
             {
+                // Boundary cut: resume by line. next_offset is the byte that line starts at, so a
+                // resume passing BOTH start_line and offset seeks O(1) instead of rescanning the head.
                 o["next_start_line"] = rr.NextStartLine;
-                o["hint"] = "Output truncated at the size cap. Continue with start_line=" + rr.NextStartLine + ".";
+                o["next_offset"] = rr.NextOffset;
+                o["hint"] = "Output truncated at the size cap. Continue with start_line="
+                    + rr.NextStartLine + " and offset=" + rr.NextOffset + ".";
             }
             else
             {
+                // Byte cut inside a single over-cap line: resume by raw (unnumbered) byte window.
                 o["next_offset"] = rr.NextOffset;
                 o["hint"] = "Output truncated inside a single long line. Continue with offset=" + rr.NextOffset + ".";
             }
@@ -212,20 +237,22 @@ namespace FilesMcpServer
         }
 
         // Stream a 1-based inclusive line range, emitting whole lines until the rendered output would
-        // exceed `budget`. When it would: if at least one line was emitted, stop on that boundary and
-        // resume by line (next_start_line); if the very first line alone is over budget, emit a
-        // byte-bounded prefix of it and resume by byte (next_offset). Reads fixed char chunks and
-        // scans for '\n' itself so a single huge line is never buffered whole. Byte positions are
-        // tracked exactly (a CRLF's '\r' counts as line content; only the '\n' is the +1 terminator;
-        // a UTF-8 BOM adds 3) so next_offset lands on a real boundary.
-        private static ReadResult ReadLineWindow(string full, int startLine, int endLine, bool lineNumbers, long budget)
+        // exceed `budget`. If at least one line was emitted, stop on the boundary and resume by line
+        // (next_start_line, plus next_offset = the byte that line starts at, for an O(1) resume); if
+        // the first line alone is over budget, emit a byte-bounded prefix and resume by byte
+        // (next_offset). Reads fixed char chunks and scans line endings itself — LF, CRLF, and a lone
+        // CR (matching SplitLines) — so a single huge line is never buffered whole. `startByte` > 0
+        // seeks there directly and treats it as the start of line `startLine` (the O(1) resume path);
+        // otherwise it streams from the top, skipping lines before `startLine`. Byte offsets are
+        // tracked exactly (a line ending is 1 byte for LF/lone-CR, 2 for CRLF; a BOM adds 3) so
+        // next_offset lands on a real boundary.
+        private static ReadResult ReadLineWindow(string full, int startLine, int endLine, bool lineNumbers, long budget, long startByte)
         {
+            long bomLen;
             StreamReader sr;
-            try { sr = OpenTextReaderOrNull(full); }
+            try { sr = OpenTextReaderAt(full, startByte, out bomLen); }
             catch { return ReadResult.Err("file not found"); }
             if (sr == null) return ReadResult.Err("not a text file");
-
-            long bomLen = HasUtf8Bom(full) ? 3 : 0;   // OpenTextReaderOrNull strips the BOM from the chars
 
             List<string> emitted = new List<string>();  // content of emitted lines (bounded by budget)
             long contentBytes = 0;                       // UTF-8 bytes of emitted contents (no separators)
@@ -234,11 +261,13 @@ namespace FilesMcpServer
             using (sr)
             {
                 char[] buf = new char[ReadChunkChars];
-                StringBuilder cur = new StringBuilder();   // chars of the in-progress line (incl. a CRLF '\r')
-                long curContentBytes = 0;                  // UTF-8 bytes of every char consumed for this line
-                long curStartByte = bomLen;                // byte offset where the in-progress line begins
-                int curLineNo = 1;
-                bool highPending = false;                  // surrogate-pair state for incremental byte counting
+                StringBuilder cur = new StringBuilder();   // content chars of the in-progress line (no terminator)
+                long curContentBytes = 0;                  // UTF-8 bytes of cur (content only; terminators excluded)
+                long curStartByte = startByte > 0 ? startByte : bomLen;   // byte offset where this line begins
+                int curLineNo = startByte > 0 ? startLine : 1;
+                bool highPending = false;                  // surrogate-pair state for the byte counter
+                bool pendingCR = false;                    // a '\r' was seen; CRLF vs lone-CR still pending
+                long lineBaseTotal = LineBase(contentBytes, emitted.Count, curLineNo, lineNumbers);
 
                 int read;
                 while ((read = sr.Read(buf, 0, buf.Length)) > 0)
@@ -246,86 +275,87 @@ namespace FilesMcpServer
                     for (int i = 0; i < read; i++)
                     {
                         char c = buf[i];
+                        int terminatorBytes = -1;          // >= 0 once this char completes a line
 
-                        if (c == '\n')
+                        if (pendingCR)
                         {
-                            string raw = cur.ToString();
-                            bool crlf = raw.Length > 0 && raw[raw.Length - 1] == '\r';
-                            string content = crlf ? raw.Substring(0, raw.Length - 1) : raw;
+                            pendingCR = false;
+                            terminatorBytes = (c == '\n') ? 2 : 1;   // CRLF, else lone CR
+                        }
+                        else if (c == '\r') { pendingCR = true; continue; }   // defer: CRLF or lone CR
+                        else if (c == '\n') terminatorBytes = 1;              // bare LF
 
+                        if (terminatorBytes >= 0)
+                        {
                             if (curLineNo >= startLine && curLineNo <= endLine)
                             {
-                                // The overflow guard below guarantees this completed line fits.
-                                emitted.Add(content);
-                                contentBytes += Utf8ByteCount(content);
+                                // The overflow guard below guarantees a completed line fits.
+                                emitted.Add(cur.ToString());   // '\r'/'\n' were never appended to cur
+                                contentBytes += curContentBytes;
                                 lastEmittedLineNo = curLineNo;
                             }
-
-                            // Advance past the line + its '\n' ('\r' is already inside curContentBytes).
-                            curStartByte = curStartByte + curContentBytes + 1;
+                            curStartByte = curStartByte + curContentBytes + terminatorBytes;
                             cur.Length = 0;                // .NET 3.5: StringBuilder has no Clear()
                             curContentBytes = 0;
                             highPending = false;
                             curLineNo++;
+                            lineBaseTotal = LineBase(contentBytes, emitted.Count, curLineNo, lineNumbers);
 
                             if (curLineNo > endLine)
                                 return Complete(emitted, lineNumbers, lastEmittedLineNo);
-                            continue;
+
+                            if (c == '\n') continue;                       // CRLF / bare LF: '\n' consumed
+                            if (c == '\r') { pendingCR = true; continue; } // lone CR followed by another CR
+                            // otherwise c is the first content char of the next line — fall through
                         }
 
-                        // Incremental UTF-8 byte count of this char (correct across surrogate pairs).
+                        // Content char (also reached when a lone CR's following char starts a new line).
                         int cb;
                         if (char.IsHighSurrogate(c)) { highPending = true; cb = 0; }
                         else if (highPending) { highPending = false; cb = 4; }
-                        else if (c < 0x80) cb = 1;
-                        else if (c < 0x800) cb = 2;
-                        else cb = 3;
+                        else cb = Utf8WidthBmp(c);
                         curContentBytes += cb;
 
-                        bool emitting = curLineNo >= startLine && curLineNo <= endLine;
-                        if (!emitting) continue;   // skipped line: count bytes only, never store content
+                        if (curLineNo < startLine || curLineNo > endLine) continue;   // skipped: count bytes only
 
                         cur.Append(c);
 
                         // Would this line, completed now, push the rendered output past the budget?
-                        long total = TentativeTotal(contentBytes, emitted.Count, curContentBytes, curLineNo, lineNumbers);
-                        if (total > budget)
+                        if (lineBaseTotal + curContentBytes > budget)
                         {
                             if (emitted.Count > 0)
-                                return BoundaryCut(emitted, lineNumbers, lastEmittedLineNo, curLineNo);
+                                return BoundaryCut(emitted, lineNumbers, lastEmittedLineNo, curLineNo, curStartByte);
                             return ByteCut(cur, curStartByte, budget);
                         }
                     }
                 }
 
-                // EOF — finalize a trailing line that had no terminating '\n'.
-                string lastRaw = cur.ToString();
-                if (lastRaw.Length > 0)
+                // EOF — finalize a trailing line ended by a lone CR (pendingCR), or a final line with
+                // no terminator at all. curContentBytes > 0 catches a trailing line that was skipped
+                // (before startLine), so it still counts toward the line total in the error below.
+                if (pendingCR || cur.Length > 0 || curContentBytes > 0)
                 {
-                    bool crlf = lastRaw[lastRaw.Length - 1] == '\r';
-                    string content = crlf ? lastRaw.Substring(0, lastRaw.Length - 1) : lastRaw;
                     if (curLineNo >= startLine && curLineNo <= endLine)
                     {
-                        emitted.Add(content);
+                        emitted.Add(cur.ToString());
                         lastEmittedLineNo = curLineNo;
                     }
+                    curLineNo++;
                 }
 
                 if (emitted.Count == 0)
-                {
-                    int totalLines = lastRaw.Length > 0 ? curLineNo : curLineNo - 1;
-                    return ReadResult.Err("start_line " + startLine + " exceeds file length (" + totalLines + " lines)");
-                }
+                    return ReadResult.Err("start_line " + startLine + " exceeds file length (" + (curLineNo - 1) + " lines)");
                 return Complete(emitted, lineNumbers, lastEmittedLineNo);
             }
         }
 
-        // Rendered size if the candidate line (candidateBytes of content) were emitted now: existing
-        // content + this line + '\n' separators (one before each line after the first) + the
-        // right-aligned number prefix on every line when numbering (width = the last line's digits).
-        private static long TentativeTotal(long contentBytes, int emittedCount, long candidateBytes, int candidateLineNo, bool lineNumbers)
+        // Rendered size of the already-emitted lines plus one more line's content (added by the caller
+        // as curContentBytes): emitted content + '\n' separators (one before each line after the
+        // first) + the right-aligned number prefix on every line when numbering (width = the
+        // candidate line's digit count). Recomputed once per line, not per character.
+        private static long LineBase(long contentBytes, int emittedCount, int candidateLineNo, bool lineNumbers)
         {
-            long total = contentBytes + candidateBytes + emittedCount;
+            long total = contentBytes + emittedCount;
             if (lineNumbers) total += (long)(emittedCount + 1) * (DigitCount(candidateLineNo) + 1);
             return total;
         }
@@ -338,13 +368,14 @@ namespace FilesMcpServer
             return r;
         }
 
-        private static ReadResult BoundaryCut(List<string> emitted, bool lineNumbers, int lastLineNo, int nextStartLine)
+        private static ReadResult BoundaryCut(List<string> emitted, bool lineNumbers, int lastLineNo, int nextStartLine, long nextOffset)
         {
             ReadResult r = new ReadResult();
             r.Content = JoinEmitted(emitted, lineNumbers, lastLineNo);
             r.Truncated = true;
             r.HasNextLine = true;
             r.NextStartLine = nextStartLine;
+            r.NextOffset = nextOffset;
             return r;
         }
 
@@ -362,9 +393,7 @@ namespace FilesMcpServer
                 bool pair = false;
                 if (char.IsHighSurrogate(c) && i + 1 < cur.Length && char.IsLowSurrogate(cur[i + 1]))
                 { cb = 4; pair = true; }
-                else if (c < 0x80) cb = 1;
-                else if (c < 0x800) cb = 2;
-                else cb = 3;
+                else cb = Utf8WidthBmp(c);
 
                 if (bytes + cb > budget) break;
                 bytes += cb;
@@ -436,7 +465,7 @@ namespace FilesMcpServer
                 int start = 0;
                 if (offset == 0 && consumed >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
                     start = 3;
-                string content = new UTF8Encoding(false, false).GetString(data, start, consumed - start);
+                string content = Utf8NoBom.GetString(data, start, consumed - start);
 
                 ReadResult r = new ReadResult();
                 r.Content = content;
@@ -831,7 +860,7 @@ namespace FilesMcpServer
         private static bool SearchFileMultiline(PathSandbox sandbox, string file, Regex rx, string query,
             StringComparison cmp, int maxResults, List<JObject> matches)
         {
-            try { if (new FileInfo(file).Length > MaxReadBytes) return false; }
+            try { if (new FileInfo(file).Length > MaxMultilineFileBytes) return false; }
             catch { return false; }
 
             StreamReader sr;
@@ -951,39 +980,24 @@ namespace FilesMcpServer
             return n;
         }
 
-        private static long LongArg(ToolCallContext ctx, string name, long fallback, long min, long max)
+        // Read a strictly-integer argument. Returns false when the value is absent or not a JSON
+        // integer (so a malformed `offset` is reported, not silently treated as 0).
+        private static bool TryLongArg(ToolCallContext ctx, string name, out long value)
         {
+            value = 0;
             JToken t = ctx.Arguments[name];
-            if (t == null || t.Type == JTokenType.Null) return fallback;
-            long n;
-            try { n = t.Value<long>(); }
-            catch { return fallback; }
-            if (n < min) return min;
-            if (n > max) return max;
-            return n;
+            if (t == null || t.Type != JTokenType.Integer) return false;
+            try { value = t.Value<long>(); return true; }
+            catch { return false; }
         }
 
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false, false);
 
-        private static long Utf8ByteCount(string s)
+        // UTF-8 byte width of a single BMP char (not part of a surrogate pair). Astral codepoints are
+        // a surrogate pair = 4 bytes, handled by the callers that track pairing.
+        private static int Utf8WidthBmp(char c)
         {
-            return s.Length == 0 ? 0 : Utf8NoBom.GetByteCount(s);
-        }
-
-        // True if the file begins with a UTF-8 BOM (which the streaming reader strips from the chars,
-        // so its 3 bytes must be added back when computing absolute file byte offsets).
-        private static bool HasUtf8Bom(string full)
-        {
-            try
-            {
-                using (FileStream fs = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                {
-                    byte[] b = new byte[3];
-                    int n = fs.Read(b, 0, 3);
-                    return n == 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF;
-                }
-            }
-            catch { return false; }
+            return c < 0x80 ? 1 : (c < 0x800 ? 2 : 3);
         }
 
         private static bool IsUtf8Continuation(byte b)
@@ -1105,21 +1119,44 @@ namespace FilesMcpServer
         }
 
         /// <summary>
-        /// Open a file as BOM-aware UTF-8 text lines after sniffing its head for a NUL byte. Returns
-        /// <c>null</c> (stream disposed) if the file looks binary. Streaming lets search and ranged
-        /// read work on files larger than the whole-file cap — output is bounded by matches / range,
-        /// not file size. Caller owns the returned reader (wrap in <c>using</c>).
+        /// Open a file as BOM-aware UTF-8 text lines from the start after sniffing its head for a NUL
+        /// byte. Returns <c>null</c> (stream disposed) if the file looks binary. Caller owns the
+        /// returned reader (wrap in <c>using</c>).
         /// </summary>
         private static StreamReader OpenTextReaderOrNull(string file)
         {
+            long bomLen;
+            return OpenTextReaderAt(file, 0, out bomLen);
+        }
+
+        /// <summary>
+        /// Like <see cref="OpenTextReaderOrNull"/> but positioned at <paramref name="byteOffset"/>
+        /// (an O(1) seek for resuming a truncated read). Sniffs the head for binary in one open, and
+        /// reports the leading BOM length via <paramref name="bomLen"/> (only meaningful at offset 0;
+        /// past it there is no BOM). Returns <c>null</c> (disposed) for a binary file or an offset
+        /// beyond the file length.
+        /// </summary>
+        private static StreamReader OpenTextReaderAt(string file, long byteOffset, out long bomLen)
+        {
+            bomLen = 0;
             FileStream fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             try
             {
                 byte[] head = new byte[BinarySniffBytes];
                 int n = fs.Read(head, 0, head.Length);
                 if (LooksBinary(head, n)) { fs.Dispose(); return null; }
+
+                if (byteOffset > 0)
+                {
+                    if (byteOffset > fs.Length) { fs.Dispose(); return null; }
+                    fs.Position = byteOffset;
+                    // detect=false: there is no BOM mid-file, and one must not be stripped here.
+                    return new StreamReader(fs, Utf8NoBom, false);
+                }
+
+                bomLen = (n >= 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF) ? 3 : 0;
                 fs.Position = 0;
-                return new StreamReader(fs, new UTF8Encoding(false, false), true);
+                return new StreamReader(fs, Utf8NoBom, true);   // detect=true strips a leading BOM
             }
             catch
             {

@@ -1205,8 +1205,9 @@ namespace GxPT
         }
 
         // CallToolResult.content[] → a single string for the tool message. Text blocks are
-        // concatenated; non-text blocks become a short placeholder; structuredContent (if any) is
-        // appended as compact JSON. isError content is still returned verbatim (the model sees it).
+        // concatenated; non-text blocks become a short placeholder; structuredContent is appended as
+        // compact JSON only when there were no text blocks (it is otherwise already mirrored into
+        // content). isError content is still returned verbatim (the model sees it).
         private static string FormatResult(CallToolResult res)
         {
             if (res == null) return string.Empty;
@@ -1226,11 +1227,13 @@ namespace GxPT
                 }
             }
 
-            if (res.StructuredContent != null)
-            {
-                if (sb.Length > 0) sb.Append("\n");
+            // ToolResults.Json already mirrors structuredContent into a text content block (appended
+            // above), and per the MCP spec structured/unstructured content are functionally
+            // equivalent — so only emit the JSON here when there were no text blocks. Otherwise the
+            // same payload is sent to the model twice, which on a truncated read doubles a large
+            // content blob and can confuse the paging loop.
+            if (res.StructuredContent != null && sb.Length == 0)
                 sb.Append(res.StructuredContent.ToString(Formatting.None));
-            }
             return sb.ToString();
         }
 
