@@ -26,29 +26,18 @@ namespace GxPT
 
         // The STATIC framing: how to use skills, with no per-conversation data. Lives in the cached
         // stable head (McpChatOrchestrator.BuildStableHead) when skills are enabled, so its tokens are
-        // cached instead of re-sent in every request's ephemeral tail. Carries the skill-specific rule
-        // (always check the list and open a relevant skill first, including the skill-writer/agent-writer
-        // meta-skills for authoring tasks); the general "don't act before the guidance arrives" sequencing
-        // lives in the always-on agent system prompt. The dynamic inventory (which skills exist) is
-        // BuildList, kept in the tail.
+        // cached instead of re-sent in every request's ephemeral tail. The sequencing rule ("read a
+        // skill before acting on the task") lives in the always-on agent system prompt, so it is not
+        // repeated here. The dynamic inventory (which skills exist) is BuildList, kept in the tail.
         public const string Framing =
             "# Skills\n\n"
             + "Skills are reusable procedures available for this conversation; the enabled ones are "
-            + "already listed for you in the host context as `- <slug> [<scope>] - <description>` (this "
-            + "inventory is injected automatically every turn - you never need a tool call to see what "
-            + "skills exist). "
-            + "ALWAYS read that list and weigh it against the task before you start, and if any skill is "
-            + "relevant, open it with open_skill({\"names\":[\"<slug>\"]}) and follow its instructions "
-            + "before taking any other "
-            + "action. A skill encodes the procedure the user expects, so doing the task without first "
-            + "opening a relevant skill risks doing it wrong - match by what the task IS, not just its "
-            + "wording. In particular, creating, editing, or rewriting a skill is itself a task governed "
-            + "by the skill-writer skill, and creating or editing an agent by the agent-writer skill: if "
-            + "such a meta-skill is listed, open it first and follow it. open_skill is directly callable - "
-            + "you do NOT need to reveal it first - and you may open several at once. The <scope> is where "
-            + "the skill lives (user or project; bundled skills are read-only); pass it as the `scope` "
-            + "argument when editing a skill so the edit targets the right one. Do not mention skills "
-            + "unless they are relevant to the request.";
+            + "listed in the host context as `- <slug> [<scope>] - <description>`. When a task matches "
+            + "one, open it with open_skill({\"names\":[\"<slug>\"]}) and follow its instructions. "
+            + "open_skill is directly callable - you do NOT need to reveal it first - and you may open "
+            + "several at once. The <scope> is where the skill lives (user or project; bundled skills are "
+            + "read-only); pass it as the `scope` argument when editing a skill so the edit targets the "
+            + "right one. Do not mention skills unless they are relevant to the request.";
 
         // The DYNAMIC inventory: the slug/scope/description list, for the ephemeral tail. Returns null
         // when the enabled set is empty, so a skill-less or all-disabled conversation injects nothing.
