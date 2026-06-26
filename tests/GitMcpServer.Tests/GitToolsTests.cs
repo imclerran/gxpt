@@ -102,8 +102,22 @@ namespace GitMcpServer.Tests
             Assert.Contains("push", names);
             // expansion
             foreach (string n in new[] { "fetch", "pull", "checkout", "restore", "branch", "merge",
-                                         "rebase", "cherry_pick", "add", "reset", "rm", "stash" })
+                                         "rebase", "cherry_pick", "add", "reset", "rm", "stash", "worktree" })
                 Assert.Contains(n, names);
+        }
+
+        [Fact]
+        public void Every_tool_advertises_cwd()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsList(1));
+
+            JArray tools = (JArray)msgs[0]["result"]["tools"];
+            foreach (JToken t in tools)
+            {
+                JObject props = (JObject)t["inputSchema"]["properties"];
+                Assert.True(props["cwd"] != null, "tool '" + (string)t["name"] + "' is missing the cwd argument");
+            }
         }
 
         // ---- argv construction ----
@@ -453,6 +467,159 @@ namespace GitMcpServer.Tests
             string argv = StdoutOf(msgs[0]);
             Assert.Contains("pop", argv);
             Assert.Contains("stash@{2}", argv);
+        }
+
+        // ---- expansion: worktree ----
+
+        [Fact]
+        public void Worktree_list_uses_porcelain()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree", Harness.Args("action", "list")));
+            string argv = StdoutOf(msgs[0]);
+            Assert.Contains("worktree", argv);
+            Assert.Contains("list", argv);
+            Assert.Contains("--porcelain", argv);
+        }
+
+        [Fact]
+        public void Worktree_defaults_to_list()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree", new JObject()));
+            string argv = StdoutOf(msgs[0]);
+            Assert.Contains("worktree", argv);
+            Assert.Contains("list", argv);
+        }
+
+        [Fact]
+        public void Worktree_add_builds_branch_and_resolved_path()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree",
+                Harness.Args("action", "add", "path", ".worktrees/feat", "branch", "feat", "ref", "main")));
+            Assert.False(Harness.IsError(msgs[0]));
+            string argv = StdoutOf(msgs[0]);
+            Assert.Contains("worktree", argv);
+            Assert.Contains("add", argv);
+            Assert.Contains("-b", argv);
+            Assert.Contains("feat", argv);
+            Assert.Contains("main", argv);
+            // the worktree path is resolved against the workspace root (absolute), inside the sandbox
+            Assert.Contains("feat", argv);
+            int b = argv.IndexOf("-b", StringComparison.Ordinal);
+            int branch = argv.IndexOf("feat", b, StringComparison.Ordinal);
+            int wtDir = argv.IndexOf("worktrees", StringComparison.Ordinal);
+            Assert.True(branch > b && wtDir > branch, "expected -b <branch> before the worktree dir; argv=" + argv);
+        }
+
+        [Fact]
+        public void Worktree_add_requires_path()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree", Harness.Args("action", "add")));
+            Assert.True(Harness.IsError(msgs[0]));
+        }
+
+        [Fact]
+        public void Worktree_remove_force_builds_args()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree",
+                Harness.Args("action", "remove", "path", ".worktrees/feat", "force", true)));
+            string argv = StdoutOf(msgs[0]);
+            Assert.Contains("remove", argv);
+            Assert.Contains("--force", argv);
+            Assert.Contains("worktrees", argv);
+        }
+
+        [Fact]
+        public void Worktree_prune_builds_args()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree", Harness.Args("action", "prune")));
+            Assert.Contains("prune", StdoutOf(msgs[0]));
+        }
+
+        [Fact]
+        public void Worktree_path_escaping_sandbox_is_error()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree",
+                Harness.Args("action", "add", "path", "../escape")));
+            Assert.True(Harness.IsError(msgs[0]));
+        }
+
+        [Fact]
+        public void Worktree_unknown_action_is_error()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "worktree", Harness.Args("action", "nuke")));
+            Assert.True(Harness.IsError(msgs[0]));
+        }
+
+        // ---- expansion: cwd (run git inside a subdirectory / worktree) ----
+
+        [Fact]
+        public void Cwd_runs_git_in_the_subdirectory()
+        {
+            // A fake git that reports its own working directory, so we can assert cwd took effect.
+            string sub = Path.Combine(_work, "sub");
+            Directory.CreateDirectory(sub);
+
+            var server = Harness.NewGitServer(FakeGitPwd(), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "status", Harness.Args("cwd", "sub")));
+            Assert.False(Harness.IsError(msgs[0]));
+            string outp = StdoutOf(msgs[0]);
+            // the fake git prints PWD: <dir>; it must be the sub directory, not the workspace root
+            Assert.Contains("sub", outp);
+        }
+
+        [Fact]
+        public void Cwd_escaping_sandbox_is_error()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "status", Harness.Args("cwd", "../escape")));
+            Assert.True(Harness.IsError(msgs[0]));
+        }
+
+        [Fact]
+        public void Cwd_not_found_is_error()
+        {
+            var server = Harness.NewGitServer(FakeGit(0), _work);
+            var msgs = Harness.Exchange(server, Harness.ToolsCall(1, "status", Harness.Args("cwd", "nope")));
+            Assert.True(Harness.IsError(msgs[0]));
+            Assert.Contains("cwd not found", Harness.Text(msgs[0]));
+        }
+
+        // A fake git that echoes its current working directory (prefixed "PWD:") to stdout, so a
+        // test can confirm the cwd argument changed where git ran. Exits 0.
+        private string FakeGitPwd()
+        {
+            _stdinCapture = Path.Combine(_dir, "stdin.txt");
+            if (IsWindows)
+            {
+                string path = Path.Combine(_dir, "fakegitpwd.cmd");
+                string script =
+                    "@echo off\r\n" +
+                    "echo PWD:%CD%\r\n" +
+                    "findstr \"^\" > \"" + _stdinCapture + "\"\r\n" +
+                    "exit /b 0\r\n";
+                File.WriteAllText(path, script);
+                return path;
+            }
+            else
+            {
+                string path = Path.Combine(_dir, "fakegitpwd.sh");
+                string script =
+                    "#!/bin/sh\n" +
+                    "echo \"PWD:$(pwd -P)\"\n" +
+                    "cat > \"" + _stdinCapture + "\"\n" +
+                    "exit 0\n";
+                File.WriteAllText(path, script);
+                try { System.Diagnostics.Process.Start("/bin/chmod", "+x \"" + path + "\"").WaitForExit(); } catch { }
+                return path;
+            }
         }
     }
 }
