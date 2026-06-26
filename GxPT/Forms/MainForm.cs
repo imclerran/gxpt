@@ -3545,7 +3545,7 @@ namespace GxPT
                             cur.Text.Append(t);
                         }
                     };
-                    // Tool activity renders in two beats: an immediate "using <tool>" placeholder on the
+                    // Tool activity renders in two beats: an immediate "Using <tool>" placeholder on the
                     // call (live feedback while it runs / the approval gate waits), replaced by the
                     // outcome marker on the result. So a denied call ends as "denied: <tool>" and an
                     // approved edit ends as its collapsible record — never an unapproved diff. The
@@ -4739,10 +4739,10 @@ namespace GxPT
         // Role marker for the chrome-less tool-activity blocks used on reload.
         private const string ToolActivityRole = "toolactivity";
 
-        // Activity marker for a tool call. If the tool maps to a collapsible/labelled record, register
-        // it with the transcript under a stable key and return its sentinel; otherwise (or on any
-        // failure) return the generic "using <tool>" marker. internal so the agent transcript viewer can
-        // render a child's tool calls identically to the main chat.
+        // Activity marker for a *completed* tool call. If the tool maps to a collapsible/labelled record,
+        // register it with the transcript under a stable key and return its sentinel; otherwise (or on any
+        // failure) return the generic past-tense "Used <tool>" marker. internal so the agent transcript
+        // viewer can render a child's tool calls identically to the main chat.
         internal static string EditDiffMarkerOrCall(ChatTranscriptControl transcript, string name, string argsJson, string key)
         {
             if (transcript != null && !string.IsNullOrEmpty(key))
@@ -4759,7 +4759,7 @@ namespace GxPT
                 }
                 catch { /* fall through to the generic marker */ }
             }
-            return McpMarkers.Call(name);
+            return McpMarkers.Used(name);
         }
 
         // Surface a streaming/transport failure as a chrome-less red notice in the transcript, so a
