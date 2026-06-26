@@ -95,7 +95,7 @@ public interface IToolClassifier {
    | `files__delete` | Destructive | Argument(`path`) |
    | `git__status/diff/log`, `git__fetch` | ReadOnly | Tool |
    | `git__commit`, `git__add`, `git__branch`, `git__stash` | Write | Tool |
-   | `git__push`, `git__pull`, `git__checkout`, `git__restore`, `git__merge`, `git__rebase`, `git__reset`, `git__rm`, `git__cherry_pick` | Destructive | None |
+   | `git__push`, `git__pull`, `git__checkout`, `git__restore`, `git__merge`, `git__rebase`, `git__reset`, `git__rm`, `git__cherry_pick`, `git__worktree` | Destructive | None |
    | `command__run` | Destructive | **Argument(`command`)** |
    | `web__search` | ReadOnly | Tool |
    | `web__extract` | ReadOnly | Tool |

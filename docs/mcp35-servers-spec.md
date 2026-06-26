@@ -239,6 +239,17 @@ ReadOnly, `commit` Write, `push` Destructive(`Scope=None`).
 | `log` | `max?` (default 20) | `log -n <max> --pretty=…` |
 | `commit` | `message*`, `all?` | stage (`add -A` if `all`) then `commit -F -` |
 | `push` | `remote?`, `branch?` | `push [<remote> [<branch>]]` |
+| `worktree` | `action?` (list/add/remove/prune), `path?`, `ref?`, `branch?`, `force?` | `worktree <list --porcelain \| add [--force] [-b <branch>] <path> [<ref>] \| remove [--force] <path> \| prune>` |
+
+Every tool also accepts an optional **`cwd`** argument: a subdirectory of the
+workspace root (relative path) that git is run in instead of the root itself.
+This is what makes worktrees usable — `worktree add` carves a linked tree out as
+a subdirectory (e.g. `.worktrees/feat`), and the model then drives its whole
+workflow (`status`/`add`/`commit`/`push`/…) inside it by passing the same
+directory as `cwd`. `cwd` is resolved through the same `PathSandbox` as every
+other path (§2): a value that resolves outside `GXPT_WORKDIR` (absolute, `..`,
+drive-relative) is rejected, and a non-existent directory errors rather than
+silently falling back to the root.
 
 **Argv safety — this server builds command lines, so it owns escaping
 (architecture §9):**
@@ -249,10 +260,15 @@ ReadOnly, `commit` Write, `push` Destructive(`Scope=None`).
   `ProcessRequest.StdinText`), never as a `-m "<message>"` argument — this
   removes message-content quoting as an injection surface entirely.
 - `path` for `diff` is placed **after `--`** so it can't be read as a flag.
-- Every call sets `WorkingDirectory = GXPT_WORKDIR` and a `TimeoutMs`; a non-zero
-  exit or timeout → `Error` carrying captured stderr (trimmed).
-- `push` is Destructive and host-gated every time (`Scope=None`); the server
-  still just runs it — the *server* never decides policy, only executes safely.
+- The `worktree` `path` is resolved to an absolute directory **inside the
+  sandbox** before it reaches argv; `cwd` is likewise sandbox-confined and used
+  as `WorkingDirectory` — neither can escape `GXPT_WORKDIR`.
+- Every call sets `WorkingDirectory` (the workspace root, or the sandbox-confined
+  `cwd`) and a `TimeoutMs`; a non-zero exit or timeout → `Error` carrying captured
+  stderr (trimmed).
+- `push` and `worktree` are Destructive and host-gated every time (`Scope=None`);
+  the server still just runs them — the *server* never decides policy, only
+  executes safely.
 
 ## 5. CommandMcpServer (server name `command`) — the sharpest edge
 

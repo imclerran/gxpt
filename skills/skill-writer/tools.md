@@ -32,7 +32,9 @@ Tools are addressed as `server__tool` (for example `files__read`, `git__commit`)
 - Read: `git__status`, `git__diff`, `git__log`
 - Common: `git__add`, `git__commit`, `git__branch`, `git__stash`, `git__fetch`
 - Heavier / history-changing: `git__push`, `git__pull`, `git__checkout`, `git__restore`,
-  `git__merge`, `git__rebase`, `git__reset`, `git__rm`, `git__cherry_pick`
+  `git__merge`, `git__rebase`, `git__reset`, `git__rm`, `git__cherry_pick`, `git__worktree`
+- Every git tool accepts an optional `cwd` (a workspace subdirectory, e.g. a worktree
+  created with `git__worktree`) to run that operation inside it.
 
 ## web - reach the internet
 - `web__search` - search the web; returns titles, URLs, and snippets
