@@ -4,12 +4,14 @@ using System.Windows.Forms;
 
 namespace GxPT
 {
-    // The Manage Plugins dialog (File > Plugins > Manage): a list of installed plugins with per-row
-    // Enable/Disable, Export, Uninstall, and Details, plus an Install button. State is read live from the
+    // The Manage Plugins dialog (File > Plugins Manager): a list of installed plugins with per-row
+    // Enable/Disable, Export, Uninstall, and Details, plus global Install (a .gxpl) and New (author a .gxpl
+    // from a checklist) buttons - so this one dialog is the whole plugin UI. State is read live from the
     // plugin registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and
     // the list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
     internal sealed class PluginManagerForm : Form
     {
+        private readonly string _workingDir;
         private readonly ListView _list;
         private readonly Button _toggle;
         private readonly Button _export;
@@ -21,18 +23,21 @@ namespace GxPT
         private readonly ToolStripMenuItem _miUninstall;
         private readonly ToolStripMenuItem _miDetails;
 
-        public PluginManagerForm()
+        // workingDir scopes which project skills/agents the New... (authoring) flow offers; may be null.
+        public PluginManagerForm(string workingDir)
         {
+            _workingDir = workingDir;
+
             Text = "Manage Plugins";
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(640, 360);
-            MinimumSize = new Size(560, 320);
+            ClientSize = new Size(660, 360);
+            MinimumSize = new Size(600, 320);
 
             _list = new ListView();
-            _list.SetBounds(12, 12, 616, 280);
+            _list.SetBounds(12, 12, 636, 280);
             _list.View = View.Details;
             _list.FullRowSelect = true;
             _list.MultiSelect = false;
@@ -46,21 +51,19 @@ namespace GxPT
             _list.SelectedIndexChanged += new EventHandler(OnSelectionChanged);
             _list.MouseDown += new MouseEventHandler(OnListMouseDown);
 
-            Button install = new Button();
-            install.Text = "&Install...";
-            install.SetBounds(12, 300, 90, 26);
-            install.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            install.Click += new EventHandler(OnInstall);
+            // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
+            Button install = MakeButton("&Install...", 12, OnInstall);
+            Button newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
-            // One state-aware button: reads "Enable" or "Disable" for the selected plugin (see UpdateButtons).
-            _toggle = MakeButton("Disa&ble", 108, OnToggle);
-            _export = MakeButton("&Export...", 187, OnExport);
-            _uninstall = MakeButton("&Uninstall", 266, OnUninstall);
-            _details = MakeButton("De&tails...", 350, OnDetails);
+            // Per-row actions. The toggle reads "Enable" or "Disable" for the selection (see UpdateButtons).
+            _toggle = MakeButton("Disa&ble", 168, OnToggle);
+            _export = MakeButton("&Export...", 246, OnExport);
+            _uninstall = MakeButton("&Uninstall", 324, OnUninstall);
+            _details = MakeButton("De&tails...", 402, OnDetails);
 
             Button close = new Button();
             close.Text = "&Close";
-            close.SetBounds(552, 300, 76, 26);
+            close.SetBounds(572, 300, 76, 26);
             close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             close.DialogResult = DialogResult.OK;
 
@@ -75,6 +78,7 @@ namespace GxPT
 
             Controls.Add(_list);
             Controls.Add(install);
+            Controls.Add(newPlugin);
             Controls.Add(_toggle);
             Controls.Add(_export);
             Controls.Add(_uninstall);
@@ -98,7 +102,7 @@ namespace GxPT
         {
             Button b = new Button();
             b.Text = text;
-            b.SetBounds(x, 300, 78, 26);
+            b.SetBounds(x, 300, 76, 26);
             b.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             b.Click += onClick;
             return b;
@@ -187,6 +191,13 @@ namespace GxPT
         private void OnInstall(object sender, EventArgs e)
         {
             if (PluginImportExportManager.InstallInteractive(this)) Reload();
+        }
+
+        // Author a new .gxpl from a checklist of skills/agents. Exporting writes a file but doesn't install,
+        // so the installed list is unchanged - no reload.
+        private void OnNew(object sender, EventArgs e)
+        {
+            PluginImportExportManager.ExportInteractive(this, _workingDir);
         }
 
         // Flips the selected plugin's state. Quiet: no success popup - the reloaded State column is the

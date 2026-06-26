@@ -2221,41 +2221,30 @@ namespace GxPT
         // change which skills are active, so refresh the skills server once it closes.
         internal void SlashManagePlugins()
         {
-            using (var dlg = new PluginManagerForm())
+            using (var dlg = new PluginManagerForm(SlashWorkingDir()))
                 dlg.ShowDialog(this);
             SlashRefreshSkillsServer();
         }
 
-        // Builds the File > Plugins submenu (Install / Export / Manage) in code rather than the Designer, to
-        // avoid hand-editing generated menu plumbing. Inserted just after File > Export.
+        // Adds a single "Plugins Manager..." item to the File menu (after Export) in code rather than the
+        // Designer, to avoid hand-editing generated menu plumbing. Install/uninstall/export/author all live
+        // in the dialog, so one entry suffices; /plugin still offers the same actions from the command bar.
         private void BuildPluginsMenu()
         {
             try
             {
                 if (miFile == null) return;
 
-                var install = new ToolStripMenuItem("&Install Plugin...");
-                install.Click += new EventHandler(miPluginInstall_Click);
-                var export = new ToolStripMenuItem("&Export Plugin...");
-                export.Click += new EventHandler(miPluginExport_Click);
-                var manage = new ToolStripMenuItem("&Manage Plugins...");
+                var manage = new ToolStripMenuItem("&Plugins Manager...");
                 manage.Click += new EventHandler(miPluginManage_Click);
 
-                var plugins = new ToolStripMenuItem("&Plugins");
-                plugins.DropDownItems.Add(install);
-                plugins.DropDownItems.Add(export);
-                plugins.DropDownItems.Add(new ToolStripSeparator());
-                plugins.DropDownItems.Add(manage);
-
                 int idx = miExport != null ? miFile.DropDownItems.IndexOf(miExport) : -1;
-                if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, plugins);
-                else miFile.DropDownItems.Add(plugins);
+                if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, manage);
+                else miFile.DropDownItems.Add(manage);
             }
             catch { }
         }
 
-        private void miPluginInstall_Click(object sender, EventArgs e) { SlashInstallPlugin(); }
-        private void miPluginExport_Click(object sender, EventArgs e) { SlashExportPlugin(); }
         private void miPluginManage_Click(object sender, EventArgs e) { SlashManagePlugins(); }
 
         // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
