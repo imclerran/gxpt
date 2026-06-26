@@ -79,7 +79,11 @@ namespace GxPT
             for (int i = 0; i < plugins.Count; i++)
             {
                 PluginManifest m = plugins[i];
-                sb.Append('\n').Append("  ").Append(SlugOf(m));
+                // Show the original name; append the slug only when it differs (the slug is what enable/
+                // disable/uninstall take as their argument).
+                sb.Append('\n').Append("  ").Append(m.Name);
+                string slug = SlugOf(m);
+                if (!string.Equals(slug, m.Name, StringComparison.Ordinal)) sb.Append(" (").Append(slug).Append(")");
                 if (!string.IsNullOrEmpty(m.Version)) sb.Append(" v").Append(m.Version);
                 if (!m.Enabled) sb.Append(" (disabled)");
                 sb.Append(" - ").Append(m.Skills.Count).Append(" skill(s), ")
@@ -123,7 +127,8 @@ namespace GxPT
 
                 string slug = SlugOf(plugins[i]);
                 if (partial.Length > 0 && !SlashMatch.HyphenPrefix(slug, partial)) continue;
-                result.Add(new ArgCompletion(slug + (plugins[i].Enabled ? "" : " (disabled)"),
+                // Label with the original name; insert the slug (the stable single-token argument).
+                result.Add(new ArgCompletion(plugins[i].Name + (plugins[i].Enabled ? "" : " (disabled)"),
                     verb + " " + slug, false));
             }
             return result;

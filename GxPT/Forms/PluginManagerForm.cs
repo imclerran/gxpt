@@ -128,7 +128,9 @@ namespace GxPT
                 for (int i = 0; i < plugins.Count; i++)
                 {
                     PluginManifest m = plugins[i];
-                    ListViewItem lvi = new ListViewItem(SkillSlug.Make(m.Name) ?? m.Name);
+                    // Show the plugin's original name (e.g. "TPRM"); the slug is its on-disk identity, not
+                    // its label.
+                    ListViewItem lvi = new ListViewItem(m.Name);
                     lvi.SubItems.Add(m.Version ?? string.Empty);
                     lvi.SubItems.Add(m.Enabled ? "Enabled" : "Disabled");
                     lvi.SubItems.Add(m.Skills.Count.ToString());
