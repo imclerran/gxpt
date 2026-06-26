@@ -12,14 +12,12 @@ namespace GxPT
     internal sealed class PluginManagerForm : Form
     {
         private readonly ListView _list;
-        private readonly Button _enable;
-        private readonly Button _disable;
+        private readonly Button _toggle;
         private readonly Button _export;
         private readonly Button _uninstall;
         private readonly Button _reveal;
         private readonly ContextMenuStrip _menu;
-        private readonly ToolStripMenuItem _miEnable;
-        private readonly ToolStripMenuItem _miDisable;
+        private readonly ToolStripMenuItem _miToggle;
         private readonly ToolStripMenuItem _miExport;
         private readonly ToolStripMenuItem _miUninstall;
         private readonly ToolStripMenuItem _miReveal;
@@ -56,11 +54,11 @@ namespace GxPT
             install.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             install.Click += new EventHandler(OnInstall);
 
-            _enable = MakeButton("E&nable", 108, OnEnable);
-            _disable = MakeButton("&Disable", 187, OnDisable);
-            _export = MakeButton("&Export...", 266, OnExport);
-            _uninstall = MakeButton("&Uninstall", 350, OnUninstall);
-            _reveal = MakeButton("&Reveal", 434, OnReveal);
+            // One state-aware button: reads "Enable" or "Disable" for the selected plugin (see UpdateButtons).
+            _toggle = MakeButton("Disa&ble", 108, OnToggle);
+            _export = MakeButton("&Export...", 187, OnExport);
+            _uninstall = MakeButton("&Uninstall", 266, OnUninstall);
+            _reveal = MakeButton("&Reveal", 350, OnReveal);
 
             Button close = new Button();
             close.Text = "&Close";
@@ -69,8 +67,7 @@ namespace GxPT
             close.DialogResult = DialogResult.OK;
 
             _menu = new ContextMenuStrip();
-            _miEnable = AddMenuItem("Enable", OnEnable);
-            _miDisable = AddMenuItem("Disable", OnDisable);
+            _miToggle = AddMenuItem("Disable", OnToggle);
             _miExport = AddMenuItem("Export...", OnExport);
             _menu.Items.Add(new ToolStripSeparator());
             _miUninstall = AddMenuItem("Uninstall", OnUninstall);
@@ -80,8 +77,7 @@ namespace GxPT
 
             Controls.Add(_list);
             Controls.Add(install);
-            Controls.Add(_enable);
-            Controls.Add(_disable);
+            Controls.Add(_toggle);
             Controls.Add(_export);
             Controls.Add(_uninstall);
             Controls.Add(_reveal);
@@ -155,8 +151,10 @@ namespace GxPT
         {
             PluginManifest m = Selected();
             bool has = m != null;
-            _enable.Enabled = has && !m.Enabled;
-            _disable.Enabled = has && m.Enabled;
+            // The toggle reads the action it will perform on the selection: "Disable" an enabled plugin,
+            // "Enable" a disabled one. With no selection it's disabled (label left at its prior state).
+            if (has) _toggle.Text = m.Enabled ? "Disa&ble" : "E&nable";
+            _toggle.Enabled = has;
             _export.Enabled = has;
             _uninstall.Enabled = has;
             _reveal.Enabled = has;
@@ -176,8 +174,7 @@ namespace GxPT
         {
             PluginManifest m = Selected();
             if (m == null) { e.Cancel = true; return; }
-            _miEnable.Enabled = !m.Enabled;
-            _miDisable.Enabled = m.Enabled;
+            _miToggle.Text = m.Enabled ? "Disable" : "Enable";
         }
 
         // ---- actions ----
@@ -187,17 +184,12 @@ namespace GxPT
             if (PluginImportExportManager.InstallInteractive(this)) Reload();
         }
 
-        private void OnEnable(object sender, EventArgs e)
+        // Flips the selected plugin's state. Quiet: no success popup - the reloaded State column is the
+        // feedback.
+        private void OnToggle(object sender, EventArgs e)
         {
             PluginManifest m = Selected();
-            // Quiet: no success popup - the reloaded State column is the feedback.
-            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, true, false)) Reload();
-        }
-
-        private void OnDisable(object sender, EventArgs e)
-        {
-            PluginManifest m = Selected();
-            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, false, false)) Reload();
+            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, !m.Enabled, false)) Reload();
         }
 
         private void OnExport(object sender, EventArgs e)
