@@ -79,6 +79,7 @@
     <Compile Include="..\GxPT\Services\Skills\SkillResolve.cs" Link="Linked\Skills\SkillResolve.cs" />
     <Compile Include="..\GxPT\Services\Skills\ExtensionsToolGate.cs" Link="Linked\Skills\ExtensionsToolGate.cs" />
     <Compile Include="..\GxPT\Services\Plugins\PluginManifest.cs" Link="Linked\Plugins\PluginManifest.cs" />
+    <Compile Include="..\GxPT\Services\Plugins\PluginRoots.cs" Link="Linked\Plugins\PluginRoots.cs" />
     <Compile Include="..\GxPT\Services\Plugins\PluginRegistry.cs" Link="Linked\Plugins\PluginRegistry.cs" />
     <Compile Include="..\GxPT\Services\Plugins\PluginImportExportService.cs" Link="Linked\Plugins\PluginImportExportService.cs" />
     <Compile Include="..\GxPT\Services\Plugins\RequiredTool.cs" Link="Linked\Plugins\RequiredTool.cs" />
@@ -114,6 +115,7 @@
     <Compile Include="..\GxPT\Services\Commands\IArgumentCompleter.cs" Link="Linked\Commands\IArgumentCompleter.cs" />
     <Compile Include="..\GxPT\Services\Commands\ClientCommands.cs" Link="Linked\Commands\ClientCommands.cs" />
     <Compile Include="..\GxPT\Services\Commands\SkillCommands.cs" Link="Linked\Commands\SkillCommands.cs" />
+    <Compile Include="..\GxPT\Services\Commands\PluginCommands.cs" Link="Linked\Commands\PluginCommands.cs" />
     <Compile Include="..\GxPT\Services\Commands\PromptCommand.cs" Link="Linked\Commands\PromptCommand.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashCommandGate.cs" Link="Linked\Commands\SlashCommandGate.cs" />
     <Compile Include="..\GxPT\Services\Commands\SlashMatch.cs" Link="Linked\Commands\SlashMatch.cs" />
