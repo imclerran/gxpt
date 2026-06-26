@@ -97,12 +97,12 @@ namespace GxPT
                 g.Controls.Add(header);
 
                 RadioButton any = new RadioButton();
-                any.Text = "Any of";
-                any.SetBounds(8, 24, 70, 20);
+                any.Text = "Any";
+                any.SetBounds(8, 24, 60, 20);
                 any.Checked = s.Mode != RequiredToolMode.All;
                 RadioButton all = new RadioButton();
                 all.Text = "All";
-                all.SetBounds(86, 24, 60, 20);
+                all.SetBounds(76, 24, 60, 20);
                 all.Checked = s.Mode == RequiredToolMode.All;
                 g.Controls.Add(any);
                 g.Controls.Add(all);

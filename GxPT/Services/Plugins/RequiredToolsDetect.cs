@@ -103,22 +103,40 @@ namespace GxPT
             return list;
         }
 
-        // The interchangeable PowerShell host tools the command server may expose (Windows PowerShell 2.0-5.1,
-        // PowerShell 1.0, PowerShell Core). A skill shipping a .ps1 needs ANY of these.
+        // The PowerShell host tools the command server may expose, in preference order: Windows PowerShell
+        // (Desktop 2.0-5.1), then PowerShell Core (6/7), then legacy 1.0. A skill shipping a .ps1 needs one
+        // of these.
         public static readonly string[] PowerShellHostTools = new string[]
         {
             "command__powershell", "command__pwsh", "command__powershell_v1"
         };
 
-        // Ensures the seed requires a PowerShell host (any-of the known hosts), pre-checked. Used when a
-        // bundled skill ships a .ps1 - the requirement is "some PowerShell", independent of which host the
-        // author happens to have. Hosts present in the catalog are flagged connected; absent ones are still
-        // listed so the requirement stays satisfiable by whichever host the installer has.
+        // Ensures the seed requires a PowerShell host (used when a bundled skill ships a .ps1). Only hosts
+        // actually present in the catalog are offered, and exactly one is pre-checked: the highest-preference
+        // available host (powershell > pwsh > powershell_v1). The author can check additional hosts for an
+        // "any of these" requirement. If no host is present at all, all three are listed (unchecked, not
+        // connected) so a requirement can still be declared for the installer's sake.
         public static void AddPowerShellRequirement(IList<ToolGroupSeed> seed, IEnumerable<string> available)
         {
             if (seed == null) return;
             HashSet<string> avail = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (available != null) foreach (string n in available) if (!string.IsNullOrEmpty(n)) avail.Add(n);
+
+            List<string> show = new List<string>();
+            for (int i = 0; i < PowerShellHostTools.Length; i++)
+                if (avail.Contains(PowerShellHostTools[i])) show.Add(PowerShellHostTools[i]);
+
+            string preferred;
+            if (show.Count > 0)
+            {
+                preferred = show[0]; // highest-preference available host
+            }
+            else
+            {
+                // None installed: list all so the author can still require one; default to PowerShell Core.
+                for (int i = 0; i < PowerShellHostTools.Length; i++) show.Add(PowerShellHostTools[i]);
+                preferred = "command__pwsh";
+            }
 
             string server = RequiredTool.ServerOf(PowerShellHostTools[0]); // "command"
             ToolGroupSeed g = null;
@@ -126,17 +144,18 @@ namespace GxPT
                 if (string.Equals(seed[i].Server, server, StringComparison.OrdinalIgnoreCase)) { g = seed[i]; break; }
             if (g == null) { g = new ToolGroupSeed(); g.Server = server; seed.Add(g); }
 
-            for (int i = 0; i < PowerShellHostTools.Length; i++)
+            for (int i = 0; i < show.Count; i++)
             {
-                string id = PowerShellHostTools[i];
+                string id = show[i];
+                bool chk = string.Equals(id, preferred, StringComparison.OrdinalIgnoreCase);
                 bool present = false;
                 for (int k = 0; k < g.Items.Count; k++)
                     if (string.Equals(g.Items[k].Id, id, StringComparison.OrdinalIgnoreCase))
-                    { g.Items[k].Checked = true; present = true; break; }
+                    { g.Items[k].Checked = chk; present = true; break; }
                 if (!present)
                 {
                     ToolSeedItem it = new ToolSeedItem();
-                    it.Id = id; it.Checked = true; it.Connected = avail.Contains(id);
+                    it.Id = id; it.Checked = chk; it.Connected = avail.Contains(id);
                     g.Items.Add(it);
                 }
                 if (avail.Contains(id)) g.ServerConnected = true;

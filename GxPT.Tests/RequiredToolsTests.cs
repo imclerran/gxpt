@@ -189,23 +189,40 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void AddPowerShellRequirement_adds_any_host_group_pre_checked()
+        public void AddPowerShellRequirement_offers_only_available_hosts_and_checks_one()
         {
+            // Only pwsh is installed (powershell / powershell_v1 absent).
             List<ToolGroupSeed> seed = new List<ToolGroupSeed>();
             RequiredToolsDetect.AddPowerShellRequirement(seed, new string[] { "command__pwsh", "command__run" });
 
             ToolGroupSeed cmd = Find(seed, "command");
             Assert.NotNull(cmd);
-            Assert.Equal(3, cmd.Items.Count);                                  // all three hosts
-            Assert.True(cmd.Items.TrueForAll(delegate(ToolSeedItem t) { return t.Checked; }));
-            Assert.True(cmd.ServerConnected);
-            Assert.True(Item(cmd, "command__pwsh").Connected);                  // present in catalog
-            Assert.False(Item(cmd, "command__powershell_v1").Connected);       // absent but still listed
+            Assert.Single(cmd.Items);                                  // only the available host is offered
+            Assert.Equal("command__pwsh", cmd.Items[0].Id);
+            Assert.True(cmd.Items[0].Checked);
+            Assert.True(cmd.Items[0].Connected);
 
-            // The resulting requirement is "any of the hosts".
             RequiredToolGroup g = FindGroup(RequiredToolsDetect.ToGroups(seed), "command");
             Assert.Contains("command__pwsh", g.Tools);
             Assert.Equal(RequiredToolMode.AnyOf, g.Mode);
+        }
+
+        [Fact]
+        public void AddPowerShellRequirement_prefers_windows_powershell_when_present()
+        {
+            // Both Windows PowerShell and Core present: offer both, pre-check only powershell.
+            List<ToolGroupSeed> seed = new List<ToolGroupSeed>();
+            RequiredToolsDetect.AddPowerShellRequirement(seed, new string[] { "command__powershell", "command__pwsh" });
+
+            ToolGroupSeed cmd = Find(seed, "command");
+            Assert.Equal(2, cmd.Items.Count);
+            Assert.True(Item(cmd, "command__powershell").Checked);
+            Assert.False(Item(cmd, "command__pwsh").Checked);
+
+            // Only the checked host becomes the requirement.
+            RequiredToolGroup g = FindGroup(RequiredToolsDetect.ToGroups(seed), "command");
+            Assert.Contains("command__powershell", g.Tools);
+            Assert.DoesNotContain("command__pwsh", g.Tools);
         }
 
         private static ToolSeedItem Item(ToolGroupSeed g, string id)
