@@ -175,6 +175,13 @@ namespace GxPT
 
         public static bool SetEnabled(IWin32Window owner, string name, bool enabled)
         {
+            return SetEnabled(owner, name, enabled, true);
+        }
+
+        // announce=false suppresses the success message box (the Manage dialog reloads and the State column
+        // already shows the change, so a popup there is just noise). Failures are always reported.
+        public static bool SetEnabled(IWin32Window owner, string name, bool enabled, bool announce)
+        {
             string skillsRoot, agentsRoot, pluginsRoot;
             if (!ResolveRoots(owner, out skillsRoot, out agentsRoot, out pluginsRoot)) return false;
             try
@@ -183,7 +190,8 @@ namespace GxPT
                     PluginImportExportService.EnablePlugin(name, skillsRoot, agentsRoot, pluginsRoot);
                 else
                     PluginImportExportService.DisablePlugin(name, skillsRoot, agentsRoot, pluginsRoot);
-                Info(owner, (enabled ? "Enabled" : "Disabled") + " plugin '" + name + "'.");
+                if (announce)
+                    Info(owner, (enabled ? "Enabled" : "Disabled") + " plugin '" + name + "'.");
                 return true;
             }
             catch (Exception ex)

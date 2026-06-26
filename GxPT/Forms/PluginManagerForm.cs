@@ -190,13 +190,14 @@ namespace GxPT
         private void OnEnable(object sender, EventArgs e)
         {
             PluginManifest m = Selected();
-            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, true)) Reload();
+            // Quiet: no success popup - the reloaded State column is the feedback.
+            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, true, false)) Reload();
         }
 
         private void OnDisable(object sender, EventArgs e)
         {
             PluginManifest m = Selected();
-            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, false)) Reload();
+            if (m != null && PluginImportExportManager.SetEnabled(this, m.Name, false, false)) Reload();
         }
 
         private void OnExport(object sender, EventArgs e)
