@@ -2241,94 +2241,11 @@ namespace GxPT
                 int idx = miExport != null ? miFile.DropDownItems.IndexOf(miExport) : -1;
                 if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, manage);
                 else miFile.DropDownItems.Add(manage);
-
-                // Let the plugin manager reach the live MCP tool catalog (required-tools detection + check).
-                PluginImportExportManager.CurrentTools = CurrentToolSnapshot;
-                PluginImportExportManager.ProbeTools = ProbeToolSnapshot;
             }
             catch { }
         }
 
         private void miPluginManage_Click(object sender, EventArgs e) { SlashManagePlugins(); }
-
-        // The tier classifier (the same one the approval gate / AgentToolResolver use). Cautious Write default
-        // when there's no registry yet.
-        private Func<string, ToolTier> TierOfFunc()
-        {
-            if (_mcpRegistry == null) return delegate(string n) { return ToolTier.Write; };
-            ToolApprovalPolicy policy = new ToolApprovalPolicy(new ToolClassifier(), null, null, _mcpRegistry);
-            return policy.TierOf;
-        }
-
-        private System.Collections.Generic.IList<string> SafeNames(string workdir)
-        {
-            try { return _mcpRegistry != null ? _mcpRegistry.NamesForWorkdir(workdir) : new System.Collections.Generic.List<string>(); }
-            catch { return new System.Collections.Generic.List<string>(); }
-        }
-
-        // An instant snapshot of the tools available in the active workspace (install / Details check).
-        internal ToolSnapshot CurrentToolSnapshot()
-        {
-            ToolSnapshot snap = new ToolSnapshot();
-            snap.TierOf = TierOfFunc();
-            snap.Names = SafeNames(SlashWorkingDir());
-            return snap;
-        }
-
-        // Connects every enabled server to a throwaway workspace and snapshots the full tool set (export
-        // required-tools detection). EnsureWorkingDir blocks, so it runs on a worker thread behind a modal
-        // wait; falls back to the current workspace's tools if the probe can't run.
-        internal ToolSnapshot ProbeToolSnapshot()
-        {
-            Func<string, ToolTier> tierOf = TierOfFunc();
-            string wd = SlashWorkingDir();
-            System.Collections.Generic.IList<string>[] box = new System.Collections.Generic.IList<string>[1];
-
-            System.Threading.Thread t = new System.Threading.Thread(delegate()
-            {
-                try { box[0] = ProbeNames(wd); }
-                catch { }
-            });
-            t.IsBackground = true;
-
-            using (ToolProbeWaitForm wait = new ToolProbeWaitForm())
-            {
-                wait.Worker = t;
-                t.Start();
-                wait.ShowDialog(this);
-            }
-
-            ToolSnapshot snap = new ToolSnapshot();
-            snap.TierOf = tierOf;
-            snap.Names = box[0] != null ? box[0] : SafeNames(wd);
-            return snap;
-        }
-
-        // Worker body: bind a fresh temp workspace so the workspace-scoped servers (files/git/msbuild/...)
-        // connect, read the catalog, then tear it down. Falls back to the current workspace's names.
-        private System.Collections.Generic.IList<string> ProbeNames(string fallbackWorkdir)
-        {
-            string temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-                "GxPT-toolprobe-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                System.IO.Directory.CreateDirectory(temp);
-                if (_mcpHost != null && _mcpRegistry != null)
-                {
-                    _mcpHost.EnsureWorkingDir(temp); // blocks until the scoped servers connect
-                    return _mcpRegistry.NamesForWorkdir(temp);
-                }
-            }
-            catch { }
-            finally
-            {
-                try { if (_mcpHost != null) _mcpHost.ReleaseWorkingDir(temp); }
-                catch { }
-                try { if (System.IO.Directory.Exists(temp)) System.IO.Directory.Delete(temp, true); }
-                catch { }
-            }
-            return SafeNames(fallbackWorkdir);
-        }
 
         // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
         internal void SlashSetPluginEnabled(string name, bool enabled)

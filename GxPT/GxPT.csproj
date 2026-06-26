@@ -98,12 +98,6 @@
     <Compile Include="Forms\PluginDetailsForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\RequiredToolsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\ToolProbeWaitForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
     <Compile Include="Controls\ChatTranscriptControl.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -136,10 +130,6 @@
     <Compile Include="Services\Plugins\PluginRoots.cs" />
     <Compile Include="Services\Plugins\PluginRegistry.cs" />
     <Compile Include="Services\Plugins\PluginImportExportService.cs" />
-    <Compile Include="Services\Plugins\RequiredTool.cs" />
-    <Compile Include="Services\Plugins\RequiredToolsCheck.cs" />
-    <Compile Include="Services\Plugins\RequiredToolsDetect.cs" />
-    <Compile Include="Services\Plugins\ToolSnapshot.cs" />
     <Compile Include="Services\Agents\Agent.cs" />
     <Compile Include="Services\Agents\AgentFrontmatter.cs" />
     <Compile Include="Services\Agents\AgentCatalog.cs" />

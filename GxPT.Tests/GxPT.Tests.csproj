@@ -82,9 +82,6 @@
     <Compile Include="..\GxPT\Services\Plugins\PluginRoots.cs" Link="Linked\Plugins\PluginRoots.cs" />
     <Compile Include="..\GxPT\Services\Plugins\PluginRegistry.cs" Link="Linked\Plugins\PluginRegistry.cs" />
     <Compile Include="..\GxPT\Services\Plugins\PluginImportExportService.cs" Link="Linked\Plugins\PluginImportExportService.cs" />
-    <Compile Include="..\GxPT\Services\Plugins\RequiredTool.cs" Link="Linked\Plugins\RequiredTool.cs" />
-    <Compile Include="..\GxPT\Services\Plugins\RequiredToolsCheck.cs" Link="Linked\Plugins\RequiredToolsCheck.cs" />
-    <Compile Include="..\GxPT\Services\Plugins\RequiredToolsDetect.cs" Link="Linked\Plugins\RequiredToolsDetect.cs" />
     <Compile Include="..\GxPT\Services\Agents\Agent.cs" Link="Linked\Agents\Agent.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentFrontmatter.cs" Link="Linked\Agents\AgentFrontmatter.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentCatalog.cs" Link="Linked\Agents\AgentCatalog.cs" />

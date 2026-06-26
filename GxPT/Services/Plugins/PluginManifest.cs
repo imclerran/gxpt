@@ -28,16 +28,11 @@ namespace GxPT
         public List<string> Skills { get; private set; }
         public List<string> Agents { get; private set; }
 
-        // The MCP tools the plugin's agents require (see RequiredToolsDetect/Check). Empty when none were
-        // declared; an older reader simply ignores the key.
-        public List<RequiredToolGroup> RequiredTools { get; private set; }
-
         public PluginManifest()
         {
             Enabled = true;
             Skills = new List<string>();
             Agents = new List<string>();
-            RequiredTools = new List<RequiredToolGroup>();
         }
 
         public string ToJson()
@@ -49,7 +44,6 @@ namespace GxPT
             obj["enabled"] = Enabled;
             obj["skills"] = Skills.ToArray();
             obj["agents"] = Agents.ToArray();
-            if (RequiredTools.Count > 0) obj["requiredTools"] = RequiredTool.ToJsonValue(RequiredTools);
 
             JavaScriptSerializer ser = new JavaScriptSerializer();
             return ser.Serialize(obj);
@@ -78,11 +72,6 @@ namespace GxPT
                 }
                 ReadStringArray(obj, "skills", m.Skills);
                 ReadStringArray(obj, "agents", m.Agents);
-                if (obj.TryGetValue("requiredTools", out v) && v != null)
-                {
-                    List<RequiredToolGroup> rt = RequiredTool.FromJsonValue(v);
-                    if (rt != null) { m.RequiredTools.Clear(); m.RequiredTools.AddRange(rt); }
-                }
             }
             catch { }
             return m;

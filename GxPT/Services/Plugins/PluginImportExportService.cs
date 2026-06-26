@@ -52,15 +52,6 @@ namespace GxPT
         public static void ExportPlugin(string name, string version, string description,
             IEnumerable<Skill> skills, IEnumerable<Agent> agents, string archivePath)
         {
-            ExportPlugin(name, version, description, skills, agents, null, archivePath);
-        }
-
-        // Overload carrying the required-tools the agents need (see RequiredToolsDetect). Null/empty writes no
-        // requiredTools key.
-        public static void ExportPlugin(string name, string version, string description,
-            IEnumerable<Skill> skills, IEnumerable<Agent> agents,
-            IList<RequiredToolGroup> requiredTools, string archivePath)
-        {
             if (string.IsNullOrEmpty(name))
                 throw new ArgumentException("Plugin name is required.", "name");
             if (string.IsNullOrEmpty(archivePath))
@@ -79,7 +70,6 @@ namespace GxPT
             manifest.Version = version;
             manifest.Description = description;
             manifest.Enabled = true;
-            if (requiredTools != null) manifest.RequiredTools.AddRange(requiredTools);
 
             using (var zip = new ZipFile())
             {
@@ -209,7 +199,7 @@ namespace GxPT
                     agents.Add(new Agent(slug, slug, string.Empty, null, AgentMaxTier.Write, null, 0, file, AgentSource.User));
             }
 
-            ExportPlugin(m.Name, m.Version, m.Description, skills, agents, m.RequiredTools, archivePath);
+            ExportPlugin(m.Name, m.Version, m.Description, skills, agents, archivePath);
         }
 
         // Installs (or upgrades) the archive's plugin. Member files are staged and validated before anything
@@ -300,7 +290,6 @@ namespace GxPT
                 record.Version = archived.Version;
                 record.Description = archived.Description;
                 record.Enabled = true;
-                record.RequiredTools.AddRange(archived.RequiredTools); // carry the declared requirements
                 try
                 {
                     foreach (KeyValuePair<string, string> kv in skillDirs)
