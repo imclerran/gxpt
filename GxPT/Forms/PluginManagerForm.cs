@@ -50,6 +50,7 @@ namespace GxPT
             _list.Columns.Add("Agents", 70);
             _list.SelectedIndexChanged += new EventHandler(OnSelectionChanged);
             _list.MouseDown += new MouseEventHandler(OnListMouseDown);
+            _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
             Button install = MakeButton("&Install...", 12, OnInstall);
