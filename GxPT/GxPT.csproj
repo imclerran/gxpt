@@ -89,6 +89,15 @@
     <Compile Include="Forms\AboutForm.Designer.cs">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\PluginExportForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\PluginManagerForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\PluginDetailsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Controls\ChatTranscriptControl.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -102,6 +111,7 @@
     <Compile Include="Controls\StatusStripTooltipFix.cs" />
     <Compile Include="Managers\ImportExportManager.cs" />
     <Compile Include="Managers\SkillImportExportManager.cs" />
+    <Compile Include="Managers\PluginImportExportManager.cs" />
     <Compile Include="Services\AppSettings.cs" />
     <Compile Include="Services\SettingsSchema.cs" />
     <Compile Include="Services\RecentWorkDirs.cs" />
@@ -116,6 +126,10 @@
     <Compile Include="Services\Skills\SkillEnablement.cs" />
     <Compile Include="Services\Skills\SkillResolve.cs" />
     <Compile Include="Services\Skills\ExtensionsToolGate.cs" />
+    <Compile Include="Services\Plugins\PluginManifest.cs" />
+    <Compile Include="Services\Plugins\PluginRoots.cs" />
+    <Compile Include="Services\Plugins\PluginRegistry.cs" />
+    <Compile Include="Services\Plugins\PluginImportExportService.cs" />
     <Compile Include="Services\Agents\Agent.cs" />
     <Compile Include="Services\Agents\AgentFrontmatter.cs" />
     <Compile Include="Services\Agents\AgentCatalog.cs" />
@@ -146,6 +160,7 @@
     <Compile Include="Services\Commands\IArgumentCompleter.cs" />
     <Compile Include="Services\Commands\ClientCommands.cs" />
     <Compile Include="Services\Commands\SkillCommands.cs" />
+    <Compile Include="Services\Commands\PluginCommands.cs" />
     <Compile Include="Services\Commands\MainFormSlashContext.cs" />
     <Compile Include="Services\Commands\PromptCommand.cs" />
     <Compile Include="Services\Commands\SlashCommandGate.cs" />

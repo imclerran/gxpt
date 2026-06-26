@@ -36,6 +36,11 @@ namespace GxPT
         public void ExportConversations() { _form.SlashExportConversations(); }
         public void ExportSkill(Skill skill) { _form.SlashExportSkill(skill); }
         public void ImportArchive() { _form.SlashImportArchive(); }
+        public void ExportPlugin() { _form.SlashExportPlugin(); }
+        public void InstallPlugin() { _form.SlashInstallPlugin(); }
+        public void EnablePlugin(string name) { _form.SlashSetPluginEnabled(name, true); }
+        public void DisablePlugin(string name) { _form.SlashSetPluginEnabled(name, false); }
+        public void UninstallPlugin(string name) { _form.SlashUninstallPlugin(name); }
         public void Compact() { _form.SlashCompact(); }
     }
 

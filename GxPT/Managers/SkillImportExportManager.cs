@@ -11,6 +11,10 @@ namespace GxPT
     {
         private const string DialogFilter = "GxPT Skill (*.gxsk)|*.gxsk|Zip Archive (*.zip)|*.zip";
 
+        // NOTE: ExportSkill (the .gxsk single-skill export) currently has no caller. The "universal .gxpl"
+        // change repointed /export <skill> and File > Export at PluginImportExportManager.ExportSingleSkill,
+        // which writes a one-item .gxpl instead. .gxsk *import* is still wired (ImportSkillFromFile below).
+        // This export path is kept intentionally - it may be brought back as a "plain skill" export option.
         public static bool ExportSkill(IWin32Window owner, Skill skill)
         {
             if (skill == null)

@@ -15,6 +15,7 @@ namespace GxPT
             list.Add(new NewConversationCommand());
             list.Add(new ExportCommand());
             list.Add(new ImportCommand());
+            list.Add(new PluginCommand());
             list.Add(new CompactCommand());
             return list;
         }
@@ -194,9 +195,9 @@ namespace GxPT
     }
 
     // /export [skill-slug] -- with no argument, export all conversations (.gxcv); with a slug, export
-    // that skill as a .gxsk archive. Either way the host opens a save-file dialog. Bundled skills are
-    // not exportable (they ship with every install), so they are hidden from completion and rejected
-    // when typed; only user and project skills are offered.
+    // that skill as a one-item .gxpl plugin. Either way the host opens a save-file dialog. Bundled skills
+    // are not exportable (they ship with every install), so they are hidden from completion and rejected
+    // when typed; only user and project skills are offered. (Multi-item plugins: /plugin export.)
     internal sealed class ExportCommand : ClientCommandBase, IArgumentCompleter
     {
         public override string Name { get { return "export"; } }
@@ -247,12 +248,12 @@ namespace GxPT
         }
     }
 
-    // /import -- import a conversation archive (.gxcv) or a skill (.gxsk) via an open-file dialog;
-    // the host routes the chosen file to the right importer.
+    // /import -- import a conversation archive (.gxcv), a skill (.gxsk), or a plugin (.gxpl) via an
+    // open-file dialog; the host routes the chosen file to the right importer.
     internal sealed class ImportCommand : ClientCommandBase
     {
         public override string Name { get { return "import"; } }
-        public override string Description { get { return "Import conversations or a skill"; } }
+        public override string Description { get { return "Import conversations, a skill, or a plugin"; } }
 
         public override SlashCommandResult Invoke(string args, ISlashCommandContext ctx)
         {

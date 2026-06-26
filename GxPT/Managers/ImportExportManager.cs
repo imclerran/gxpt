@@ -36,6 +36,9 @@ namespace GxPT
             }
         }
 
+        // NOTE: currently unused. File > Import was repointed at the unified importer (MainForm.
+        // SlashImportArchive -> ImportArchiveFromShell) so the menu handles .gxcv/.gxsk/.gxpl alike. Kept as
+        // the conversation-only counterpart to ExportAll; wire it back if a conversations-only import is wanted.
         public static bool ImportAll(IWin32Window owner)
         {
             using (var ofd = new OpenFileDialog
