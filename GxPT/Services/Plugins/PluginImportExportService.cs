@@ -19,6 +19,16 @@ namespace GxPT
         public IList<string> RemovedAgents;
     }
 
+    // One member of an installed plugin, with the human-facing name/description read from its frontmatter
+    // (the manifest stores only slugs). Kind is "skill" or "agent".
+    internal sealed class PluginMemberInfo
+    {
+        public string Kind;
+        public string Slug;
+        public string Name;
+        public string Description;
+    }
+
     // Core plugin import/export (no UI), parallel to SkillImportExportService: throw on failure so callers
     // own the UX. A .gxpl archive is a zip holding a plugin.json manifest at the root plus the member files
     // under skills/<slug>/ and agents/<slug>.md. Install fans those files into the ordinary user skills and
@@ -80,6 +90,80 @@ namespace GxPT
                 zip.AddEntry(PluginRegistry.ManifestFileName, manifest.ToJson(), new UTF8Encoding(false));
                 zip.Save(archivePath);
             }
+        }
+
+        // Lists an installed plugin's members with their frontmatter name/description, read from wherever the
+        // files live (active roots when enabled, the disabled holding area when disabled). Skills first, then
+        // agents, in manifest order. A member whose file is missing/unreadable still appears, with its slug as
+        // the name and an empty description. Throws if the plugin isn't installed.
+        public static IList<PluginMemberInfo> GetPluginDetails(string name, string skillsRoot,
+            string agentsRoot, string pluginsRoot)
+        {
+            PluginRegistry registry = new PluginRegistry(pluginsRoot);
+            PluginManifest m = registry.Load(name);
+            if (m == null) throw new InvalidOperationException("Plugin '" + name + "' is not installed.");
+
+            string disabled = registry.DisabledDir(name);
+            List<PluginMemberInfo> list = new List<PluginMemberInfo>();
+
+            for (int i = 0; i < m.Skills.Count; i++)
+            {
+                string slug = m.Skills[i];
+                string dir = m.Enabled
+                    ? Path.Combine(skillsRoot, slug)
+                    : Path.Combine(Path.Combine(disabled, "skills"), slug);
+                PluginMemberInfo info = NewMember("skill", slug);
+                try
+                {
+                    string file = Path.Combine(dir, "SKILL.md");
+                    if (File.Exists(file))
+                    {
+                        SkillFrontmatter fm = SkillFrontmatter.Parse(File.ReadAllText(file, Encoding.UTF8));
+                        if (fm != null)
+                        {
+                            if (!string.IsNullOrEmpty(fm.Name)) info.Name = fm.Name;
+                            info.Description = fm.Description ?? string.Empty;
+                        }
+                    }
+                }
+                catch { }
+                list.Add(info);
+            }
+
+            for (int i = 0; i < m.Agents.Count; i++)
+            {
+                string slug = m.Agents[i];
+                string file = m.Enabled
+                    ? Path.Combine(agentsRoot, slug + ".md")
+                    : Path.Combine(Path.Combine(disabled, "agents"), slug + ".md");
+                PluginMemberInfo info = NewMember("agent", slug);
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        AgentFrontmatter fm = AgentFrontmatter.Parse(File.ReadAllText(file, Encoding.UTF8));
+                        if (fm != null)
+                        {
+                            if (!string.IsNullOrEmpty(fm.Name)) info.Name = fm.Name;
+                            info.Description = fm.Description ?? string.Empty;
+                        }
+                    }
+                }
+                catch { }
+                list.Add(info);
+            }
+
+            return list;
+        }
+
+        private static PluginMemberInfo NewMember(string kind, string slug)
+        {
+            PluginMemberInfo info = new PluginMemberInfo();
+            info.Kind = kind;
+            info.Slug = slug;
+            info.Name = slug;
+            info.Description = string.Empty;
+            return info;
         }
 
         // Re-exports an already-installed plugin to a .gxpl, packaging its current member files from wherever

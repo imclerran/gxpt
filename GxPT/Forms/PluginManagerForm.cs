@@ -5,19 +5,21 @@ using System.Windows.Forms;
 namespace GxPT
 {
     // The Manage Plugins dialog (File > Plugins > Manage): a list of installed plugins with per-row
-    // Enable/Disable, Export, and Uninstall, plus an Install button. State is read live from the plugin
-    // registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and the
-    // list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
+    // Enable/Disable, Export, Uninstall, and Details, plus an Install button. State is read live from the
+    // plugin registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and
+    // the list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
     internal sealed class PluginManagerForm : Form
     {
         private readonly ListView _list;
         private readonly Button _toggle;
         private readonly Button _export;
         private readonly Button _uninstall;
+        private readonly Button _details;
         private readonly ContextMenuStrip _menu;
         private readonly ToolStripMenuItem _miToggle;
         private readonly ToolStripMenuItem _miExport;
         private readonly ToolStripMenuItem _miUninstall;
+        private readonly ToolStripMenuItem _miDetails;
 
         public PluginManagerForm()
         {
@@ -54,6 +56,7 @@ namespace GxPT
             _toggle = MakeButton("Disa&ble", 108, OnToggle);
             _export = MakeButton("&Export...", 187, OnExport);
             _uninstall = MakeButton("&Uninstall", 266, OnUninstall);
+            _details = MakeButton("De&tails...", 350, OnDetails);
 
             Button close = new Button();
             close.Text = "&Close";
@@ -63,6 +66,7 @@ namespace GxPT
 
             _menu = new ContextMenuStrip();
             _miToggle = AddMenuItem("Disable", OnToggle);
+            _miDetails = AddMenuItem("Details...", OnDetails);
             _miExport = AddMenuItem("Export...", OnExport);
             _menu.Items.Add(new ToolStripSeparator());
             _miUninstall = AddMenuItem("Uninstall", OnUninstall);
@@ -74,6 +78,7 @@ namespace GxPT
             Controls.Add(_toggle);
             Controls.Add(_export);
             Controls.Add(_uninstall);
+            Controls.Add(_details);
             Controls.Add(close);
 
             AcceptButton = close;
@@ -157,6 +162,7 @@ namespace GxPT
             _toggle.Enabled = has;
             _export.Enabled = has;
             _uninstall.Enabled = has;
+            _details.Enabled = has;
         }
 
         private void OnSelectionChanged(object sender, EventArgs e) { UpdateButtons(); }
@@ -201,6 +207,12 @@ namespace GxPT
         {
             PluginManifest m = Selected();
             if (m != null && PluginImportExportManager.Uninstall(this, m.Name)) Reload();
+        }
+
+        private void OnDetails(object sender, EventArgs e)
+        {
+            PluginManifest m = Selected();
+            if (m != null) PluginImportExportManager.ShowDetails(this, m.Name);
         }
     }
 }

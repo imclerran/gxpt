@@ -95,6 +95,9 @@
     <Compile Include="Forms\PluginManagerForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\PluginDetailsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Controls\ChatTranscriptControl.cs">
       <SubType>UserControl</SubType>
     </Compile>

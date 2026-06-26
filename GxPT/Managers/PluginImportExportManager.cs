@@ -224,6 +224,51 @@ namespace GxPT
             }
         }
 
+        // ---- details ----
+
+        // Shows a read-only dialog listing the plugin's member skills and agents with their names and
+        // descriptions (read from frontmatter via the service). Reports an error if details can't be read.
+        public static void ShowDetails(IWin32Window owner, string name)
+        {
+            string skillsRoot, agentsRoot, pluginsRoot;
+            if (!ResolveRoots(owner, out skillsRoot, out agentsRoot, out pluginsRoot)) return;
+
+            System.Collections.Generic.IList<PluginMemberInfo> members;
+            try { members = PluginImportExportService.GetPluginDetails(name, skillsRoot, agentsRoot, pluginsRoot); }
+            catch (Exception ex) { Error(owner, "Could not read plugin details: " + ex.Message); return; }
+
+            StringBuilder sb = new StringBuilder();
+            AppendSection(sb, "Skills", members, "skill");
+            AppendSection(sb, "Agents", members, "agent");
+            if (sb.Length == 0) sb.Append("This plugin has no skills or agents.");
+
+            using (PluginDetailsForm dlg = new PluginDetailsForm("Plugin: " + name, sb.ToString()))
+                dlg.ShowDialog(owner);
+        }
+
+        private static void AppendSection(StringBuilder sb,
+            string header, System.Collections.Generic.IList<PluginMemberInfo> members, string kind)
+        {
+            bool any = false;
+            for (int i = 0; i < members.Count; i++)
+            {
+                PluginMemberInfo info = members[i];
+                if (info.Kind != kind) continue;
+                if (!any)
+                {
+                    if (sb.Length > 0) sb.Append("\r\n");
+                    sb.Append(header).Append(":\r\n");
+                    any = true;
+                }
+                sb.Append("- ").Append(info.Name);
+                if (!string.Equals(info.Name, info.Slug, StringComparison.Ordinal))
+                    sb.Append(" (").Append(info.Slug).Append(")");
+                sb.Append("\r\n");
+                if (!string.IsNullOrEmpty(info.Description))
+                    sb.Append("    ").Append(info.Description).Append("\r\n");
+            }
+        }
+
         // ---- helpers ----
 
         // Gives a dialog the app's title-bar icon, matching the main window. The owner form's icon (the

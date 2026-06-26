@@ -227,6 +227,41 @@ namespace GxPT.Tests
             Assert.False(new PluginRegistry(_pluginsRoot).Exists("pack"));
         }
 
+        // ---- details ----
+
+        [Fact]
+        public void GetPluginDetails_lists_member_names_and_descriptions()
+        {
+            string archive = ExportSample("pack", "1",
+                new[] { WriteSkill("skill-a", "Does A things.") },
+                new[] { WriteAgent("helper", "Helps out.") });
+            PluginImportExportService.ImportPlugin(archive, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            System.Collections.Generic.IList<PluginMemberInfo> details =
+                PluginImportExportService.GetPluginDetails("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            Assert.Equal(2, details.Count);
+            Assert.Equal("skill", details[0].Kind);
+            Assert.Equal("skill-a", details[0].Slug);
+            Assert.Equal("Does A things.", details[0].Description);
+            Assert.Equal("agent", details[1].Kind);
+            Assert.Equal("Helps out.", details[1].Description);
+        }
+
+        [Fact]
+        public void GetPluginDetails_reads_a_disabled_plugin_from_its_holding_area()
+        {
+            string archive = ExportSample("pack", "1", new[] { WriteSkill("skill-a", "A desc.") }, null);
+            PluginImportExportService.ImportPlugin(archive, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.DisablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            System.Collections.Generic.IList<PluginMemberInfo> details =
+                PluginImportExportService.GetPluginDetails("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            Assert.Single(details);
+            Assert.Equal("A desc.", details[0].Description);
+        }
+
         // ---- re-export an installed plugin ----
 
         [Fact]
