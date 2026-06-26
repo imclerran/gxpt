@@ -85,8 +85,8 @@ Tools map to the approval table: `read`/`list`/`search` ReadOnly,
 The **agentic** additions — `search`, `edit`, and `read`'s line-range/numbering
 options — exist so the model can locate and surgically modify code without
 rewriting whole files (fewer tokens, fewer clobbers). All share the sandbox and
-binary sniff; `edit` reuses `write`'s atomic temp-then-move. The **128 KiB** read
-cap (~32K tokens; 1 MiB would be ~250K+) is a **context** guard on what a `read`
+binary sniff; `edit` reuses `write`'s atomic temp-then-move. The **32 KiB** read
+cap (~8K tokens; 1 MiB would be ~250K+) is a **context** guard on what a `read`
 emits into the model — but it never blocks: an over-cap `read` **truncates and hands
 back a continuation token** (`next_start_line`+`next_offset`, or `next_offset` alone
 for a single line longer than the cap) so the model pages through the rest.
@@ -110,7 +110,7 @@ string Resolve(string root, string rel) {
 // NOT a bare StartsWith — so "/root" does not match "/root-evil".
 ```
 
-- `read`: a **whole-file** read that fits the **128 KiB** cap is returned in full
+- `read`: a **whole-file** read that fits the **32 KiB** cap is returned in full
   (**verbatim** — exact bytes preserved — unless numbering is requested) and detects
   binary (NUL byte in a head sample) → `Error("not a text file")`. Over the cap it
   **truncates instead of erroring**: the rendered output (exact UTF-8 bytes — line

@@ -646,11 +646,13 @@ namespace FilesMcpServer.Tests
         [Fact]
         public void Read_range_cap_counts_utf8_bytes_not_chars()
         {
-            // '€' is 3 UTF-8 bytes. Size the file so its char count is under the cap but its byte
-            // count is over: a char-based cap would never trip, so truncation here proves byte
-            // counting. 500 lines × 100 '€' ≈ 50K chars (< cap) but ~150K bytes (> cap=128 KiB).
+            // '€' is 3 UTF-8 bytes. Size the file (relative to the cap) so its char count is under the
+            // cap but its byte count is over: a char-based cap would never trip, so truncation here
+            // proves byte counting. ~Cap/2 chars of '€' is ~1.5× Cap bytes.
+            const int charsPerLine = 200;
+            int numLines = (Cap / 2) / charsPerLine;
             var sb = new StringBuilder();
-            for (int i = 0; i < 500; i++) sb.Append(new string('€', 100)).Append('\n');
+            for (int i = 0; i < numLines; i++) sb.Append(new string('€', charsPerLine)).Append('\n');
             File.WriteAllText(Abs("uni.txt"), sb.ToString(), new UTF8Encoding(false));
             Assert.True(sb.Length < Cap);                                  // char count under cap
             Assert.True(new FileInfo(Abs("uni.txt")).Length > Cap);        // byte count over cap
@@ -661,7 +663,7 @@ namespace FilesMcpServer.Tests
             JToken sc = msgs[0]["result"]["structuredContent"];
             Assert.True((bool)sc["truncated"]);
             int next = (int)sc["next_start_line"];
-            Assert.True(next > 1 && next < 500);    // cut partway through on byte size, not at the last line
+            Assert.True(next > 1 && next < numLines);    // cut partway through on byte size, not at the last line
         }
 
         [Fact]
@@ -698,9 +700,9 @@ namespace FilesMcpServer.Tests
         [Fact]
         public void Read_minified_file_pages_via_next_offset_until_complete()
         {
-            // ~2.5 MiB single line of varied bytes: page through it with offset and reassemble.
+            // A single line of varied bytes ~10× the cap: page through it with offset and reassemble.
             var sb = new StringBuilder();
-            for (int i = 0; i < 2500000; i++) sb.Append((char)('0' + (i % 10)));
+            for (int i = 0; i < 10 * Cap; i++) sb.Append((char)('0' + (i % 10)));
             string original = sb.ToString();
             File.WriteAllText(Abs("min.json"), original, new UTF8Encoding(false));
 

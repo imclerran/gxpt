@@ -1,7 +1,7 @@
 # files__read Truncation & Chunked Reads — Implementation Spec
 
 > **Addendum (post-review).** A code review revised several details after this plan was written;
-> `docs/mcp35-servers-spec.md` is authoritative. Deltas: the output cap is **128 KiB** (~32K
+> `docs/mcp35-servers-spec.md` is authoritative. Deltas: the output cap is **32 KiB** (~8K
 > tokens), not 1 MiB; a **boundary cut returns `next_start_line` AND `next_offset`** so a resume
 > passing both seeks **O(1)** (no rescan from the top) while continuing line numbering — `offset`
 > alone is still the raw byte window for a single over-cap line; the line scanner is **lone-CR

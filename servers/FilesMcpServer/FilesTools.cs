@@ -23,10 +23,10 @@ namespace FilesMcpServer
     {
         // Caps (servers-spec §2).
         // Read OUTPUT cap: the rendered text of a single read lands in the model context, so this is
-        // a token guard. 128 KiB is ~32K tokens (1 MiB would be ~250K+ — larger than most context
+        // a token guard. 32 KiB is ~8K tokens (1 MiB would be ~250K+ — larger than most context
         // windows). Over-cap reads truncate with a continuation token rather than failing.
         // (internal so the tests can size fixtures off it instead of hard-coding the value.)
-        internal const long MaxReadBytes = 128 * 1024;       // 128 KiB
+        internal const long MaxReadBytes = 32 * 1024;        // 32 KiB
         // Multiline search reads a whole file into memory to match across lines; this bounds that
         // memory (not model context), so it stays at 1 MiB independent of the read output cap.
         private const long MaxMultilineFileBytes = 1024 * 1024;   // 1 MiB
