@@ -142,7 +142,7 @@ namespace GxPT
             // No extra env beyond the working directory: engines are discovered, not configured.
             list.Add(NewBuiltIn(MsBuildName, "MSBuildMcpServer.exe", o.ServerDir, true, o.MsBuildEnabled));
 
-            // memory - persistent project memory under GXPT_WORKDIR/.gxpt; workdir-scoped (each
+            // memory - persistent project memory under GXPT_WORKDIR/.gxpt/memory; workdir-scoped (each
             // folder has its own store). The soft index line cap is injected so the server's
             // over-cap nudge matches the user's configured value.
             McpServerSpec mem = NewBuiltIn(MemoryName, "MemoryMcpServer.exe", o.ServerDir, true, o.MemoryEnabled);
