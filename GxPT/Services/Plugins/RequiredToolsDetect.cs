@@ -13,7 +13,8 @@ namespace GxPT
     }
 
     // One server group in the picker: its candidate tool rows, and - when an agent globbed the whole server -
-    // an option to require the whole server (at WholeServerTier).
+    // an option to require the whole server (at WholeServerTier). Mode and WholeServerSelected are the
+    // author-editable state the picker mutates; ToGroups reads them.
     internal sealed class ToolGroupSeed
     {
         public string Server;
@@ -22,10 +23,14 @@ namespace GxPT
         public AgentMaxTier WholeServerTier;
         public bool ServerConnected;
 
+        public RequiredToolMode Mode;          // author choice; default AnyOf
+        public bool WholeServerSelected;       // is the "(whole server)" option chosen
+
         public ToolGroupSeed()
         {
             Items = new List<ToolSeedItem>();
             WholeServerTier = AgentMaxTier.ReadOnly;
+            Mode = RequiredToolMode.AnyOf;
         }
     }
 
@@ -65,7 +70,7 @@ namespace GxPT
                         if (RequiredTool.IsWholeServerGlob(decl))
                         {
                             ToolGroupSeed g = Get(byServer, RequiredTool.ServerOf(decl));
-                            g.OfferWholeServer = true;
+                            if (!g.OfferWholeServer) { g.OfferWholeServer = true; g.WholeServerSelected = true; }
                             if ((int)a.MaxTier > (int)g.WholeServerTier) g.WholeServerTier = a.MaxTier;
                         }
                         else if (!RequiredTool.HasWildcard(decl) && !avail.Contains(decl))
@@ -96,6 +101,37 @@ namespace GxPT
             for (int i = 0; i < list.Count; i++)
                 list[i].Items.Sort(delegate(ToolSeedItem x, ToolSeedItem y) { return string.CompareOrdinal(x.Id, y.Id); });
             return list;
+        }
+
+        // Converts a (possibly author-edited) seed into manifest requiredTools groups. Per server: when the
+        // whole-server option is selected, a single "<server>__*" glob (at the server's tier); otherwise the
+        // checked concrete tool ids. Servers with nothing selected are dropped.
+        public static List<RequiredToolGroup> ToGroups(IEnumerable<ToolGroupSeed> seed)
+        {
+            List<RequiredToolGroup> groups = new List<RequiredToolGroup>();
+            if (seed == null) return groups;
+            foreach (ToolGroupSeed s in seed)
+            {
+                if (s == null || string.IsNullOrEmpty(s.Server)) continue;
+
+                RequiredToolGroup g = new RequiredToolGroup();
+                g.Server = s.Server;
+                g.Mode = s.Mode;
+
+                if (s.OfferWholeServer && s.WholeServerSelected)
+                {
+                    g.Globs.Add(new RequiredToolGlob(s.Server + "__*", s.WholeServerTier));
+                }
+                else if (s.Items != null)
+                {
+                    for (int i = 0; i < s.Items.Count; i++)
+                        if (s.Items[i].Checked && !string.IsNullOrEmpty(s.Items[i].Id))
+                            g.Tools.Add(s.Items[i].Id);
+                }
+
+                if (g.Tools.Count > 0 || g.Globs.Count > 0) groups.Add(g);
+            }
+            return groups;
         }
 
         private static ToolGroupSeed Get(Dictionary<string, ToolGroupSeed> byServer, string server)

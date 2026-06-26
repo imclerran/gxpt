@@ -165,6 +165,36 @@ namespace GxPT.Tests
             Assert.False(custom.Items[0].Connected);
         }
 
+        [Fact]
+        public void ToGroups_emits_globs_for_whole_server_and_concrete_tools_otherwise()
+        {
+            Agent x = MakeAgent("x", AgentMaxTier.Write, "command__*");
+            Agent y = MakeAgent("y", AgentMaxTier.ReadOnly, "files__read", "custom__tool");
+
+            IList<ToolGroupSeed> seed = RequiredToolsDetect.Seed(new List<Agent> { x, y }, Catalog(), Tier);
+            List<RequiredToolGroup> groups = RequiredToolsDetect.ToGroups(seed);
+
+            RequiredToolGroup command = FindGroup(groups, "command");
+            Assert.Single(command.Globs);                       // whole-server glob, not enumerated
+            Assert.Equal("command__*", command.Globs[0].Pattern);
+            Assert.Equal(AgentMaxTier.Write, command.Globs[0].MaxTier);
+            Assert.Empty(command.Tools);
+
+            RequiredToolGroup files = FindGroup(groups, "files");
+            Assert.Contains("files__read", files.Tools);        // concrete tool (no whole-server glob)
+            Assert.Empty(files.Globs);
+
+            RequiredToolGroup custom = FindGroup(groups, "custom");
+            Assert.Contains("custom__tool", custom.Tools);      // not-connected concrete id still required
+        }
+
+        private static RequiredToolGroup FindGroup(List<RequiredToolGroup> groups, string server)
+        {
+            for (int i = 0; i < groups.Count; i++)
+                if (string.Equals(groups[i].Server, server, StringComparison.OrdinalIgnoreCase)) return groups[i];
+            return null;
+        }
+
         private static RequiredToolGroup Glob(string server, string pattern, AgentMaxTier tier)
         {
             return new RequiredToolGroup

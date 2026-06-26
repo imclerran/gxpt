@@ -312,6 +312,29 @@ namespace GxPT.Tests
             Assert.False(Directory.Exists(new PluginRegistry(_pluginsRoot).PluginDir("pack")));
         }
 
+        [Fact]
+        public void RequiredTools_round_trip_through_export_and_install()
+        {
+            System.Collections.Generic.List<RequiredToolGroup> req =
+                new System.Collections.Generic.List<RequiredToolGroup>();
+            RequiredToolGroup g = new RequiredToolGroup();
+            g.Server = "command";
+            g.Globs.Add(new RequiredToolGlob("command__*", AgentMaxTier.Write));
+            req.Add(g);
+
+            string archive = Path.Combine(_root, "rt.gxpl");
+            PluginImportExportService.ExportPlugin("rt-pack", "1", "d.",
+                new[] { WriteSkill("s", "S.") }, null, req, archive);
+            PluginImportExportService.ImportPlugin(archive, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            PluginManifest m = new PluginRegistry(_pluginsRoot).Load("rt-pack");
+            Assert.Single(m.RequiredTools);
+            Assert.Equal("command", m.RequiredTools[0].Server);
+            Assert.Single(m.RequiredTools[0].Globs);
+            Assert.Equal("command__*", m.RequiredTools[0].Globs[0].Pattern);
+            Assert.Equal(AgentMaxTier.Write, m.RequiredTools[0].Globs[0].MaxTier);
+        }
+
         // ---- ownership / provenance (review fixes) ----
 
         // Writes a non-plugin, hand-authored skill straight into the active skills root.
