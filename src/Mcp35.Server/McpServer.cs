@@ -226,7 +226,10 @@ namespace Mcp35.Server
             }
 
             JObject args = prms["arguments"] as JObject;
-            ToolCallContext ctx = new ToolCallContext(name, args, _log);
+            // params._meta is out-of-band (a sibling of arguments, not part of any tool's schema): the
+            // host carries call metadata here, e.g. the current working directory (McpMeta.CwdKey).
+            JObject meta = prms["_meta"] as JObject;
+            ToolCallContext ctx = new ToolCallContext(name, args, _log, meta);
 
             CallToolResult result;
             try

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Mcp35.Core.Security;
+using Mcp35.Server;
 using Mcp35.Server.Process;
 
 namespace ExtensionsMcpServer
@@ -130,15 +131,25 @@ namespace ExtensionsMcpServer
 
         // ---- run (Windows process spawn) ----
 
-        public ProcessResult RunResolved(SkillScriptTarget target, IList<string> args, int timeoutMs)
+        public ProcessResult RunResolved(SkillScriptTarget target, IList<string> args, int timeoutMs, ToolCallContext ctx)
         {
+            // The script CHILD runs in the conversation's current directory (host `cd`, carried in
+            // params._meta and re-validated against the workspace anchor) — only the child cwd follows
+            // `cd`. Everything else stays anchored: slug resolution, the skill folder (GXPT_SKILL_DIR),
+            // and the GXPT_WORKDIR the script sees all remain the workspace, since skills are a workspace
+            // resource, not a per-worktree one (design A3). Absent a current dir => the workspace, as before.
+            string childCwd;
+            string cwdErr;
+            if (!CwdScope.TryResolveWorkingDir(ctx, _config.WorkDir, "workspace root", out childCwd, out cwdErr))
+                throw new SkillScriptException(cwdErr);
+
             ProcessRequest req = new ProcessRequest();
             req.FileName = _config.Shell;
             // cmd /s /c "<inner>": /s + one outer quote pair makes cmd strip exactly those outer quotes
             // and parse the rest as written (same wrapping as CommandMcpServer, avoiding cmd's legacy
             // first/last-quote stripping).
             req.Arguments = "/s /c \"" + BuildCommandLine(target.BatPath, args) + "\"";
-            req.WorkingDirectory = _config.WorkDir;       // cwd = the workspace (S14)
+            req.WorkingDirectory = childCwd;              // cwd = the conversation's current dir (S14 + host cd)
             req.Environment = BuildEnvironment(target);   // skill folder reachable for its bundled assets
             req.TimeoutMs = timeoutMs;
             return _runner.Run(req);

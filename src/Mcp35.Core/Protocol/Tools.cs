@@ -47,6 +47,14 @@ namespace Mcp35.Core.Protocol
 
         [JsonProperty("arguments", NullValueHandling = NullValueHandling.Ignore)]
         public JObject Arguments;
+
+        // Out-of-band request metadata (MCP-reserved `_meta`): a sibling of `arguments`, NOT part of
+        // any tool's input schema, so the host can carry per-call data the model can neither see nor
+        // spoof. The host injects the conversation's current working directory here (key
+        // McpMeta.CwdKey) so workdir-scoped servers can re-root a `cd`-scoped call without the model
+        // being able to widen the root. See the host-cd/worktree design.
+        [JsonProperty("_meta", NullValueHandling = NullValueHandling.Ignore)]
+        public JObject Meta;
     }
 
     public sealed class CallToolResult

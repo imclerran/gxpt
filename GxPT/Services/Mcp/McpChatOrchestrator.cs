@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using Mcp35.Client;
 using Mcp35.Core.Diagnostics;
 using Mcp35.Core.Errors;
 using Mcp35.Core.Protocol;
+using Mcp35.Core.Security;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -32,6 +34,9 @@ namespace GxPT
         // into the test project) so the transcript renderer can recognize a denied call; McpMarkers
         // references it.
         internal const string DeniedResultText = "[Call denied by user.]";
+
+        // The host `cd` meta-tool: moves the conversation's current directory within the workspace anchor.
+        internal const string CdToolName = "cd";
 
         // Request-only "keep going" message used once when a response comes back empty even after the
         // inline bare retry (see the empty-response handling in RunTurn). Appended to that one request
@@ -297,6 +302,20 @@ namespace GxPT
         {
             get { return !string.IsNullOrEmpty(WorkingDir) ? WorkingDir : ScratchWorkingDir; }
         }
+
+        // The conversation's CURRENT directory (host `cd`): a directory at or below the WorkingDir anchor
+        // that the model has scoped into. Absolute path; null means "the anchor itself" (the default and
+        // the floor). The host injects it into every workdir-scoped tool call out-of-band (params._meta,
+        // McpMeta.CwdKey) so files/git/command/msbuild operate there without the model being able to widen
+        // the root. Seeded from the conversation context at turn start and reset to the anchor on
+        // conversation load (it is transient, never persisted). Mutated only by the `cd` host tool, which
+        // re-validates it within the anchor. See the host-cd/worktree design.
+        public string CurrentDir { get; set; }
+
+        // Notifies the host when `cd` moves the current directory, so it can store the new value on the
+        // conversation context (carried across the turn's later calls and subsequent turns) and refresh
+        // any UI. Invoked from the worker thread with the new absolute current directory.
+        public Action<string> CurrentDirChanged { get; set; }
 
         public McpChatOrchestrator(IChatStreamer streamer, McpToolRegistry registry,
                                    IToolApprovalPolicy approval, string model, ILogSink log)
@@ -932,6 +951,15 @@ namespace GxPT
                         return _registry.Reveal(ParseRevealNames(c.ArgumentsJson), ResolutionWorkdir, RevealedToolNames);
                     }));
             }
+            // cd: move the conversation's current directory within the workspace anchor. Offered only when
+            // a real workspace is set (A5: a scratch/folderless turn has no anchor, so nothing to scope
+            // within). Answered locally, touches host state only, so it is instant (no server contact).
+            if (!string.IsNullOrEmpty(WorkingDir))
+            {
+                list.Add(new HostTool(CdToolName,
+                    delegate { return CdDef(); },
+                    delegate(ToolCall c, out bool err) { return HandleCd(c, out err); }));
+            }
             if (SkillsActive)
             {
                 list.Add(new HostTool(SkillTools.OpenSkillName,
@@ -1053,6 +1081,11 @@ namespace GxPT
             _log.Log("mcp", "[turn " + turnId + "] dispatch '" + call.Name + "' (args "
                 + (call.ArgumentsJson != null ? call.ArgumentsJson.Length : 0) + " bytes)");
 
+            // Tell the gate where path arguments actually resolve THIS call (the host current dir from
+            // `cd`, else the anchor), so remembered path rules key on the canonicalized absolute path
+            // rather than a relative arg whose meaning shifts as the model moves. Set before Check so the
+            // gate never sees a stale or model-influenced directory (the field is host-authoritative).
+            SetApprovalCurrentDir();
             ApprovalDecision decision = _approval.Check(call.Name, args);
             if (decision == ApprovalDecision.Deny)
             {
@@ -1065,7 +1098,7 @@ namespace GxPT
             Stopwatch sw = Stopwatch.StartNew();
             try
             {
-                CallToolResult res = conn.CallTool(toolName, args, _callTimeoutMs);
+                CallToolResult res = conn.CallTool(toolName, args, BuildCallMeta(), _callTimeoutMs);
                 sw.Stop();
                 isError = (res != null && res.IsError);
                 string formatted = FormatResult(res);
@@ -1162,6 +1195,146 @@ namespace GxPT
             {
                 // malformed args -> nulls; ReadFile reports the problem.
             }
+        }
+
+        // ---- cd host tool ----
+
+        // The cd tool's schema: an optional `path` (relative to the current directory). Omitting it
+        // returns to the workspace root (the anchor = "home"). Absolute paths are rejected.
+        internal static JObject CdDef()
+        {
+            JObject pathProp = new JObject();
+            pathProp["type"] = "string";
+            pathProp["description"] =
+                "A subdirectory to change into, relative to the current directory (shell-like; '..' is "
+                + "allowed but cannot rise above the workspace root). Omit to return to the workspace root.";
+
+            JObject props = new JObject();
+            props["path"] = pathProp;
+
+            JObject schema = new JObject();
+            schema["type"] = "object";
+            schema["properties"] = props;
+            // No required args: a bare cd() returns to the workspace root.
+
+            return McpToolRegistryFunctionDef(CdToolName,
+                "Change the conversation's current working directory within the workspace. Subsequent "
+                + "file, git, and command operations run there until you cd again. You can only move at or "
+                + "below the workspace root; cd with no argument returns to the workspace root.",
+                schema);
+        }
+
+        // Builds an OpenAI-format function def (mirrors McpToolRegistry.FunctionDef, which is private).
+        private static JObject McpToolRegistryFunctionDef(string name, string description, JObject parameters)
+        {
+            JObject fn = new JObject();
+            fn["name"] = name;
+            fn["description"] = description != null ? description : string.Empty;
+            fn["parameters"] = parameters != null ? (JToken)parameters : new JObject();
+            JObject def = new JObject();
+            def["type"] = "function";
+            def["function"] = fn;
+            return def;
+        }
+
+        // Move the current directory. Resolves `path` relative to the CURRENT directory (shell-like),
+        // canonicalizes, and requires the result to be an EXISTING directory at or below the workspace
+        // anchor. Rising above the anchor is an error (the floor is kept visible, not silently clamped);
+        // absolute paths are rejected (mirrors PathSandbox, one mental model). On success it updates the
+        // current directory, notifies the host (CurrentDirChanged), and echoes the new location as an
+        // anchor-relative string. Host state only - no server contact - so it is instant.
+        private string HandleCd(ToolCall call, out bool isError)
+        {
+            isError = false;
+            string anchor = WorkingDir;
+            if (string.IsNullOrEmpty(anchor))
+            {
+                isError = true;
+                return "[cd is unavailable: this conversation has no workspace folder.]";
+            }
+
+            PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
+            string rel = ParseCdPath(call.ArgumentsJson);
+
+            string target;
+            if (string.IsNullOrEmpty(rel))
+            {
+                target = anchorSb.Root; // bare cd => the anchor (shell's "cd → home")
+            }
+            else
+            {
+                if (Path.IsPathRooted(rel) || rel.IndexOf(':') >= 0)
+                {
+                    isError = true;
+                    return "[cd: absolute paths are not allowed; pass a path relative to the current directory.]";
+                }
+                string baseDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
+                string full;
+                try { full = Path.GetFullPath(Path.Combine(baseDir, rel)); }
+                catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+
+                if (!anchorSb.IsWithin(full))
+                {
+                    isError = true;
+                    return "[cd: '" + rel + "' is above the workspace root, which is the floor. cd with no "
+                        + "argument to return to the workspace root and regain full-workspace access.]";
+                }
+                if (!Directory.Exists(full))
+                {
+                    isError = true;
+                    return "[cd: directory not found: " + rel + "]";
+                }
+                target = full;
+            }
+
+            // Treat "current == anchor" as null so injection/persistence stay clean at the floor.
+            CurrentDir = string.Equals(target, anchorSb.Root, StringComparison.OrdinalIgnoreCase) ? null : target;
+            Action<string> cb = CurrentDirChanged;
+            if (cb != null) { try { cb(CurrentDir); } catch { } }
+
+            string relDisp = anchorSb.ToRelative(target);
+            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
+            relDisp = relDisp.Replace('\\', '/');
+            return "Current directory is now `" + relDisp + "` (relative to the workspace root). File, git, "
+                + "and command operations now run there.";
+        }
+
+        // Reads the cd tool's optional `path` string argument; missing/malformed -> null (return to anchor).
+        private static string ParseCdPath(string argumentsJson)
+        {
+            if (string.IsNullOrEmpty(argumentsJson)) return null;
+            try
+            {
+                JObject o = JObject.Parse(argumentsJson);
+                JToken p = o["path"];
+                if (p != null && p.Type == JTokenType.String) return (string)p;
+            }
+            catch
+            {
+                // malformed args -> return to anchor.
+            }
+            return null;
+        }
+
+        // The host current directory injected into a workdir-scoped tool call as out-of-band metadata
+        // (params._meta, McpMeta.CwdKey). Null when at the anchor (absent => the server uses its own
+        // launch root, the safe floor) — so requests stay clean until the model has actually `cd`-ed.
+        private JObject BuildCallMeta()
+        {
+            if (string.IsNullOrEmpty(CurrentDir)) return null;
+            JObject meta = new JObject();
+            meta[McpMeta.CwdKey] = CurrentDir;
+            return meta;
+        }
+
+        // Point the approval gate's path resolution at this call's effective directory (the host current
+        // dir from `cd`, else the anchor). Only ToolApprovalPolicy carries this state; the AllowAll stub
+        // and test fakes don't need it, so an `as` probe keeps the IToolApprovalPolicy interface unchanged.
+        private void SetApprovalCurrentDir()
+        {
+            ToolApprovalPolicy tap = _approval as ToolApprovalPolicy;
+            if (tap != null)
+                tap.CurrentDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : ResolutionWorkdir;
         }
 
         // Drops any def whose function name is hidden (reveal_tools/open_skill are never in the hidden set).

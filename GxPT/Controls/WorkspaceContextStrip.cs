@@ -37,9 +37,13 @@ namespace GxPT
         private readonly Label _text;
         private readonly FlowLayoutPanel _links;
         private readonly LinkLabel _change;
+        private readonly LinkLabel _returnRoot;
         private readonly LinkLabel _clear;
         private readonly LinkLabel _dismiss;
         private readonly ToolTip _openTip;
+
+        // The current directory relative to the anchor (host `cd`), or null at the anchor itself.
+        private string _currentRel;
 
         // The workspace folder currently shown (null/empty when unset); captured so the icon/text
         // click can open it in Explorer.
@@ -57,6 +61,9 @@ namespace GxPT
         public event EventHandler ChangeRequested;
         public event EventHandler ClearRequested;
         public event EventHandler DismissRequested;
+        // Raised when the user clicks "Return to root" to bring the conversation's current directory
+        // back to the workspace anchor (it may have been scoped into a subdir by the model via `cd`).
+        public event EventHandler ReturnToAnchorRequested;
 
         public WorkspaceContextStrip()
         {
@@ -65,6 +72,8 @@ namespace GxPT
             this.Padding = new Padding(8, 0, 8, 0);
 
             _change = MakeLink("Set workspace...", delegate { Raise(ChangeRequested); });
+            _returnRoot = MakeLink("Return to root", delegate { Raise(ReturnToAnchorRequested); });
+            _returnRoot.Visible = false; // shown only while scoped into a subdir
             _clear = MakeLink("Clear", delegate { Raise(ClearRequested); });
             _dismiss = MakeLink("Dismiss", delegate { Raise(DismissRequested); });
 
@@ -79,6 +88,7 @@ namespace GxPT
             _links.Margin = new Padding(0);
             _links.Anchor = AnchorStyles.Right;
             _links.Controls.Add(_change);
+            _links.Controls.Add(_returnRoot);
             _links.Controls.Add(_clear);
             _links.Controls.Add(_dismiss);
 
@@ -167,6 +177,10 @@ namespace GxPT
             _text.Cursor = Cursors.Default;
             _openTip.SetToolTip(_text, null);
 
+            // Changing (or clearing) the workspace resets the current directory to the new anchor.
+            _currentRel = null;
+            _returnRoot.Visible = false;
+
             if (has)
             {
                 this.BackColor = SetBack;
@@ -194,6 +208,22 @@ namespace GxPT
                 _icon.Cursor = Cursors.Default;
                 _openTip.SetToolTip(_icon, null);
             }
+        }
+
+        // Reflect the conversation's current directory (host `cd`), given relative to the workspace
+        // anchor ("." or null = at the anchor). When scoped into a subdir, the path text shows
+        // "Workspace: <dir> ▸ <subdir>" and a "Return to root" link appears; at the anchor it shows just
+        // the workspace. No-op when no workspace is set.
+        public void SetCurrentDir(string anchorRelative)
+        {
+            bool scoped = !string.IsNullOrEmpty(anchorRelative)
+                && anchorRelative != "." && anchorRelative != "./";
+            _currentRel = scoped ? anchorRelative.Replace('\\', '/') : null;
+            if (!string.IsNullOrEmpty(_dir))
+                _text.Text = scoped
+                    ? ("Workspace:  " + _dir + "   ▸ " + _currentRel)
+                    : ("Workspace:  " + _dir);
+            _returnRoot.Visible = scoped;
         }
 
         // Apply (true) or clear (false) the hover affordance while the pointer is over the path: the
