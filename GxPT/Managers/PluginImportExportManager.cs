@@ -12,10 +12,18 @@ namespace GxPT
     // %AppData%/GxPT/plugins. XP / .NET 3.5 friendly.
     internal static class PluginImportExportManager
     {
+        // Live tool catalog providers, set by the host (MainForm) at startup. CurrentTools is an instant
+        // snapshot of what's connected now (install/Details check); ProbeTools connects all servers to a
+        // throwaway workspace behind a wait UI (export detection). Either may be null - the required-tools
+        // step is then simply skipped.
+        public static Func<ToolSnapshot> CurrentTools;
+        public static Func<ToolSnapshot> ProbeTools;
+
         // ---- export ----
 
-        // The full authoring flow: a checklist dialog over the user's and project's skills/agents, then a
-        // save dialog, then ExportPlugin. workingDir scopes which project items are offered.
+        // The full authoring flow: a checklist dialog over the user's and project's skills/agents, the
+        // required-tools picker (driven by the bundled agents), then a save dialog and ExportPlugin.
+        // workingDir scopes which project items are offered.
         public static bool ExportInteractive(IWin32Window owner, string workingDir)
         {
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -38,8 +46,36 @@ namespace GxPT
             using (PluginExportForm dlg = new PluginExportForm(skills, agents))
             {
                 if (dlg.ShowDialog(owner) != DialogResult.OK) return false;
+
+                bool cancelled;
+                IList<RequiredToolGroup> required = DetectRequiredTools(owner, dlg.SelectedAgents, out cancelled);
+                if (cancelled) return false;
+
                 return SaveAndExport(owner, dlg.PluginName, dlg.PluginVersion, dlg.PluginDescription,
-                    dlg.SelectedSkills, dlg.SelectedAgents);
+                    dlg.SelectedSkills, dlg.SelectedAgents, required);
+            }
+        }
+
+        // Probes the live tools, seeds the picker from the selected agents, and returns the author-confirmed
+        // requiredTools groups - or null when there's nothing to require (no agents / no probe / no declared
+        // tools). Sets cancelled=true only when the author cancels the picker (the export aborts).
+        private static IList<RequiredToolGroup> DetectRequiredTools(IWin32Window owner, IList<Agent> agents, out bool cancelled)
+        {
+            cancelled = false;
+            List<Agent> list = new List<Agent>();
+            if (agents != null) foreach (Agent a in agents) if (a != null) list.Add(a);
+            if (list.Count == 0 || ProbeTools == null) return null;
+
+            ToolSnapshot snap = ProbeTools();
+            if (snap == null) return null;
+
+            IList<ToolGroupSeed> seed = RequiredToolsDetect.Seed(list, snap.Names, snap.TierOf);
+            if (seed.Count == 0) return null;
+
+            using (RequiredToolsForm rt = new RequiredToolsForm(seed))
+            {
+                if (rt.ShowDialog(owner) != DialogResult.OK) { cancelled = true; return null; }
+                return RequiredToolsDetect.ToGroups(rt.Result);
             }
         }
 
@@ -53,11 +89,11 @@ namespace GxPT
                 return false;
             }
             return SaveAndExport(owner, skill.Slug, "1.0.0", skill.Description,
-                new List<Skill>(new Skill[] { skill }), null);
+                new List<Skill>(new Skill[] { skill }), null, null);
         }
 
         private static bool SaveAndExport(IWin32Window owner, string name, string version,
-            string description, IList<Skill> skills, IList<Agent> agents)
+            string description, IList<Skill> skills, IList<Agent> agents, IList<RequiredToolGroup> requiredTools)
         {
             using (SaveFileDialog sfd = new SaveFileDialog
             {
@@ -71,7 +107,7 @@ namespace GxPT
                 if (sfd.ShowDialog(owner) != DialogResult.OK) return false;
                 try
                 {
-                    PluginImportExportService.ExportPlugin(name, version, description, skills, agents, sfd.FileName);
+                    PluginImportExportService.ExportPlugin(name, version, description, skills, agents, requiredTools, sfd.FileName);
                     Info(owner, "Exported plugin '" + name + "'.");
                     return true;
                 }
@@ -152,6 +188,8 @@ namespace GxPT
                 if (r.WasUpgrade && (r.RemovedSkills.Count > 0 || r.RemovedAgents.Count > 0))
                     msg.Append("\nRemoved ").Append(r.RemovedSkills.Count + r.RemovedAgents.Count)
                        .Append(" item(s) no longer in this version.");
+
+                AppendMissingTools(msg, pluginsRoot, r.Name);
                 Info(owner, msg.ToString());
                 return true;
             }
@@ -269,6 +307,34 @@ namespace GxPT
                     form.Icon = (System.Drawing.Icon)o.Icon.Clone();
                 else
                     form.Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch { }
+        }
+
+        // Best-effort: appends a warning to the install message listing the plugin's required tools that
+        // aren't available in the current catalog. A glob is re-resolved against the live tools, so it stays
+        // correct here. Never throws and never blocks - tools can be installed/connected later.
+        private static void AppendMissingTools(StringBuilder msg, string pluginsRoot, string name)
+        {
+            if (CurrentTools == null) return;
+            try
+            {
+                PluginManifest m = new PluginRegistry(pluginsRoot).Load(name);
+                if (m == null || m.RequiredTools.Count == 0) return;
+                ToolSnapshot snap = CurrentTools();
+                if (snap == null) return;
+
+                IList<RequiredToolStatus> unmet = RequiredToolsCheck.Unmet(m.RequiredTools, snap.Names, snap.TierOf);
+                if (unmet.Count == 0) return;
+
+                msg.Append("\n\nSome tools this plugin's agents need are not available here:");
+                for (int i = 0; i < unmet.Count; i++)
+                {
+                    msg.Append("\n    ").Append(unmet[i].Group.Server);
+                    if (unmet[i].Missing.Count > 0)
+                        msg.Append(" (").Append(string.Join(", ", unmet[i].Missing.ToArray())).Append(")");
+                }
+                msg.Append("\nThe plugin is installed; those agents may not work until the tools are available.");
             }
             catch { }
         }
