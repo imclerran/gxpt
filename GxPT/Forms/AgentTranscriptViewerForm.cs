@@ -112,7 +112,7 @@ namespace GxPT
             Ui(delegate { _liveAssistantOpen = false; _toolBlockOpen = false; });
         }
 
-        // Append a tool marker (a collapsible-record sentinel or a "using <tool>" line) the way the main
+        // Append a tool marker (a collapsible-record sentinel or a "Used <tool>" line) the way the main
         // chat does: consecutive tool calls accumulate into one chrome-less block; assistant text breaks it.
         private void AddToolMarker(string marker)
         {

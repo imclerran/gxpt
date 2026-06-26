@@ -12,15 +12,27 @@ namespace GxPT
             return string.IsNullOrEmpty(functionName) ? string.Empty : functionName.Replace("__", ": ");
         }
 
-        // A compact "using <tool>" marker, plain (not italic) for consistency with the collapsible
-        // tool records. Display() turns the qualified name into "web: search" with no underscores.
-        // ask_user is a host tool that interacts with the user rather than "using" a service, so its
-        // in-progress placeholder reads "Asking a question" (replaced by the "Asked a question" record
-        // once answered).
+        // The in-progress "Using <tool>" placeholder shown while a call runs (and the approval gate
+        // waits), plain (not italic) for consistency with the collapsible tool records. Display() turns
+        // the qualified name into "web: search" with no underscores. ask_user is a host tool that
+        // interacts with the user rather than "using" a service, so its in-progress placeholder reads
+        // "Asking a question" (replaced by the "Asked a question" record once answered). Once the call
+        // completes, this is replaced by the matching past-tense marker (Used / a collapsible record).
         public static string Call(string functionName)
         {
             if (functionName == AskUserTool.AskUserName) return "Asking a question";
-            return "using " + Display(functionName);
+            return "Using " + Display(functionName);
+        }
+
+        // The catch-all past-tense marker for a *completed* call whose tool has no specific record
+        // (files__edit, command__run, ask_user, ...). The in-progress "Using <tool>" placeholder is
+        // replaced by this "Used <tool>" once the call finishes, and reloaded/agent-viewer transcripts
+        // render finished calls with it directly — keeping it consistent with the past-tense records
+        // ("Edited", "Ran a command", "Asked a question").
+        public static string Used(string functionName)
+        {
+            if (functionName == AskUserTool.AskUserName) return "Asked a question";
+            return "Used " + Display(functionName);
         }
 
         // For files__edit / command__run, the generic "using" marker is replaced by a collapsible
@@ -50,7 +62,7 @@ namespace GxPT
     // turn as a chrome-less "tool activity" message plus a separate answer bubble: model text ->
     // appendText, tool calls -> onToolCall/onToolResult, Complete/OnError finalize.
     //
-    // Tool activity renders in two beats: OnToolCall shows an immediate "using <tool>" placeholder so
+    // Tool activity renders in two beats: OnToolCall shows an immediate "Using <tool>" placeholder so
     // there's live feedback while the call runs (and the approval gate waits); OnToolResult replaces
     // that placeholder once the outcome is known, so the transcript reflects what actually happened
     // (applied record / denied / errored) rather than the unapproved request. Arguments are stashed at
