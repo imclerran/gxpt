@@ -36,11 +36,26 @@ namespace GxPT
         void NewConversation();
         void ExportConversations();
 
-        // Export one skill's folder as a .gxsk archive (the host shows a save-file dialog).
+        // Export one skill as a one-item .gxpl plugin (the host shows a save-file dialog).
         void ExportSkill(Skill skill);
 
-        // Import an archive - conversations (.gxcv) or a skill (.gxsk) - chosen via an open-file dialog.
+        // Import an archive - conversations (.gxcv), a skill (.gxsk), or a plugin (.gxpl) - chosen via an
+        // open-file dialog.
         void ImportArchive();
+
+        // ---- plugin actions (used by /plugin) ----
+
+        // Author a new .gxpl from the user's/project's skills and agents (host shows a checklist dialog).
+        void ExportPlugin();
+
+        // Install or upgrade a .gxpl chosen via an open-file dialog.
+        void InstallPlugin();
+
+        // Enable/disable/uninstall an installed plugin by its stored name. Enable/disable move the plugin's
+        // skills and agents into or out of the active roots; uninstall removes them and the registry entry.
+        void EnablePlugin(string name);
+        void DisablePlugin(string name);
+        void UninstallPlugin(string name);
 
         // Summarize the current conversation and open the summary as context in a new conversation tab.
         // Runs asynchronously; the original conversation is left untouched.

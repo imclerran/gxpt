@@ -78,6 +78,9 @@
     <Compile Include="..\GxPT\Services\Skills\SkillEnablement.cs" Link="Linked\Skills\SkillEnablement.cs" />
     <Compile Include="..\GxPT\Services\Skills\SkillResolve.cs" Link="Linked\Skills\SkillResolve.cs" />
     <Compile Include="..\GxPT\Services\Skills\ExtensionsToolGate.cs" Link="Linked\Skills\ExtensionsToolGate.cs" />
+    <Compile Include="..\GxPT\Services\Plugins\PluginManifest.cs" Link="Linked\Plugins\PluginManifest.cs" />
+    <Compile Include="..\GxPT\Services\Plugins\PluginRegistry.cs" Link="Linked\Plugins\PluginRegistry.cs" />
+    <Compile Include="..\GxPT\Services\Plugins\PluginImportExportService.cs" Link="Linked\Plugins\PluginImportExportService.cs" />
     <Compile Include="..\GxPT\Services\Agents\Agent.cs" Link="Linked\Agents\Agent.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentFrontmatter.cs" Link="Linked\Agents\AgentFrontmatter.cs" />
     <Compile Include="..\GxPT\Services\Agents\AgentCatalog.cs" Link="Linked\Agents\AgentCatalog.cs" />

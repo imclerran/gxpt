@@ -1876,8 +1876,9 @@ namespace GxPT
         }
 
         // Called by Program.cs after the form is shown when the app is launched by double-clicking a
-        // .gxpt/.gxcv/.gxsk file; also the dispatch point for /import. A .gxsk (or a generic .zip that
-        // holds a SKILL.md) routes to the skill importer, everything else to the conversation importer.
+        // .gxpt/.gxcv/.gxsk/.gxpl file; also the dispatch point for /import. A .gxpl (or a .zip with a
+        // plugin.json) routes to the plugin importer, a .gxsk (or a .zip with a SKILL.md) to the skill
+        // importer, and everything else to the conversation importer.
         public void ImportArchiveFromShell(string archivePath)
         {
             if (string.IsNullOrEmpty(archivePath)) return;
@@ -1889,6 +1890,14 @@ namespace GxPT
                 try { ext = System.IO.Path.GetExtension(archivePath); }
                 catch { }
                 if (ext != null) ext = ext.ToLowerInvariant();
+                // A plugin (.gxpl, or a .zip carrying a plugin.json) is checked first: a plugin archive also
+                // contains SKILL.md files, so it would otherwise be mistaken for a bare skill.
+                if (ext == ".gxpl" || (ext == ".zip" && PluginImportExportService.ArchiveContainsPlugin(archivePath)))
+                {
+                    if (PluginImportExportManager.InstallFromFile(this, archivePath))
+                        SlashRefreshSkillsServer(); // installed skills may flip "any skill enabled"
+                    return;
+                }
                 if (ext == ".gxsk" || (ext == ".zip" && SkillImportExportService.ArchiveContainsSkill(archivePath)))
                 {
                     if (SkillImportExportManager.ImportSkillFromFile(this, archivePath))
@@ -2193,19 +2202,58 @@ namespace GxPT
 
         internal void SlashExportSkill(Skill skill)
         {
-            SkillImportExportManager.ExportSkill(this, skill);
+            // Universal export: a single skill is the smallest possible plugin (.gxpl), named after the skill.
+            PluginImportExportManager.ExportSingleSkill(this, skill);
         }
 
-        // /import: one open-file dialog covering both archive kinds; ImportArchiveFromShell routes the
-        // chosen file to the skill or conversation importer.
+        // /plugin export: author a new .gxpl from the user's/project's skills and agents.
+        internal void SlashExportPlugin()
+        {
+            PluginImportExportManager.ExportInteractive(this, SlashWorkingDir());
+        }
+
+        // /plugin install: choose a .gxpl (or generic .zip) and install/upgrade it.
+        internal void SlashInstallPlugin()
+        {
+            using (var ofd = new OpenFileDialog
+            {
+                Title = "Install Plugin",
+                Filter = "GxPT Plugin (*.gxpl)|*.gxpl|Zip Archive (*.zip)|*.zip",
+                CheckFileExists = true,
+                Multiselect = false
+            })
+            {
+                if (ofd.ShowDialog(this) != DialogResult.OK) return;
+                if (PluginImportExportManager.InstallFromFile(this, ofd.FileName))
+                    SlashRefreshSkillsServer(); // installed skills may flip "any skill enabled"
+            }
+        }
+
+        // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
+        internal void SlashSetPluginEnabled(string name, bool enabled)
+        {
+            if (PluginImportExportManager.SetEnabled(this, name, enabled))
+                SlashRefreshSkillsServer();
+        }
+
+        // /plugin uninstall <name>: remove the plugin's skills/agents and its registry entry.
+        internal void SlashUninstallPlugin(string name)
+        {
+            if (PluginImportExportManager.Uninstall(this, name))
+                SlashRefreshSkillsServer();
+        }
+
+        // /import: one open-file dialog covering every archive kind; ImportArchiveFromShell routes the
+        // chosen file to the plugin, skill, or conversation importer.
         internal void SlashImportArchive()
         {
             using (var ofd = new OpenFileDialog
             {
                 Title = "Import",
-                Filter = "GxPT Archives (*.gxcv;*.gxsk)|*.gxcv;*.gxsk"
+                Filter = "GxPT Archives (*.gxcv;*.gxsk;*.gxpl)|*.gxcv;*.gxsk;*.gxpl"
                     + "|GxPT Conversation Archive (*.gxcv)|*.gxcv"
                     + "|GxPT Skill (*.gxsk)|*.gxsk"
+                    + "|GxPT Plugin (*.gxpl)|*.gxpl"
                     + "|Zip Archive (*.zip)|*.zip",
                 CheckFileExists = true,
                 Multiselect = false

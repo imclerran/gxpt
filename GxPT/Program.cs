@@ -33,7 +33,7 @@ namespace GxPT
             // Install global hover-to-scroll router (keeps focus where it is)
             try { HoverWheelRouter.Install(); }
             catch { }
-            // Handle shell-open: if launched with a .gxpt/.gxcv/.gxsk file, import it on startup
+            // Handle shell-open: if launched with a .gxpt/.gxcv/.gxsk/.gxpl file, import it on startup
             string fileArg = null;
             try
             {
@@ -53,7 +53,7 @@ namespace GxPT
                             {
                                 string ext = System.IO.Path.GetExtension(p);
                                 if (ext != null) ext = ext.ToLowerInvariant();
-                                if (ext == ".gxpt" || ext == ".gxcv" || ext == ".gxsk" || ext == ".zip") { fileArg = p; break; }
+                                if (ext == ".gxpt" || ext == ".gxcv" || ext == ".gxsk" || ext == ".gxpl" || ext == ".zip") { fileArg = p; break; }
                             }
                         }
                         catch { }

@@ -47,12 +47,22 @@ namespace GxPT.Tests.Commands
         public int CompactCount;
         public List<Skill> ExportedSkills = new List<Skill>();
         public int ImportCount;
+        public int ExportPluginCount;
+        public int InstallPluginCount;
+        public List<string> EnabledPlugins = new List<string>();
+        public List<string> DisabledPlugins = new List<string>();
+        public List<string> UninstalledPlugins = new List<string>();
 
         public void WriteInfo(string text) { Infos.Add(text); }
         public void NewConversation() { NewConversationCount++; }
         public void ExportConversations() { ExportCount++; }
         public void ExportSkill(Skill skill) { ExportedSkills.Add(skill); }
         public void ImportArchive() { ImportCount++; }
+        public void ExportPlugin() { ExportPluginCount++; }
+        public void InstallPlugin() { InstallPluginCount++; }
+        public void EnablePlugin(string name) { EnabledPlugins.Add(name); }
+        public void DisablePlugin(string name) { DisabledPlugins.Add(name); }
+        public void UninstallPlugin(string name) { UninstalledPlugins.Add(name); }
         public void Compact() { CompactCount++; }
     }
 
