@@ -13,6 +13,7 @@ An agentic AI harness and coding agent for Windows XP. GxPT aims to provide mode
 
 - **Modern Chat UI**: Clean, responsive chat transcript display.
 - **Markdown Rendering**: Supports headings, bold/italic, links, bullet and numbered lists (including deeply nested lists), tables, code blocks, and inline code.
+- **Graphviz Diagrams**: Fenced ` ```dot ` code blocks are rendered inline as graph images using a small, portable Graphviz 2.38 (laid out by `dot`, rasterized to PNG via GDI+). The rendered graph carries a slim header with a Copy button for the original DOT source; if Graphviz isn't bundled or the source can't be rendered, the block falls back to a normal highlighted code block. See `GxPT/lib/graphviz/README.md` for the (uncommitted) binaries to drop in.
 - **Code Syntax Highlighting**: Out-of-the-box support for a wide range of languages, including:
    - Ada, ASM, Bash, Basic, Batch, C, Clojure, C++, C#, CSS, CSV, Dart, EBNF, Elixir, Erlang, F#, Fortran, Go, Haskell, HTML, Java, JavaScript, JSON, Kotlin, Lisp (Common, Scheme/Racket, Clojure, Emacs), Lua, Markdown, OCaml, Pascal, Perl, PHP, PowerShell, Properties, Python, Ruby, Regex, Rust, Scala, SQL, Swift, TypeScript, Visual Basic, XML, YAML, Zig
 - **Conversation Management**: Tabbed conversations and conversation history.

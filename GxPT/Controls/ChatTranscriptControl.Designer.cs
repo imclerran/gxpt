@@ -25,6 +25,8 @@
             }
             try { SyntaxHighlightingRenderer.SegmentsReady -= OnSegmentsReady; }
             catch { }
+            try { GraphvizRenderer.GraphReady -= OnGraphReady; }
+            catch { }
             base.Dispose(disposing);
         }
 

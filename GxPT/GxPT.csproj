@@ -297,6 +297,7 @@
     <Compile Include="Highlighting\SyntaxHighlighter.cs">
     </Compile>
     <Compile Include="Services\SessionState.cs" />
+    <Compile Include="Services\GraphvizRenderer.cs" />
     <Compile Include="Services\SyntaxHighlightingRenderer.cs" />
     <Compile Include="Services\TranscriptWidthSettings.cs" />
     <Compile Include="Managers\TabManager.cs" />
@@ -344,6 +345,19 @@
     <Content Include="Lib\libcurl.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Portable Graphviz 2.38 used to render fenced ```dot``` blocks (see Lib\graphviz\README.md).
+         The native binaries are not committed; the wildcards copy whatever .exe/.dll are dropped in,
+         so the build still works when Graphviz is absent (dot blocks fall back to plain code). -->
+    <Content Include="Lib\graphviz\*.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Lib\graphviz\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Lib\graphviz\config6">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="Lib\graphviz\README.md" />
     <Content Include="Lib\DotNetZip.dll" />
     <Content Include="Lib\DotNetZip.xml" />
     <Content Include="Lib\itextsharp.dll" />
