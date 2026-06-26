@@ -34,10 +34,10 @@ namespace GxPT
             MinimizeBox = false;
             ShowInTaskbar = false;
             ClientSize = new Size(660, 360);
-            MinimumSize = new Size(600, 320);
+            MinimumSize = new Size(620, 300);
 
             _list = new ListView();
-            _list.SetBounds(12, 12, 636, 280);
+            _list.SetBounds(12, 12, 636, 302);
             _list.View = View.Details;
             _list.FullRowSelect = true;
             _list.MultiSelect = false;
@@ -55,15 +55,16 @@ namespace GxPT
             Button install = MakeButton("&Install...", 12, OnInstall);
             Button newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
-            // Per-row actions. The toggle reads "Enable" or "Disable" for the selection (see UpdateButtons).
-            _toggle = MakeButton("Disa&ble", 168, OnToggle);
-            _export = MakeButton("&Export...", 246, OnExport);
-            _uninstall = MakeButton("&Uninstall", 324, OnUninstall);
-            _details = MakeButton("De&tails...", 402, OnDetails);
+            // Per-row actions, set off from the global group by a wider gap. The toggle reads "Enable" or
+            // "Disable" for the selection (see UpdateButtons).
+            _toggle = MakeButton("Disa&ble", 186, OnToggle);
+            _export = MakeButton("&Export...", 264, OnExport);
+            _uninstall = MakeButton("&Uninstall", 342, OnUninstall);
+            _details = MakeButton("De&tails...", 420, OnDetails);
 
             Button close = new Button();
             close.Text = "&Close";
-            close.SetBounds(572, 300, 76, 26);
+            close.SetBounds(572, 322, 76, 26);
             close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             close.DialogResult = DialogResult.OK;
 
@@ -102,7 +103,7 @@ namespace GxPT
         {
             Button b = new Button();
             b.Text = text;
-            b.SetBounds(x, 300, 76, 26);
+            b.SetBounds(x, 322, 76, 26);
             b.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             b.Click += onClick;
             return b;
