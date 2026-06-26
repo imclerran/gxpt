@@ -10,7 +10,7 @@ namespace GxPT
     // nothing crosses threads. XP / .NET 3.5 friendly.
     internal sealed class ToolProbeWaitForm : Form
     {
-        private readonly Timer _timer;
+        private readonly System.Windows.Forms.Timer _timer;
 
         // Assigned by the caller before ShowDialog; the dialog closes once this thread is no longer alive.
         public Thread Worker;
@@ -31,7 +31,7 @@ namespace GxPT
             label.SetBounds(20, 26, 260, 20);
             Controls.Add(label);
 
-            _timer = new Timer();
+            _timer = new System.Windows.Forms.Timer();
             _timer.Interval = 150;
             _timer.Tick += new EventHandler(OnTick);
             _timer.Start();
