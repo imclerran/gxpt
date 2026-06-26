@@ -1864,15 +1864,12 @@ namespace GxPT
             ImportExportManager.ExportAll(this);
         }
 
-        // Designer wires this
+        // Designer wires this. Routes through the same open-file dialog as /import, so File > Import handles
+        // every archive kind - conversations (.gxcv), skills (.gxsk), and plugins (.gxpl) - not just
+        // conversations. The conversation path inside ImportArchiveFromShell refreshes the sidebar itself.
         private void miImport_Click(object sender, EventArgs e)
         {
-            var ok = ImportExportManager.ImportAll(this);
-            if (ok)
-            {
-                try { if (_sidebarManager != null) _sidebarManager.RefreshSidebarList(); }
-                catch { }
-            }
+            SlashImportArchive();
         }
 
         // Called by Program.cs after the form is shown when the app is launched by double-clicking a
