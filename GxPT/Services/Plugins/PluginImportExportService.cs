@@ -245,32 +245,13 @@ namespace GxPT
                 string selfSlug = SkillSlug.Make(archived.Name);
                 IList<PluginManifest> allPlugins = registry.ListInstalled();
 
-                // A foreign conflict is a same-slug item we do NOT actively own: a stray item in the active
-                // root (a user's own, or - when this plugin is disabled - anything sitting where our parked
-                // copy isn't), or a slug some OTHER installed plugin lists. Conflicts collect transfers so the
-                // other plugin gives up the slug on confirm.
-                List<string> conflicts = new List<string>();
-                List<Transfer> transfers = new List<Transfer>();
-                CollectConflicts(MemberKind.Skill, skillDirs.Keys, skillsRoot, agentsRoot,
-                    existing, ownsActively, allPlugins, selfSlug, conflicts, transfers);
-                CollectConflicts(MemberKind.Agent, agentFiles.Keys, skillsRoot, agentsRoot,
-                    existing, ownsActively, allPlugins, selfSlug, conflicts, transfers);
-
-                if (conflicts.Count > 0)
-                {
-                    if (confirmOverwrite == null || !confirmOverwrite(conflicts.AsReadOnly()))
-                        return null;
-                }
-
-                // Confirmed: transfer ownership of every conflicting slug away from any other plugin.
-                List<PluginManifest> ownersToSave = new List<PluginManifest>();
-                for (int i = 0; i < transfers.Count; i++)
-                {
-                    Transfer t = transfers[i];
-                    RemoveIgnoreCase(KindList(t.Owner, t.Kind), t.Slug);
-                    if (!ownersToSave.Contains(t.Owner)) ownersToSave.Add(t.Owner);
-                }
-                for (int i = 0; i < ownersToSave.Count; i++) registry.Save(ownersToSave[i]);
+                // Conflicts: a slug we want active that's already taken. If another ENABLED plugin owns it,
+                // resolving disables that plugin (its files move to its own holding - lossless and toggleable);
+                // if it's a user's own item, it's overwritten (destructive). ResolveConflicts prompts once with
+                // all of these together and performs the plugin-disables on confirm; false == user declined.
+                if (!ResolveConflicts(skillDirs.Keys, agentFiles.Keys, skillsRoot, agentsRoot, pluginsRoot,
+                        allPlugins, selfSlug, existing, ownsActively, confirmOverwrite))
+                    return null;
 
                 string disabled = registry.DisabledDir(archived.Name);
 
@@ -373,15 +354,24 @@ namespace GxPT
             registry.Save(m);
         }
 
-        // Re-enables a disabled plugin by moving its files back into the active roots. Refuses to overwrite a
-        // foreign same-slug item a user created while the plugin was disabled (throws with the collisions);
-        // the enabled flag is only flipped after the moves succeed.
-        public static void EnablePlugin(string name, string skillsRoot, string agentsRoot, string pluginsRoot)
+        // Re-enables a disabled plugin by moving its files back into the active roots. A slug whose active
+        // slot is held by another ENABLED plugin disables that plugin (lossless); one held by a user's own
+        // item overwrites it (destructive). confirmOverwrite is prompted once with all such changes; returns
+        // false (a no-op) when declined, true when enabled. The enabled flag is only flipped after the moves
+        // succeed. Throws if the plugin isn't installed or a file can't be moved (e.g. locked).
+        public static bool EnablePlugin(string name, string skillsRoot, string agentsRoot, string pluginsRoot,
+            Predicate<IList<string>> confirmOverwrite)
         {
             PluginRegistry registry = new PluginRegistry(pluginsRoot);
             PluginManifest m = registry.Load(name);
             if (m == null) throw new InvalidOperationException("Plugin '" + name + "' is not installed.");
-            if (m.Enabled) return;
+            if (m.Enabled) return true;
+
+            string selfSlug = SkillSlug.Make(name);
+            IList<PluginManifest> allPlugins = registry.ListInstalled();
+            if (!ResolveConflicts(m.Skills, m.Agents, skillsRoot, agentsRoot, pluginsRoot,
+                    allPlugins, selfSlug, m, false, confirmOverwrite))
+                return false;
 
             Directory.CreateDirectory(skillsRoot);
             Directory.CreateDirectory(agentsRoot);
@@ -390,6 +380,7 @@ namespace GxPT
             m.Enabled = true;
             registry.Save(m);
             if (!string.IsNullOrEmpty(disabled)) DeleteDirQuiet(disabled);
+            return true;
         }
 
         // Uninstalls a plugin: deletes its member files (the active copies when enabled; the parked copies in
@@ -419,45 +410,107 @@ namespace GxPT
             });
         }
 
-        // ---- ownership / conflict ----
+        // ---- conflict resolution ----
 
-        // A conflicting slug owned by another plugin, to be released from that plugin on confirm.
-        private sealed class Transfer
+        private enum ConflictType { None, Plugin, User }
+
+        // Resolves the conflicts for making the given members ACTIVE: builds the prompt lines (one per OTHER
+        // enabled plugin to disable - deduped, with the colliding slugs - plus one per user item to overwrite),
+        // prompts once via confirm, and on confirm disables the conflicting plugins so their slots free up.
+        // Returns false when the user declines, true otherwise (including no conflicts). existing/ownsActively
+        // let an upgrade or re-enable keep its own active copies silently.
+        private static bool ResolveConflicts(
+            IEnumerable<string> skillSlugs, IEnumerable<string> agentSlugs,
+            string skillsRoot, string agentsRoot, string pluginsRoot,
+            IList<PluginManifest> allPlugins, string selfSlug,
+            PluginManifest existing, bool ownsActively, Predicate<IList<string>> confirm)
         {
-            public PluginManifest Owner;
-            public MemberKind Kind;
-            public string Slug;
+            List<PluginManifest> pluginsToDisable = new List<PluginManifest>();
+            Dictionary<string, List<string>> detail =
+                new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            List<string> userOverwrites = new List<string>();
+
+            AddConflicts(MemberKind.Skill, skillSlugs, skillsRoot, agentsRoot, allPlugins, selfSlug,
+                existing, ownsActively, pluginsToDisable, detail, userOverwrites);
+            AddConflicts(MemberKind.Agent, agentSlugs, skillsRoot, agentsRoot, allPlugins, selfSlug,
+                existing, ownsActively, pluginsToDisable, detail, userOverwrites);
+
+            List<string> lines = new List<string>();
+            for (int i = 0; i < pluginsToDisable.Count; i++)
+            {
+                PluginManifest p = pluginsToDisable[i];
+                List<string> items = detail[SkillSlug.Make(p.Name)];
+                lines.Add("Disable plugin '" + p.Name + "' (" + string.Join(", ", items.ToArray()) + ")");
+            }
+            for (int i = 0; i < userOverwrites.Count; i++)
+                lines.Add("Replace your " + userOverwrites[i]);
+
+            if (lines.Count > 0)
+            {
+                if (confirm == null || !confirm(lines.AsReadOnly())) return false;
+            }
+
+            // Confirmed: disable each conflicting enabled plugin (its files move to its own holding area).
+            for (int i = 0; i < pluginsToDisable.Count; i++)
+                DisablePlugin(pluginsToDisable[i].Name, skillsRoot, agentsRoot, pluginsRoot);
+            return true;
         }
 
-        private static void CollectConflicts(MemberKind kind, IEnumerable<string> stagedSlugs,
-            string skillsRoot, string agentsRoot, PluginManifest existing, bool ownsActively,
-            IList<PluginManifest> allPlugins, string selfSlug,
-            List<string> conflicts, List<Transfer> transfers)
+        private static void AddConflicts(MemberKind kind, IEnumerable<string> slugs,
+            string skillsRoot, string agentsRoot, IList<PluginManifest> allPlugins, string selfSlug,
+            PluginManifest existing, bool ownsActively,
+            List<PluginManifest> pluginsToDisable, Dictionary<string, List<string>> detail,
+            List<string> userOverwrites)
         {
-            string label = (kind == MemberKind.Agent ? "agent: " : "skill: ");
-            foreach (string slug in stagedSlugs)
+            foreach (string slug in slugs)
             {
-                // We "actively own" the slug only when this plugin is enabled (its copy is in the active root)
-                // and its prior manifest lists it; that copy is replaced silently as part of the upgrade.
-                bool ourActive = ownsActively && existing != null && ListContainsIgnoreCase(KindList(existing, kind), slug);
-                bool activeForeign = MemberExists(kind, ActivePath(kind, skillsRoot, agentsRoot, slug)) && !ourActive;
-
-                bool ownedByOther = false;
-                for (int i = 0; i < allPlugins.Count; i++)
+                PluginManifest owner;
+                ConflictType t = Classify(kind, slug, skillsRoot, agentsRoot, allPlugins, selfSlug,
+                    existing, ownsActively, out owner);
+                if (t == ConflictType.Plugin)
                 {
-                    PluginManifest p = allPlugins[i];
-                    if (string.Equals(SkillSlug.Make(p.Name), selfSlug, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (ListContainsIgnoreCase(KindList(p, kind), slug))
+                    string pid = SkillSlug.Make(owner.Name);
+                    List<string> items;
+                    if (!detail.TryGetValue(pid, out items))
                     {
-                        ownedByOther = true;
-                        Transfer t = new Transfer();
-                        t.Owner = p; t.Kind = kind; t.Slug = slug;
-                        transfers.Add(t);
+                        items = new List<string>();
+                        detail[pid] = items;
+                        pluginsToDisable.Add(owner); // deduped: one entry per conflicting plugin
                     }
+                    items.Add(MemberLabel(kind, slug));
                 }
-
-                if (activeForeign || ownedByOther) conflicts.Add(label + slug);
+                else if (t == ConflictType.User)
+                {
+                    userOverwrites.Add(MemberLabel(kind, slug));
+                }
             }
+        }
+
+        // Classifies what (if anything) occupies the active slot for a member we want to make active.
+        private static ConflictType Classify(MemberKind kind, string slug,
+            string skillsRoot, string agentsRoot, IList<PluginManifest> allPlugins, string selfSlug,
+            PluginManifest existing, bool ownsActively, out PluginManifest owner)
+        {
+            owner = null;
+            // Our own active copy (enabled self being upgraded) is overwritten silently - not a conflict.
+            if (ownsActively && existing != null && ListContainsIgnoreCase(KindList(existing, kind), slug))
+                return ConflictType.None;
+            if (!MemberExists(kind, ActivePath(kind, skillsRoot, agentsRoot, slug)))
+                return ConflictType.None; // slot free
+            // Occupied by something foreign: another ENABLED plugin's member, else a user's own item.
+            for (int i = 0; i < allPlugins.Count; i++)
+            {
+                PluginManifest p = allPlugins[i];
+                if (!p.Enabled) continue;
+                if (string.Equals(SkillSlug.Make(p.Name), selfSlug, StringComparison.OrdinalIgnoreCase)) continue;
+                if (ListContainsIgnoreCase(KindList(p, kind), slug)) { owner = p; return ConflictType.Plugin; }
+            }
+            return ConflictType.User;
+        }
+
+        private static string MemberLabel(MemberKind kind, string slug)
+        {
+            return (kind == MemberKind.Agent ? "agent '" : "skill '") + slug + "'";
         }
 
         private static void SaveRecord(PluginRegistry registry, PluginManifest record,
@@ -483,41 +536,16 @@ namespace GxPT
             return false;
         }
 
-        private static void RemoveIgnoreCase(List<string> list, string value)
-        {
-            if (list == null) return;
-            for (int i = list.Count - 1; i >= 0; i--)
-                if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) list.RemoveAt(i);
-        }
-
         // ---- relocate (enable/disable) ----
 
         // Moves every member between the active roots and the disabled holding. toDisabled=true parks the
-        // active copies (overwriting the holding); toDisabled=false restores them, first checking that no
-        // foreign same-slug item occupies the active root (it would otherwise be clobbered).
+        // active copies; toDisabled=false restores them. Either way the target is overwritten: on disable the
+        // holding is ours, and on enable the active slots have already been cleared of conflicting plugins (and
+        // any user item there was confirmed for overwrite) by ResolveConflicts.
         private static void Relocate(PluginManifest m, string disabledDir, string skillsRoot, string agentsRoot, bool toDisabled)
         {
-            if (!toDisabled)
-            {
-                List<string> collisions = new List<string>();
-                AddActiveCollisions(MemberKind.Skill, m.Skills, skillsRoot, agentsRoot, collisions);
-                AddActiveCollisions(MemberKind.Agent, m.Agents, skillsRoot, agentsRoot, collisions);
-                if (collisions.Count > 0)
-                    throw new IOException("Cannot enable plugin '" + m.Name +
-                        "': these already exist and would be overwritten: " + string.Join(", ", collisions.ToArray()));
-            }
-
             MoveMembers(MemberKind.Skill, m.Skills, disabledDir, skillsRoot, agentsRoot, toDisabled);
             MoveMembers(MemberKind.Agent, m.Agents, disabledDir, skillsRoot, agentsRoot, toDisabled);
-        }
-
-        private static void AddActiveCollisions(MemberKind kind, List<string> slugs,
-            string skillsRoot, string agentsRoot, List<string> into)
-        {
-            string label = (kind == MemberKind.Agent ? "agent: " : "skill: ");
-            for (int i = 0; i < slugs.Count; i++)
-                if (MemberExists(kind, ActivePath(kind, skillsRoot, agentsRoot, slugs[i])))
-                    into.Add(label + slugs[i]);
         }
 
         private static void MoveMembers(MemberKind kind, List<string> slugs,
@@ -530,7 +558,7 @@ namespace GxPT
                 string parked = DisabledPath(kind, disabledDir, slug);
                 string from = toDisabled ? active : parked;
                 string to = toDisabled ? parked : active;
-                MoveMember(kind, from, to, toDisabled); // disable overwrites the holding; enable was pre-checked
+                MoveMember(kind, from, to, true); // target overwritten (conflicts already resolved)
             }
         }
 

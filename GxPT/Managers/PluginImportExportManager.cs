@@ -141,17 +141,8 @@ namespace GxPT
             {
                 PluginInstallResult r = PluginImportExportService.ImportPlugin(
                     archivePath, skillsRoot, agentsRoot, pluginsRoot,
-                    delegate(IList<string> conflicts)
-                    {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append("This plugin would replace existing items that are not part of it:\n\n");
-                        for (int i = 0; i < conflicts.Count; i++)
-                            sb.Append("    ").Append(conflicts[i]).Append('\n');
-                        sb.Append("\nReplace them?");
-                        return MessageBox.Show(owner, sb.ToString(), "Install Plugin",
-                            MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
-                    });
-                if (r == null) return false; // declined at the overwrite prompt
+                    ConflictPrompt(owner, "Installing this plugin requires the following changes:"));
+                if (r == null) return false; // declined at the conflict prompt
 
                 string verb = r.WasUpgrade ? "Upgraded" : "Installed";
                 StringBuilder msg = new StringBuilder();
@@ -187,9 +178,15 @@ namespace GxPT
             try
             {
                 if (enabled)
-                    PluginImportExportService.EnablePlugin(name, skillsRoot, agentsRoot, pluginsRoot);
+                {
+                    bool done = PluginImportExportService.EnablePlugin(name, skillsRoot, agentsRoot, pluginsRoot,
+                        ConflictPrompt(owner, "Enabling this plugin requires the following changes:"));
+                    if (!done) return false; // declined at the conflict prompt
+                }
                 else
+                {
                     PluginImportExportService.DisablePlugin(name, skillsRoot, agentsRoot, pluginsRoot);
+                }
                 if (announce)
                     Info(owner, (enabled ? "Enabled" : "Disabled") + " plugin '" + name + "'.");
                 return true;
@@ -199,6 +196,22 @@ namespace GxPT
                 Error(owner, (enabled ? "Enable" : "Disable") + " failed: " + ex.Message);
                 return false;
             }
+        }
+
+        // A Yes/No prompt that lists the conflict resolution lines (plugins to disable, items to overwrite)
+        // built by the service. Used by both install and enable so the wording stays in one place.
+        private static Predicate<IList<string>> ConflictPrompt(IWin32Window owner, string header)
+        {
+            return delegate(IList<string> lines)
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append(header).Append("\n\n");
+                for (int i = 0; i < lines.Count; i++)
+                    sb.Append("    ").Append(lines[i]).Append('\n');
+                sb.Append("\nContinue?");
+                return MessageBox.Show(owner, sb.ToString(), "Plugins",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+            };
         }
 
         public static bool Uninstall(IWin32Window owner, string name)

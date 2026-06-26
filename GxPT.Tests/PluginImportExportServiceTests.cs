@@ -177,7 +177,7 @@ namespace GxPT.Tests
             bool asked = false;
             PluginInstallResult declined = PluginImportExportService.ImportPlugin(
                 archive, _skillsRoot, _agentsRoot, _pluginsRoot,
-                delegate(IList<string> conflicts) { asked = true; Assert.Contains("skill: shared", conflicts); return false; });
+                delegate(IList<string> conflicts) { asked = true; Assert.Contains(conflicts, Mentions("shared")); return false; });
             Assert.True(asked);
             Assert.Null(declined);
             Assert.True(File.Exists(Path.Combine(_skillsRoot, "shared", "marker.txt")));
@@ -206,7 +206,7 @@ namespace GxPT.Tests
             Assert.False(File.Exists(Path.Combine(_agentsRoot, "a1.md")));
             Assert.False(new PluginRegistry(_pluginsRoot).Load("pack").Enabled);
 
-            PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+            PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot, null);
             Assert.True(Directory.Exists(Path.Combine(_skillsRoot, "s1")));
             Assert.True(File.Exists(Path.Combine(_agentsRoot, "a1.md")));
             Assert.True(new PluginRegistry(_pluginsRoot).Load("pack").Enabled);
@@ -323,7 +323,7 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void Install_over_another_plugins_slug_transfers_ownership()
+        public void Installing_over_another_plugins_slug_disables_that_plugin_losslessly()
         {
             string a = ExportSample("plugin-a", "1", new[] { WriteSkill("shared", "A's.") }, null);
             PluginImportExportService.ImportPlugin(a, _skillsRoot, _agentsRoot, _pluginsRoot, null);
@@ -331,17 +331,48 @@ namespace GxPT.Tests
             string b = ExportSample("plugin-b", "1", new[] { WriteSkill("shared", "B's.") }, null);
             bool asked = false;
             PluginInstallResult r = PluginImportExportService.ImportPlugin(b, _skillsRoot, _agentsRoot, _pluginsRoot,
-                delegate(IList<string> c) { asked = true; Assert.Contains("skill: shared", c); return true; });
+                delegate(IList<string> c) { asked = true; Assert.Contains(c, Mentions("plugin-a")); return true; });
             Assert.True(asked);
             Assert.NotNull(r);
 
+            // Both stay installed and still own 'shared'; A is disabled, B active.
             PluginRegistry reg = new PluginRegistry(_pluginsRoot);
-            Assert.DoesNotContain("shared", reg.Load("plugin-a").Skills); // ownership transferred away from A
+            Assert.Contains("shared", reg.Load("plugin-a").Skills);
             Assert.Contains("shared", reg.Load("plugin-b").Skills);
+            Assert.False(reg.Load("plugin-a").Enabled);
+            Assert.True(reg.Load("plugin-b").Enabled);
 
-            // Uninstalling A must NOT delete the skill B now owns.
-            PluginImportExportService.UninstallPlugin("plugin-a", _skillsRoot, _agentsRoot, _pluginsRoot);
-            Assert.True(Directory.Exists(Path.Combine(_skillsRoot, "shared")));
+            // Toggle back to A: B is disabled, A restored - lossless.
+            PluginImportExportService.EnablePlugin("plugin-a", _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { return true; });
+            Assert.True(reg.Load("plugin-a").Enabled);
+            Assert.False(reg.Load("plugin-b").Enabled);
+        }
+
+        [Fact]
+        public void Installing_lists_every_conflicting_plugin_and_disables_them_all()
+        {
+            // A owns s1, B owns s2 (both enabled); C ships s1 + s2.
+            PluginImportExportService.ImportPlugin(
+                ExportSample("plugin-a", "1", new[] { WriteSkill("s1", "A.") }, null),
+                _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.ImportPlugin(
+                ExportSample("plugin-b", "1", new[] { WriteSkill("s2", "B.") }, null),
+                _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            string c = ExportSample("plugin-c", "1",
+                new[] { WriteSkill("s1", "C1."), WriteSkill("s2", "C2.") }, null);
+            IList<string> shown = null;
+            PluginImportExportService.ImportPlugin(c, _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> lines) { shown = lines; return true; });
+
+            // The prompt named both conflicting plugins, and both got disabled.
+            Assert.Contains(shown, Mentions("plugin-a"));
+            Assert.Contains(shown, Mentions("plugin-b"));
+            PluginRegistry reg = new PluginRegistry(_pluginsRoot);
+            Assert.False(reg.Load("plugin-a").Enabled);
+            Assert.False(reg.Load("plugin-b").Enabled);
+            Assert.True(reg.Load("plugin-c").Enabled);
         }
 
         [Fact]
@@ -357,7 +388,7 @@ namespace GxPT.Tests
             string v2 = ExportSample("pack", "2", new[] { WriteSkill("s1", "v2.") }, null);
             bool asked = false;
             PluginInstallResult declined = PluginImportExportService.ImportPlugin(v2, _skillsRoot, _agentsRoot, _pluginsRoot,
-                delegate(IList<string> c) { asked = true; Assert.Contains("skill: s1", c); return false; });
+                delegate(IList<string> c) { asked = true; Assert.Contains(c, Mentions("s1")); return false; });
 
             Assert.True(asked);
             Assert.Null(declined);
@@ -365,7 +396,7 @@ namespace GxPT.Tests
         }
 
         [Fact]
-        public void Enabling_refuses_to_overwrite_a_foreign_active_item()
+        public void Enabling_prompts_before_overwriting_a_foreign_user_item_and_can_decline()
         {
             string v1 = ExportSample("pack", "1", new[] { WriteSkill("s1", "plugin.") }, null);
             PluginImportExportService.ImportPlugin(v1, _skillsRoot, _agentsRoot, _pluginsRoot, null);
@@ -373,12 +404,24 @@ namespace GxPT.Tests
 
             WriteForeignSkill("s1", "user copy");
 
-            Assert.Throws<IOException>(delegate
-            {
-                PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
-            });
+            // Decline: the plugin stays disabled and the user's item is untouched.
+            bool enabled = PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { Assert.Contains(c, Mentions("s1")); return false; });
+            Assert.False(enabled);
             Assert.Equal("user copy", File.ReadAllText(Path.Combine(_skillsRoot, "s1", "SKILL.md")));
             Assert.False(new PluginRegistry(_pluginsRoot).Load("pack").Enabled);
+
+            // Confirm: the plugin's copy replaces the user's item.
+            bool enabled2 = PluginImportExportService.EnablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot,
+                delegate(IList<string> c) { return true; });
+            Assert.True(enabled2);
+            Assert.True(new PluginRegistry(_pluginsRoot).Load("pack").Enabled);
+        }
+
+        // xUnit predicate: a conflict line that mentions the given token.
+        private static Predicate<string> Mentions(string token)
+        {
+            return delegate(string line) { return line != null && line.Contains(token); };
         }
 
         [Fact]
