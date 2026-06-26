@@ -75,7 +75,7 @@ Tools map to the approval table: `read`/`list`/`search` ReadOnly,
 
 | Tool | Schema (required *) | Behavior |
 |------|---------------------|----------|
-| `read` | `path*`, `start_line?`, `end_line?`, `line_numbers?` | UTF-8 (BOM-aware) text of a file under root; optional 1-based inclusive line range and/or per-line numbering. |
+| `read` | `path*`, `start_line?`, `end_line?`, `line_numbers?`, `offset?` | UTF-8 (BOM-aware) text of a file under root; optional 1-based inclusive line range and/or per-line numbering. Over-cap reads **truncate** (not error), returning `{content, truncated, next_start_line?, next_offset}`; resume by passing `start_line`+`offset` (line-aware, O(1) seek) or `offset` alone (raw byte window for a single over-cap line). |
 | `list` | `path*`, `recursive?` | Directory entries: `{name,type,size}`; capped count. |
 | `search` | `query*`, `path?`, `regex?`, `ignore_case?`, `glob?`, `max_results?` | Grep file contents under root → `{path,line,text}`; recursive, **streamed (any file size)**, skips binary. |
 | `write` | `path*`, `content*`, `create_dirs?` | Atomic create/overwrite under root. |
@@ -85,12 +85,16 @@ Tools map to the approval table: `read`/`list`/`search` ReadOnly,
 The **agentic** additions — `search`, `edit`, and `read`'s line-range/numbering
 options — exist so the model can locate and surgically modify code without
 rewriting whole files (fewer tokens, fewer clobbers). All share the sandbox and
-binary sniff; `edit` reuses `write`'s atomic temp-then-move. The 1 MiB cap is a
-**context** guard, so it applies only to operations that emit a whole file into
-the model: a *whole-file* `read`. Everything else **streams**, bounding output (or
-memory) rather than file size: `search` and a *ranged* `read` by line, `edit` by a
-chunk + carry buffer. So large files remain searchable, a slice is always readable,
-and any file is editable — only a whole-file `read` is capped.
+binary sniff; `edit` reuses `write`'s atomic temp-then-move. The **32 KiB** read
+cap (~8K tokens; 1 MiB would be ~250K+) is a **context** guard on what a `read`
+emits into the model — but it never blocks: an over-cap `read` **truncates and hands
+back a continuation token** (`next_start_line`+`next_offset`, or `next_offset` alone
+for a single line longer than the cap) so the model pages through the rest.
+Everything streams, bounding output (or memory) rather than file size: `search` and
+`read` (by line, falling to a byte window for a lone over-cap line), `edit` by a
+chunk + carry buffer. So large files remain searchable, any file is readable in full
+via pagination, and any file is editable. (Multiline `search` is the one exception —
+it reads a whole file into memory, so it keeps a separate 1 MiB file-size limit.)
 
 **Sandbox — the one rule that matters here:** every `path` is resolved against
 the root and must stay inside it.
@@ -106,16 +110,28 @@ string Resolve(string root, string rel) {
 // NOT a bare StartsWith — so "/root" does not match "/root-evil".
 ```
 
-- `read`: a **whole-file** read enforces the **1 MiB** cap (over → `Error`,
-  pointing the model at a line range) and detects binary (NUL byte in a head
-  sample) → `Error("not a text file")`. A **ranged** read (`start_line`/`end_line`,
-  1-based inclusive) **streams** instead: it works on files past the cap, but its
-  **rendered output** is held to the same 1 MiB — counted as exact UTF-8 bytes (line
-  content + `\n` separators + the line-number prefix when numbering), so a slice that
-  would render over 1 MiB → `Error`. A `start_line` past EOF → `Error`, an `end_line`
-  past EOF just stops at the last line. `line_numbers` prefixes each
-  returned line with a right-aligned number + tab. With no range and no numbering,
-  content is returned **verbatim** (exact bytes preserved).
+- `read`: a **whole-file** read that fits the **32 KiB** cap is returned in full
+  (**verbatim** — exact bytes preserved — unless numbering is requested) and detects
+  binary (NUL byte in a head sample) → `Error("not a text file")`. Over the cap it
+  **truncates instead of erroring**: the rendered output (exact UTF-8 bytes — line
+  content + `\n` separators + the line-number prefix when numbering) is held to the cap
+  and the result becomes a JSON envelope `{content, truncated:true, next_start_line?,
+  next_offset}`. The continuation is set by **where the cut lands**: at a line boundary
+  (≥1 whole line emitted) → **`next_start_line`** *and* **`next_offset`** (the byte that
+  line begins at); inside a **single line longer than the cap** (the minified-file case,
+  where line ranges can't subdivide) → **`next_offset`** only. To resume, pass back
+  **both** `start_line` and `offset` (a line-aware **O(1) seek** — no rescan from the
+  top — that continues numbering), or `offset` alone for a raw byte window of the over-cap
+  line. A byte window backs each cut up to a UTF-8 boundary so a codepoint is never
+  split, and keeps reporting `next_offset` until the tail fits and comes back as plain
+  text. So the model pages through a file of any shape — multi-line or single-line —
+  until a read is no longer truncated. The reader streams fixed char chunks (never
+  buffering a whole over-cap line), so memory stays bounded. A `start_line`/`offset`
+  past EOF → `Error` (a malformed/negative `offset` → `Error`); an `end_line` past EOF
+  stops at the last line. Line endings are split like the rest of the read path (LF,
+  CRLF, and lone CR). **Limitations:** truncated output is line-normalized (the verbatim
+  guarantee is for the untruncated whole-file read only); `line_numbers` is dropped once
+  a read cuts into a single line (byte-window mode).
 - `list`: cap entries (e.g. 1000) and note truncation; `recursive` bounded depth.
 - `search`: walk the tree under `path` (default root) bounded by the same depth
   cap as `list`, **streaming** each file line-by-line (no per-file size cap);
@@ -335,8 +351,10 @@ Per server, over the scripted-stream harness:
 1. **Listing** — `tools/list` returns exactly the documented tools with intact
    `inputSchema`.
 2. **Files sandbox** — `..`, absolute paths, and `/root` vs `/root-evil` boundary
-   tricks are all rejected; in-root read/list/write/delete round-trip; oversize
-   and binary reads → `Error`; write is atomic; delete refuses non-empty dirs.
+   tricks are all rejected; in-root read/list/write/delete round-trip; binary
+   reads → `Error`; an over-cap read **truncates** with a `next_start_line` /
+   `next_offset` continuation (single-line/minified files page via `offset`);
+   write is atomic; delete refuses non-empty dirs.
 3. **Web** — happy path parses `results[]` into structured+text (curl stubbed
    via injected `GXPT_CURL_PATH` pointing at a fake); missing key, curl failure,
    non-200, bad JSON → `Error`; key never leaks into output.

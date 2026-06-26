@@ -25,6 +25,9 @@ namespace FilesMcpServer.Tests
 
         private string Abs(string rel) { return Path.Combine(_root, rel); }
 
+        // The read output cap, sourced from production so fixtures stay correct if the value changes.
+        private static readonly int Cap = (int)FilesMcpServer.FilesTools.MaxReadBytes;
+
         // ---- Criterion 1: listing ----
 
         [Fact]
@@ -121,13 +124,19 @@ namespace FilesMcpServer.Tests
         }
 
         [Fact]
-        public void Oversize_read_is_error()
+        public void Oversize_single_line_read_truncates_with_next_offset()
         {
-            File.WriteAllText(Abs("big.txt"), new string('a', 2 * 1024 * 1024)); // 2 MiB > 1 MiB cap
+            // A file with no newlines twice the cap is one giant line: it can't be subdivided by line,
+            // so the read truncates mid-line and hands back a byte offset to continue from (not error).
+            File.WriteAllText(Abs("big.txt"), new string('a', 2 * Cap));
             var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
                 Harness.ToolsCall(1, "read", Harness.Args("path", "big.txt")));
-            Assert.True(Harness.IsError(msgs[0]));
-            Assert.Contains("too large", Harness.Text(msgs[0]));
+            Assert.False(Harness.IsError(msgs[0]));
+            JToken sc = msgs[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            Assert.Equal((long)Cap, (long)sc["next_offset"]);        // cut at the cap
+            Assert.Equal(Cap, ((string)sc["content"]).Length);
+            Assert.Null(sc["next_start_line"]);                       // byte cut, not a line boundary
         }
 
         [Fact]
@@ -593,7 +602,7 @@ namespace FilesMcpServer.Tests
         }
 
         [Fact]
-        public void Read_range_works_on_oversize_file_while_whole_file_is_capped()
+        public void Read_range_works_on_oversize_file_and_whole_file_truncates()
         {
             var sb = new StringBuilder();
             sb.Append("first line\n");
@@ -607,64 +616,267 @@ namespace FilesMcpServer.Tests
             Assert.False(Harness.IsError(r[0]));
             Assert.Equal("first line", Harness.Text(r[0]));
 
-            // Whole-file read is still capped.
+            // Whole-file read now truncates at a line boundary instead of failing. A boundary cut
+            // carries next_start_line AND next_offset (the byte that line starts at, for O(1) resume).
             var w = Harness.Exchange(Harness.NewFilesServer(_root),
                 Harness.ToolsCall(1, "read", Harness.Args("path", "big.txt")));
-            Assert.True(Harness.IsError(w[0]));
-            Assert.Contains("too large", Harness.Text(w[0]));
+            Assert.False(Harness.IsError(w[0]));
+            JToken sc = w[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            Assert.True((int)sc["next_start_line"] > 1);   // resume by line (multi-line file)
+            Assert.True((long)sc["next_offset"] > 0);
         }
 
         [Fact]
-        public void Read_range_rejects_an_oversize_selection()
+        public void Read_range_oversize_selection_truncates_at_line_boundary()
         {
             var sb = new StringBuilder();
             for (int i = 0; i < 120000; i++) sb.Append("padding padding padding\n"); // ~2.8 MiB
             File.WriteAllText(Abs("big.txt"), sb.ToString());
 
-            // Asking for the whole thing via an open-ended range hits the output cap.
+            // An open-ended range over the cap truncates and points at the next line.
             var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
                 Harness.ToolsCall(1, "read", Harness.Args("path", "big.txt", "start_line", 1)));
-            Assert.True(Harness.IsError(msgs[0]));
-            Assert.Contains("too large", Harness.Text(msgs[0]));
+            Assert.False(Harness.IsError(msgs[0]));
+            JToken sc = msgs[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            Assert.True((int)sc["next_start_line"] > 1);
         }
 
         [Fact]
         public void Read_range_cap_counts_utf8_bytes_not_chars()
         {
-            // 2000 lines × 250 '€' (3 bytes each) ≈ 1.5 MiB of UTF-8, but only ~0.5M chars — under a
-            // char-based cap, over the byte cap. The range read must reject it on real byte size.
+            // '€' is 3 UTF-8 bytes. Size the file (relative to the cap) so its char count is under the
+            // cap but its byte count is over: a char-based cap would never trip, so truncation here
+            // proves byte counting. ~Cap/2 chars of '€' is ~1.5× Cap bytes.
+            const int charsPerLine = 200;
+            int numLines = (Cap / 2) / charsPerLine;
             var sb = new StringBuilder();
-            for (int i = 0; i < 2000; i++) sb.Append(new string('€', 250)).Append('\n');
+            for (int i = 0; i < numLines; i++) sb.Append(new string('€', charsPerLine)).Append('\n');
             File.WriteAllText(Abs("uni.txt"), sb.ToString(), new UTF8Encoding(false));
-            Assert.True(sb.Length < 1024 * 1024);                                  // char count under cap
-            Assert.True(new FileInfo(Abs("uni.txt")).Length > 1024 * 1024);        // byte count over cap
+            Assert.True(sb.Length < Cap);                                  // char count under cap
+            Assert.True(new FileInfo(Abs("uni.txt")).Length > Cap);        // byte count over cap
 
             var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
                 Harness.ToolsCall(1, "read", Harness.Args("path", "uni.txt", "start_line", 1)));
-            Assert.True(Harness.IsError(msgs[0]));
-            Assert.Contains("too large", Harness.Text(msgs[0]));
+            Assert.False(Harness.IsError(msgs[0]));
+            JToken sc = msgs[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            int next = (int)sc["next_start_line"];
+            Assert.True(next > 1 && next < numLines);    // cut partway through on byte size, not at the last line
         }
 
         [Fact]
-        public void Read_range_at_cap_boundary_returns_just_under_and_rejects_just_over()
+        public void Read_range_at_cap_boundary_returns_just_under_and_truncates_just_over()
         {
-            // 16-byte ASCII lines; joined by '\n' that is 17 bytes/line. Output for N lines = 17N-1.
-            // 17×61681-1 = 1,048,576 = the 1 MiB cap exactly (fits, since the check is strictly >);
-            // 61682 lines = 1,048,593 bytes, just over.
-            string row = new string('x', 16);
+            // 15-char ASCII rows; rendered = 16 bytes/line (content + one '\n' separator). N lines
+            // render to N*16 - 1 bytes. `fit` is the largest N that fits the cap exactly (the check is
+            // strictly >); line fit+1 tips it over and is left for the next read. Derived from the cap
+            // so it stays correct if the cap changes.
+            const int rendered = 16;
+            int fit = (Cap + 1) / rendered;
+            int okLen = fit * rendered - 1;
+            string row = new string('x', rendered - 1);
             var sb = new StringBuilder();
-            for (int i = 0; i < 70000; i++) sb.Append(row).Append('\n');
+            for (int i = 0; i < fit + 100; i++) sb.Append(row).Append('\n');
             File.WriteAllText(Abs("rows.txt"), sb.ToString(), new UTF8Encoding(false));
 
             var ok = Harness.Exchange(Harness.NewFilesServer(_root),
-                Harness.ToolsCall(1, "read", Harness.Args("path", "rows.txt", "start_line", 1, "end_line", 61681)));
+                Harness.ToolsCall(1, "read", Harness.Args("path", "rows.txt", "start_line", 1, "end_line", fit)));
             Assert.False(Harness.IsError(ok[0]));
-            Assert.Equal(61681 * 17 - 1, Harness.Text(ok[0]).Length); // 61681 rows joined by 61680 '\n'
+            Assert.Equal(okLen, Harness.Text(ok[0]).Length);
 
             var over = Harness.Exchange(Harness.NewFilesServer(_root),
-                Harness.ToolsCall(1, "read", Harness.Args("path", "rows.txt", "start_line", 1, "end_line", 61682)));
-            Assert.True(Harness.IsError(over[0]));
-            Assert.Contains("too large", Harness.Text(over[0]));
+                Harness.ToolsCall(1, "read", Harness.Args("path", "rows.txt", "start_line", 1, "end_line", fit + 1)));
+            Assert.False(Harness.IsError(over[0]));
+            JToken sc = over[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            Assert.Equal(fit + 1, (int)sc["next_start_line"]);            // resume at the line that didn't fit
+            Assert.Equal(okLen, ((string)sc["content"]).Length);         // same content as the just-under read
+        }
+
+        // ---- read: truncation continuation (chunked / minified files) ----
+
+        [Fact]
+        public void Read_minified_file_pages_via_next_offset_until_complete()
+        {
+            // A single line of varied bytes ~10× the cap: page through it with offset and reassemble.
+            var sb = new StringBuilder();
+            for (int i = 0; i < 10 * Cap; i++) sb.Append((char)('0' + (i % 10)));
+            string original = sb.ToString();
+            File.WriteAllText(Abs("min.json"), original, new UTF8Encoding(false));
+
+            var assembled = new StringBuilder();
+            long offset = 0;
+            bool first = true;
+            int guard = 0;
+            while (guard++ < 100)
+            {
+                JObject call = first
+                    ? Harness.Args("path", "min.json")
+                    : Harness.Args("path", "min.json", "offset", offset);
+                first = false;
+                var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
+                    Harness.ToolsCall(1, "read", call));
+                Assert.False(Harness.IsError(msgs[0]));
+                JToken sc = msgs[0]["result"]["structuredContent"];
+                if (sc != null && sc["truncated"] != null && (bool)sc["truncated"])
+                {
+                    assembled.Append((string)sc["content"]);
+                    offset = (long)sc["next_offset"];
+                }
+                else
+                {
+                    assembled.Append(Harness.Text(msgs[0])); // final chunk: plain text
+                    break;
+                }
+            }
+            Assert.Equal(original, assembled.ToString());
+        }
+
+        [Fact]
+        public void Read_byte_cut_keeps_utf8_codepoints_intact()
+        {
+            // One line of 3-byte '€' chars totalling 1.5× the cap in bytes (Cap/2 chars × 3), so it
+            // is over the cap but pages in exactly two reads. The mid-line cut must land on a char
+            // boundary (no replacement chars), and the two pieces must reassemble to the original.
+            string original = new string('€', Cap / 2);
+            File.WriteAllText(Abs("euro.txt"), original, new UTF8Encoding(false));
+            Assert.True(new FileInfo(Abs("euro.txt")).Length > Cap);
+            Assert.True(new FileInfo(Abs("euro.txt")).Length < 2L * Cap);
+
+            var r1 = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "euro.txt")));
+            JToken sc = r1[0]["result"]["structuredContent"];
+            Assert.True((bool)sc["truncated"]);
+            string part1 = (string)sc["content"];
+            Assert.True(part1.IndexOf('�') < 0); // no replacement char => clean codepoint cut
+            long offset = (long)sc["next_offset"];
+            Assert.Equal(0L, offset % 3);                 // boundary aligned to the 3-byte char
+
+            var r2 = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "euro.txt", "offset", offset)));
+            string part2 = Harness.Text(r2[0]);           // remainder fits under the cap => plain text
+            Assert.Equal(original, part1 + part2);
+        }
+
+        [Fact]
+        public void Read_short_line_then_giant_line_switches_from_line_to_offset()
+        {
+            // Line 1 is short, line 2 is a single over-cap line. The first read stops at the boundary
+            // (next_start_line=2, next_offset=byte 6 where line 2 begins); resuming there (passing
+            // both, the O(1) line-aware path) then falls to a byte offset on the giant line.
+            string giant = new string('z', 2 * Cap);
+            File.WriteAllText(Abs("mix.txt"), "short\n" + giant, new UTF8Encoding(false));
+
+            var r1 = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "mix.txt")));
+            JToken sc1 = r1[0]["result"]["structuredContent"];
+            Assert.True((bool)sc1["truncated"]);
+            Assert.Equal(2, (int)sc1["next_start_line"]);
+            Assert.Equal(6L, (long)sc1["next_offset"]);   // "short\n" is 6 bytes
+            Assert.Equal("short", (string)sc1["content"]);
+
+            var r2 = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "mix.txt",
+                    "start_line", (int)sc1["next_start_line"], "offset", (long)sc1["next_offset"])));
+            JToken sc2 = r2[0]["result"]["structuredContent"];
+            Assert.True((bool)sc2["truncated"]);
+            Assert.Null(sc2["next_start_line"]);          // a single over-cap line -> byte cut
+            Assert.NotNull(sc2["next_offset"]);
+            Assert.Equal(Cap, ((string)sc2["content"]).Length);
+        }
+
+        [Fact]
+        public void Read_offset_past_eof_is_error()
+        {
+            File.WriteAllText(Abs("s.txt"), "hello");
+            var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "s.txt", "offset", 99)));
+            Assert.True(Harness.IsError(msgs[0]));
+            Assert.Contains("exceeds file length", Harness.Text(msgs[0]));
+        }
+
+        [Fact]
+        public void Read_offset_at_eof_returns_empty_not_truncated()
+        {
+            File.WriteAllText(Abs("s.txt"), "hello");
+            var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "s.txt", "offset", 5)));
+            Assert.False(Harness.IsError(msgs[0]));
+            Assert.Equal("", Harness.Text(msgs[0]));
+        }
+
+        [Fact]
+        public void Read_malformed_offset_is_error()
+        {
+            File.WriteAllText(Abs("s.txt"), "hello world");
+
+            var bad = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "s.txt", "offset", "notanumber")));
+            Assert.True(Harness.IsError(bad[0]));
+            Assert.Contains("offset must be", Harness.Text(bad[0]));
+
+            var neg = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "s.txt", "offset", -5)));
+            Assert.True(Harness.IsError(neg[0]));
+            Assert.Contains("offset must be", Harness.Text(neg[0]));
+        }
+
+        [Fact]
+        public void Read_range_splits_on_lone_cr_line_endings()
+        {
+            // Classic-Mac lone-CR endings: the streaming reader must split on '\r' the way SplitLines
+            // does, so the same line targets work as for an LF file (output is LF-joined).
+            File.WriteAllText(Abs("cr.txt"), "a\rb\rc\rd\re", new UTF8Encoding(false));
+            var msgs = Harness.Exchange(Harness.NewFilesServer(_root),
+                Harness.ToolsCall(1, "read", Harness.Args("path", "cr.txt", "start_line", 2, "end_line", 3)));
+            Assert.False(Harness.IsError(msgs[0]));
+            Assert.Equal("b\nc", Harness.Text(msgs[0]));
+        }
+
+        [Fact]
+        public void Read_pages_whole_multiline_file_via_line_aware_resume()
+        {
+            // Page an over-cap multi-line file using the O(1) line-aware continuation (start_line +
+            // offset together) and reassemble; the result must equal the original. No trailing newline
+            // so the page contents (whole lines, '\n'-joined, no trailing) rejoin exactly.
+            var sb = new StringBuilder();
+            for (int i = 0; i < 60000; i++)
+            {
+                if (i > 0) sb.Append('\n');
+                sb.Append("line ").Append(i).Append(" of some content");
+            }
+            string original = sb.ToString();
+            File.WriteAllText(Abs("big.txt"), original, new UTF8Encoding(false));
+            Assert.True(original.Length > 3 * Cap);   // forces several pages
+
+            var assembled = new StringBuilder();
+            JObject call = Harness.Args("path", "big.txt");
+            int pages = 0;
+            int guard = 0;
+            while (guard++ < 1000)
+            {
+                var msgs = Harness.Exchange(Harness.NewFilesServer(_root), Harness.ToolsCall(1, "read", call));
+                Assert.False(Harness.IsError(msgs[0]));
+                JToken sc = msgs[0]["result"]["structuredContent"];
+                if (sc != null && sc["truncated"] != null && (bool)sc["truncated"])
+                {
+                    if (assembled.Length > 0) assembled.Append('\n');   // the line boundary between pages
+                    assembled.Append((string)sc["content"]);
+                    call = Harness.Args("path", "big.txt",
+                        "start_line", (int)sc["next_start_line"], "offset", (long)sc["next_offset"]);
+                    pages++;
+                }
+                else
+                {
+                    if (assembled.Length > 0) assembled.Append('\n');
+                    assembled.Append(Harness.Text(msgs[0]));
+                    break;
+                }
+            }
+            Assert.True(pages >= 2);                       // actually paged
+            Assert.Equal(original, assembled.ToString());
         }
 
         // ---- Criterion 6: lifecycle ----
