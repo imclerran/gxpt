@@ -766,6 +766,7 @@ namespace GxPT.Tests.Mcp
 
             var ui = new RecordingUi();
             var orch = new McpChatOrchestrator(streamer, reg, new DenyAllApprovalPolicy(), "m", null);
+            orch.RevealedToolNames = new List<string> { "files__read" }; // revealed, so the call reaches the approval gate
             orch.RunTurn(new List<ChatMessage>(), "go", ui);
 
             Assert.True(ui.ToolErrors[0]);
@@ -789,6 +790,7 @@ namespace GxPT.Tests.Mcp
 
             var ui = new RecordingUi();
             var orch = new McpChatOrchestrator(streamer, reg, new DenyAllApprovalPolicy(), "m", null);
+            orch.RevealedToolNames = new List<string> { "files__read" }; // revealed, so the call reaches the approval gate
             orch.RunTurn(new List<ChatMessage>(), "go", ui);
 
             Assert.True(ui.ToolErrors[0]);
@@ -827,6 +829,8 @@ namespace GxPT.Tests.Mcp
             // Denies only the first call it sees; would allow the rest. With auto-deny, the rest never
             // reach the policy at all, so nothing hits the transport.
             var orch = new McpChatOrchestrator(streamer, reg, new DenyFirstThenAllowPolicy(), "m", null);
+            // Revealed, so the calls reach the approval gate (denial precedence is what's under test here).
+            orch.RevealedToolNames = new List<string> { "files__read", "files__list", "files__write" };
             var history = new List<ChatMessage>();
             orch.RunTurn(history, "go", ui);
 
