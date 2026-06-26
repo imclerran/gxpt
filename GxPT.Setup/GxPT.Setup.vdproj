@@ -1102,6 +1102,29 @@
                     }
                 }
             }
+            "{5EB83D71-FA18-4901-BE56-DE22E13CC478}:_D4A77E1C9B3F4E2A8C6D5B0F1E2A3C4D"
+            {
+            "Name" = "8:GxPT Plugin"
+            "Description" = "8:GxPT plugin bundle."
+            "Extensions" = "8:gxpl"
+            "MIME" = "8:"
+            "Icon" = "8:_7FAF1DBC59F6409BAA36708961A22C49"
+            "IconIndex" = "3:0"
+                "Command"
+                {
+                "Command" = "8:_E0499EB368C445EBB017CB750C98F6FD"
+                }
+                "Verbs"
+                {
+                    "{95C0C507-CBF0-42B8-B119-07219E384A4A}:_E5B88F2DAC404F3B9D7E6C1A2F3B4D5E"
+                    {
+                    "Command" = "8:&Import"
+                    "Verb" = "8:import"
+                    "Arguments" = "8:\"%1\""
+                    "Order" = "3:0"
+                    }
+                }
+            }
         }
         "Folder"
         {
@@ -1401,6 +1424,42 @@
                                 "Values"
                                 {
                                     "{ADCFDA98-8FDD-45E4-90BC-E3D20B029870}:_666FD256DCAE4842992849729B2EC0C3"
+                                    {
+                                    "Name" = "8:"
+                                    "Condition" = "8:"
+                                    "Transitive" = "11:FALSE"
+                                    "ValueTypes" = "3:1"
+                                    "Value" = "8:[#gxpt-document.ico]"
+                                    }
+                                }
+                            }
+                        }
+                        "Values"
+                        {
+                        }
+                    }
+                    "{60EA8692-D2D5-43EB-80DC-7906BF13D6EF}:_F6C99A3EBD514A4CAE8F7D2B3A4C5D6E"
+                    {
+                    "Name" = "8:GxPT Plugin"
+                    "Condition" = "8:"
+                    "AlwaysCreate" = "11:FALSE"
+                    "DeleteAtUninstall" = "11:FALSE"
+                    "Transitive" = "11:FALSE"
+                        "Keys"
+                        {
+                            "{60EA8692-D2D5-43EB-80DC-7906BF13D6EF}:_A7D0AB4FCE625B5DBF907E3C4B5D6E7F"
+                            {
+                            "Name" = "8:DefaultIcon"
+                            "Condition" = "8:"
+                            "AlwaysCreate" = "11:FALSE"
+                            "DeleteAtUninstall" = "11:FALSE"
+                            "Transitive" = "11:FALSE"
+                                "Keys"
+                                {
+                                }
+                                "Values"
+                                {
+                                    "{ADCFDA98-8FDD-45E4-90BC-E3D20B029870}:_B8E1BC50DF736C6EC0A18F4D5C6E7F80"
                                     {
                                     "Name" = "8:"
                                     "Condition" = "8:"
