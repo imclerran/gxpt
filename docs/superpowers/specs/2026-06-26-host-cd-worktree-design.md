@@ -1,7 +1,10 @@
 # Design: host-level `cd` + per-anchor server pooling (worktree workflow enforcement)
 
 **Date:** 2026-06-26
-**Status:** Draft (design only — not scheduled for implementation)
+**Status:** Draft (design only — not scheduled for implementation). A design review
+(2026-06-26) resolved the four open questions and surfaced several refinements; see
+**Review addenda** at the end. Where the addenda and the original body disagree, the
+addenda win.
 **Related:** PR #217 (`claude/git-worktrees-mcp-support-0nxat9`) ships the `worktree`
 tool and the model-facing `cwd` argument this design builds on. Companion to
 `mcp-architecture.md`, `mcp35-servers-spec.md`, and `mcp35-approval-spec.md`.
@@ -277,19 +280,19 @@ model-facing `cwd` once `cd` exists or keep it for one-off sub-scoping. The ship
 
 ## Open questions
 
+*All four are resolved by the 2026-06-26 review — see **Review addenda**. Kept here for
+the record with pointers.*
+
 1. **Field name / transport.** `__cwd` as a reserved tool-argument vs. an out-of-band
-   request field. Tool-argument is simplest given the existing dispatch; underscore
-   marks it host-owned. Confirm the host can reliably strip a same-named model arg.
-2. **`cd` resolution base.** Resolve `cd` targets relative to **current** (shell-like,
-   composable: `cd a` then `cd b` → `a/b`) or always relative to the **anchor**
-   (absolute-within-workspace, simpler to reason about)? Shell-like is more intuitive;
-   anchor-relative is harder to misuse. Leaning shell-like with an explicit
-   "return to root."
-3. **Retire model-facing `cwd`?** Keep both (compose) or drop the shipped `cwd` once
-   `cd` lands, to avoid two ways to scope.
-4. **Per-server enforcement granularity.** Adopt D2 for files+git uniformly; confirm
-   command stays D1 (working-dir only) and is documented as gate-governed, not
-   sandboxed.
+   request field. **Resolved → out-of-band via `params._meta`** (addendum A4).
+2. **`cd` resolution base.** Relative to **current** (shell-like) vs. the **anchor**.
+   **Resolved → shell-like, relative to current, with no-arg `cd` = return to anchor**
+   (addendum A8).
+3. **Retire model-facing `cwd`?** **Resolved → retire it; the host-injected current dir
+   replaces it** (addenda A2/A4). The expressiveness tradeoff is noted in A2.
+4. **Per-server enforcement granularity.** **Resolved → a per-server `__cwd` policy
+   table; not all scoped servers follow `cd`** (addendum A3). `command` stays D1
+   (working-dir only, gate-governed).
 
 ## Future work (explicitly out of scope here)
 
@@ -304,3 +307,187 @@ enforcement layer. It is a separate, larger initiative to weigh on its own merit
 likely sensible for files/git, likely *not* for command — and is intentionally
 deferred. The design in this doc is forward-compatible with it (the `__cwd` convention
 is the same), so adopting per-anchor pooling now does not foreclose collapsing later.
+
+---
+
+## Review addenda (2026-06-26)
+
+A design review pressure-tested the body above against the live code (`McpHost`,
+`McpToolRegistry.TryResolve`, `PathSandbox`, the orchestrator's `ResolutionWorkdir`,
+PR #217's `GitTools.ResolveCwd`, and the approval gate). The items below resolve the
+open questions and amend the body where it was incomplete or inaccurate. **These win on
+conflict.**
+
+### A1. `__cwd` ↔ approval/remember store (a gap the body missed)
+
+The body never mentions the approval gate, but `cd` changes its semantics. In
+`ToolApprovalPolicy`, remembered approvals for path-scoped tools are keyed by the
+**relative** `path` argument (`PrefixMatches(val, pattern, isPath:true)`), and a blanket
+`RememberWorkdirWrites` rule covers "all Write-tier path tools for the active
+workspace," with an empty pattern matching any relative path under the root. Today those
+are interpreted relative to the anchor; once `cd` exists, the same relative path means a
+different absolute location per `current`, so a remembered rule silently changes scope as
+the model moves.
+
+**Resolution:** resolve every remembered rule (match **and** store) against the
+**`__cwd`-derived, canonicalized absolute** path, not the relative arg. Two constraints:
+- The strip/overwrite of the host current-dir field must happen **before**
+  `_approval.Check(...)` (`McpChatOrchestrator.cs:1056`), so the gate sees the
+  host-authoritative value, never a model-spoofed one.
+- The canonicalization the gate stores/matches with must be **the same** routine the
+  server's `PathSandbox` uses (`PathSandbox.Resolve`), or a stored rule and the server's
+  independent re-check can disagree on whether a path matches. Co-locate it.
+
+Add this interaction to the testing strategy.
+
+### A2. `GXPT_WORKDIR` splits into two roles (request-time working dir)
+
+Decision: move to a **request-time working directory** — the server is launched per
+anchor but is not told its *current* dir until each call. **`GXPT_WORKDIR` does not go
+away;** it changes job. Today it plays two roles at once:
+
+- **(a) the `PathSandbox` floor** — the containment boundary the server enforces
+  independently; and
+- **(b) the working directory** processes actually run in.
+
+`__cwd` (transported per A4) takes over **(b)** per request. Role **(a) stays**, because
+defense-in-depth (`mcp-architecture.md` §9: gate and sandbox never trust each other)
+requires the server to re-validate `__cwd` against something it knows at launch. If
+`GXPT_WORKDIR` were deleted outright, the server would have nothing to validate against
+and the host clamp would become the *sole* enforcement layer — the exact collapse
+rejected in alternative #5. So: the server knows its **anchor/floor** at launch; it
+learns its **current dir** per call.
+
+Mechanics:
+- **Two `PathSandbox` instances per call, both per-call locals** (honoring the
+  no-shared-mutable-state invariant): an anchor-sandbox validates `__cwd ∈ anchor`, then
+  a fresh sandbox rooted at `__cwd` validates the call's path args.
+- **Default when `__cwd` is absent/empty → the anchor** (`GXPT_WORKDIR`). Preserves
+  today's behavior for any host-internal call and is the safe floor. (This is what
+  `ResolveCwd` already does for an empty `cwd`.)
+- **Pool/resolve keys stay the anchor.** `EnsureWorkingDir`/`ReleaseWorkingDir`/
+  `RetainOnly`/`TryResolve` remain keyed on `WorkingDir` (the anchor); `__cwd` rides
+  orthogonally. The host must call `EnsureWorkingDir(anchor)`, **never** `current` — else
+  it spawns a set per `cd` and defeats the design. Three host concepts now exist: anchor
+  (pool + resolve + persist), current (injected), and the retired model `cwd`.
+- **Expressiveness tradeoff (accepted):** retiring model-facing `cwd` in favor of
+  host-injected current means a single turn cannot operate in two worktrees without
+  `cd`-A → op → `cd`-B → op (serialized). That is the enforcement working as intended.
+  If it ever bites, model `cwd` can return as a *compose-beneath-`__cwd`* subpath (never
+  escaping); for now it is retired.
+- **Robustness footnote:** because `current` is host-side and rides each call, a crash +
+  relaunch of an anchor's server set (a faulted connection in
+  `_scopedByWorkdir[anchor]`) does **not** lose the model's place — unlike the rejected
+  alternative #1, where current-dir as in-server state would reset on crash.
+
+### A3. Per-server `__cwd` policy — not every scoped server follows `cd`
+
+The body's enforcement table lists three servers; there are in fact **six** workdir-scoped
+servers, and `__cwd = current` is wrong for some. The 3-row table is replaced by this
+6-row policy table. Each server still re-validates `__cwd` against its launch anchor
+(A2) regardless of row.
+
+| Server | `__cwd` role | Floor / sandbox | Enforcement |
+|--------|--------------|-----------------|-------------|
+| git | git process `WorkingDirectory`; path args re-rooted at `__cwd` | anchor floor + `__cwd` sandbox | Hard (D2) |
+| files | per-call `PathSandbox` root | anchor floor + `__cwd` sandbox | Hard (D2) |
+| command | child-process `WorkingDirectory` only | no sandbox (gate-governed) | Soft (D1) |
+| msbuild | build process `WorkingDirectory` | anchor floor | Hard on working dir |
+| **memory** | **ignored — stays anchored** | anchor only | n/a (anchored by nature) |
+| **extensions / skills** | **split:** script *process cwd* = `__cwd`; skill *authoring/resolution* paths stay anchored | anchor for file paths; `__cwd` for child cwd | Mixed |
+
+Rationale for the two non-obvious rows:
+- **memory** persists to `GXPT_WORKDIR/.gxpt/memory`. If it followed `cd`, memory would
+  fragment into per-worktree stores (`.worktrees/feat/.gxpt/memory`) — memory is a
+  workspace property, not a worktree one. It ignores `__cwd`.
+- **extensions** authors/resolves skills under `GXPT_WORKDIR/.gxpt/{skills,agents}` and
+  against bundled/user roots — those are workspace resources and stay anchored — but
+  `run_skill_script`'s *child process* plausibly should run in `current`. Hence the split.
+
+So "add `__cwd` to the other scoped servers" really means "decide, per server, whether
+`__cwd` moves the working dir or is ignored because the server is anchored by nature."
+
+### A4. Transport: out-of-band via `params._meta` (resolves OQ1)
+
+A `tools/call` is JSON-RPC `{"params":{"name":…,"arguments":{…}}}`; the model only fills
+`arguments`. Two ways to carry the host current dir:
+
+- **In-`arguments`** — host writes the field into the model's `arguments` bag post-hoc.
+  Requires defensively stripping any model-supplied copy, and pollutes the gate's
+  argument view/logging with a host field.
+- **Out-of-band (chosen)** — carry it as a **sibling of `arguments`** in
+  `params._meta`, the MCP-reserved metadata slot that is **not part of any tool's input
+  schema**:
+  ```json
+  {"params":{"name":"git__commit","arguments":{ …model… },"_meta":{"gxpt.cwd":"<abs>"}}}
+  ```
+  Because the tool schema only describes `arguments`, `_meta` can never collide with a
+  model arg, never appears in the revealed/cached schema, and sits outside the
+  model-controlled bag — no strip dance, clean gate view. The win is **trust-domain
+  separation**, not schema pollution (the host injects post-hoc, so the field never
+  enters the published schema in either approach — an earlier framing overstated that
+  risk).
+
+**Plumbing cost (not free in this codebase):** `CallToolParams`
+(`src/Mcp35.Core/Protocol/Tools.cs:43`) carries only `name` + `arguments`,
+`McpServerConnection.CallTool(name, args, timeoutMs)` has no meta parameter, and
+`ToolCallContext` exposes only `Arguments`. OOB therefore requires: add `_meta` to
+`CallToolParams`, thread a meta dict through `CallTool`, and expose `ctx.Meta`
+server-side. That is protocol + client + server-framework surface (broader than a
+leaf-server change) but it is the correct, reusable seam for host metadata. In-`arguments`
+remains the pragmatic fallback if the strip/overwrite discipline is owned instead.
+
+### A5. Scratch / folderless conversations (resolves the body's silent assumption)
+
+`ResolutionWorkdir` falls back to `ScratchWorkingDir` when no workspace is set; there is
+no anchor in that mode. Behavior:
+- `command` (the only scratch-eligible scoped server) still receives `__cwd` — floor and
+  current both = the scratch dir; it has no `PathSandbox` anyway, so `__cwd` just sets the
+  child working dir.
+- **`cd` is absent/disabled** on scratch turns: do not offer the host `cd` tool when the
+  turn's `ResolutionWorkdir` came from `ScratchWorkingDir` (no anchor → no floor → nothing
+  to scope within).
+
+### A6. Home of `current` + prompt placement
+
+`current` lives on the **conversation context**, beside `WorkingDir`/`ScratchWorkingDir`
+(making explicit what the body left implicit). The per-request workspace block must show
+`current`, not just the anchor, or the model computes paths against the wrong dir. Move
+that block into the **ephemeral tail** (alongside the volatile per-turn manifest): `cd`
+mutates it, so keeping it in the cached head would either bust the prompt cache on every
+`cd` or show a stale dir.
+
+### A7. `worktree remove` of the current directory
+
+Reject `worktree remove` when the target is `current` or an ancestor of it; require a
+`cd` to the anchor first. The alternative (auto-`cd` to anchor on remove) couples the git
+server to host current-dir state — the git server would have to instruct the host to move
+`current` — which is exactly the coupling this design avoids.
+
+### A8. `cd` host-tool argument surface (resolves OQ2)
+
+- `cd <relpath>` — resolved relative to **current** (shell-like, composable),
+  canonicalized, must resolve to an **existing directory within the anchor**. **Absolute
+  paths rejected** (mirror `PathSandbox`) to keep one mental model.
+- **Return to anchor:** no-arg `cd` → the anchor (shell's "`cd` → home"; the anchor *is*
+  home).
+- `cd ..` above the anchor → **error**, not a silent clamp — keep the floor visible to
+  the model rather than masking the intent.
+- Always echo the new `current` as an **anchor-relative** string (`.` at the anchor,
+  `.worktrees/feat` deep) into the result and transcript; this is also what feeds the
+  ephemeral workspace block (A6).
+- Not offered on scratch/folderless turns (A5).
+- Touches host state only — no server contact — so it stays instant.
+
+### A9. Testing additions
+
+Beyond the body's list:
+- Approval store: remembered rules match/store against canonicalized `__cwd`-absolute
+  paths; field strip happens before the gate; gate canonicalization == server
+  `PathSandbox` canonicalization (A1).
+- Per-server policy: `memory` ignores `__cwd` (no per-worktree store); `extensions` runs
+  the script child in `__cwd` while authoring paths stay anchored (A3).
+- Transport: `_meta` carries the current dir; a model-supplied `arguments.__cwd`/`_meta`
+  is ignored/overwritten by the host (A4).
+- Scratch: `cd` tool absent on scratch turns; `command` still honors `__cwd` (A5).
+- Default: absent `__cwd` falls back to the anchor on every scoped server (A2).
