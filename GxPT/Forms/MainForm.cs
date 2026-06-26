@@ -69,6 +69,7 @@ namespace GxPT
             HookEvents();
             InitializeDragAndDrop();
             InitializeClient();
+            BuildPluginsMenu();
 
             // Setup initial tab context for the designer-created tab
             SetupInitialConversationTab();
@@ -2212,19 +2213,50 @@ namespace GxPT
         // /plugin install: choose a .gxpl (or generic .zip) and install/upgrade it.
         internal void SlashInstallPlugin()
         {
-            using (var ofd = new OpenFileDialog
-            {
-                Title = "Install Plugin",
-                Filter = "GxPT Plugin (*.gxpl)|*.gxpl|Zip Archive (*.zip)|*.zip",
-                CheckFileExists = true,
-                Multiselect = false
-            })
-            {
-                if (ofd.ShowDialog(this) != DialogResult.OK) return;
-                if (PluginImportExportManager.InstallFromFile(this, ofd.FileName))
-                    SlashRefreshSkillsServer(); // installed skills may flip "any skill enabled"
-            }
+            if (PluginImportExportManager.InstallInteractive(this))
+                SlashRefreshSkillsServer(); // installed skills may flip "any skill enabled"
         }
+
+        // File > Plugins > Manage: the installed-plugins dialog. Enable/disable/uninstall/install inside it
+        // change which skills are active, so refresh the skills server once it closes.
+        internal void SlashManagePlugins()
+        {
+            using (var dlg = new PluginManagerForm())
+                dlg.ShowDialog(this);
+            SlashRefreshSkillsServer();
+        }
+
+        // Builds the File > Plugins submenu (Install / Export / Manage) in code rather than the Designer, to
+        // avoid hand-editing generated menu plumbing. Inserted just after File > Export.
+        private void BuildPluginsMenu()
+        {
+            try
+            {
+                if (miFile == null) return;
+
+                var install = new ToolStripMenuItem("&Install Plugin...");
+                install.Click += new EventHandler(miPluginInstall_Click);
+                var export = new ToolStripMenuItem("&Export Plugin...");
+                export.Click += new EventHandler(miPluginExport_Click);
+                var manage = new ToolStripMenuItem("&Manage Plugins...");
+                manage.Click += new EventHandler(miPluginManage_Click);
+
+                var plugins = new ToolStripMenuItem("&Plugins");
+                plugins.DropDownItems.Add(install);
+                plugins.DropDownItems.Add(export);
+                plugins.DropDownItems.Add(new ToolStripSeparator());
+                plugins.DropDownItems.Add(manage);
+
+                int idx = miExport != null ? miFile.DropDownItems.IndexOf(miExport) : -1;
+                if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, plugins);
+                else miFile.DropDownItems.Add(plugins);
+            }
+            catch { }
+        }
+
+        private void miPluginInstall_Click(object sender, EventArgs e) { SlashInstallPlugin(); }
+        private void miPluginExport_Click(object sender, EventArgs e) { SlashExportPlugin(); }
+        private void miPluginManage_Click(object sender, EventArgs e) { SlashManagePlugins(); }
 
         // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
         internal void SlashSetPluginEnabled(string name, bool enabled)

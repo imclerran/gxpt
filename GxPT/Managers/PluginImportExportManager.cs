@@ -83,7 +83,54 @@ namespace GxPT
             }
         }
 
+        // Re-exports an already-installed plugin (used by the Manage Plugins dialog's per-row Export).
+        public static bool ExportInstalled(IWin32Window owner, string name)
+        {
+            string skillsRoot, agentsRoot, pluginsRoot;
+            if (!ResolveRoots(owner, out skillsRoot, out agentsRoot, out pluginsRoot)) return false;
+
+            using (SaveFileDialog sfd = new SaveFileDialog
+            {
+                Title = "Export Plugin",
+                Filter = "GxPT Plugin (*.gxpl)|*.gxpl",
+                DefaultExt = "gxpl",
+                FileName = (SkillSlug.Make(name) ?? "plugin") + ".gxpl",
+                OverwritePrompt = true
+            })
+            {
+                if (sfd.ShowDialog(owner) != DialogResult.OK) return false;
+                try
+                {
+                    PluginImportExportService.ExportInstalledPlugin(name, skillsRoot, agentsRoot, pluginsRoot, sfd.FileName);
+                    Info(owner, "Exported plugin '" + name + "'.");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Error(owner, "Export failed: " + ex.Message);
+                    return false;
+                }
+            }
+        }
+
         // ---- install / upgrade ----
+
+        // Open-file dialog + install/upgrade. Shared by File > Plugins > Install and the Manage dialog so the
+        // dialog filter lives in one place; the caller refreshes the skills server on a true result.
+        public static bool InstallInteractive(IWin32Window owner)
+        {
+            using (OpenFileDialog ofd = new OpenFileDialog
+            {
+                Title = "Install Plugin",
+                Filter = "GxPT Plugin (*.gxpl)|*.gxpl|Zip Archive (*.zip)|*.zip",
+                CheckFileExists = true,
+                Multiselect = false
+            })
+            {
+                if (ofd.ShowDialog(owner) != DialogResult.OK) return false;
+                return InstallFromFile(owner, ofd.FileName);
+            }
+        }
 
         public static bool InstallFromFile(IWin32Window owner, string archivePath)
         {

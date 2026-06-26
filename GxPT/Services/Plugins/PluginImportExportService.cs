@@ -82,6 +82,41 @@ namespace GxPT
             }
         }
 
+        // Re-exports an already-installed plugin to a .gxpl, packaging its current member files from wherever
+        // they live - the active roots when enabled, or the disabled holding area when disabled - so an
+        // installed plugin round-trips regardless of state. Throws if the plugin isn't installed.
+        public static void ExportInstalledPlugin(string name, string skillsRoot, string agentsRoot,
+            string pluginsRoot, string archivePath)
+        {
+            PluginRegistry registry = new PluginRegistry(pluginsRoot);
+            PluginManifest m = registry.Load(name);
+            if (m == null) throw new InvalidOperationException("Plugin '" + name + "' is not installed.");
+
+            string disabled = registry.DisabledDir(name);
+            List<Skill> skills = new List<Skill>();
+            for (int i = 0; i < m.Skills.Count; i++)
+            {
+                string slug = m.Skills[i];
+                string dir = m.Enabled
+                    ? Path.Combine(skillsRoot, slug)
+                    : Path.Combine(Path.Combine(disabled, "skills"), slug);
+                if (Directory.Exists(dir))
+                    skills.Add(new Skill(slug, slug, string.Empty, dir, Path.Combine(dir, "SKILL.md"), SkillSource.User));
+            }
+            List<Agent> agents = new List<Agent>();
+            for (int i = 0; i < m.Agents.Count; i++)
+            {
+                string slug = m.Agents[i];
+                string file = m.Enabled
+                    ? Path.Combine(agentsRoot, slug + ".md")
+                    : Path.Combine(Path.Combine(disabled, "agents"), slug + ".md");
+                if (File.Exists(file))
+                    agents.Add(new Agent(slug, slug, string.Empty, null, AgentMaxTier.Write, null, 0, file, AgentSource.User));
+            }
+
+            ExportPlugin(m.Name, m.Version, m.Description, skills, agents, archivePath);
+        }
+
         // Installs (or upgrades) the archive's plugin. Member files are staged and validated before anything
         // touches the real roots. confirmOverwrite is consulted ONCE with the list of foreign items (skills
         // or agents not already owned by this plugin) that would be replaced; returning false cancels the

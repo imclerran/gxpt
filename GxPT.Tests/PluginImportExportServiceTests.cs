@@ -227,6 +227,44 @@ namespace GxPT.Tests
             Assert.False(new PluginRegistry(_pluginsRoot).Exists("pack"));
         }
 
+        // ---- re-export an installed plugin ----
+
+        [Fact]
+        public void ExportInstalled_repackages_an_installed_plugin_for_reinstall()
+        {
+            string archive = ExportSample("pack", "1.5",
+                new[] { WriteSkill("s1", "S.") }, new[] { WriteAgent("a1", "A.") });
+            PluginImportExportService.ImportPlugin(archive, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            string reexport = Path.Combine(_root, "reexport.gxpl");
+            PluginImportExportService.ExportInstalledPlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot, reexport);
+            Assert.True(File.Exists(reexport));
+
+            // Wipe and reinstall from the re-export: members and version come back.
+            PluginImportExportService.UninstallPlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+            PluginInstallResult r = PluginImportExportService.ImportPlugin(
+                reexport, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+
+            Assert.Equal("1.5", r.Version);
+            Assert.Contains("s1", r.Skills);
+            Assert.Contains("a1", r.Agents);
+            Assert.True(Directory.Exists(Path.Combine(_skillsRoot, "s1")));
+            Assert.True(File.Exists(Path.Combine(_agentsRoot, "a1.md")));
+        }
+
+        [Fact]
+        public void ExportInstalled_works_for_a_disabled_plugin()
+        {
+            string archive = ExportSample("pack", "1", new[] { WriteSkill("s1", "S.") }, null);
+            PluginImportExportService.ImportPlugin(archive, _skillsRoot, _agentsRoot, _pluginsRoot, null);
+            PluginImportExportService.DisablePlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot);
+
+            // The active root no longer holds s1, but the export still packages it from the disabled holding.
+            string reexport = Path.Combine(_root, "disabled-export.gxpl");
+            PluginImportExportService.ExportInstalledPlugin("pack", _skillsRoot, _agentsRoot, _pluginsRoot, reexport);
+            Assert.True(PluginImportExportService.ArchiveContainsPlugin(reexport));
+        }
+
         [Fact]
         public void Uninstall_also_removes_a_disabled_plugins_parked_files()
         {
