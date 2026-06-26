@@ -5,13 +5,16 @@ using System.Text;
 namespace GxPT
 {
     // Host side of the memory feature: reads the workspace's primary memory index
-    // (<workdir>/.gxpt/memory.md) and wraps it with framing for injection as an ephemeral system
-    // message (McpChatOrchestrator.MemorySystemMessageProvider). The MemoryMcpServer is the only
-    // writer; this is read-only. All memory framing lives here so a disabled memory system leaves
-    // no trace in context (design M5/M6, sec.5).
+    // (<workdir>/.gxpt/memory/memory.md) and wraps it with framing for injection as an ephemeral
+    // system message (McpChatOrchestrator.MemorySystemMessageProvider). The MemoryMcpServer is the
+    // only writer; this is read-only. All memory framing lives here so a disabled memory system
+    // leaves no trace in context (design M5/M6, sec.5).
     internal static class MemoryInjection
     {
+        // The shared .gxpt project home (reused by skills/ and agents/); memory lives in its own
+        // "memory" subfolder beneath it, kept in sync with MemoryMcpServer's MemoryConfig.
         public const string MemoryDirName = ".gxpt";
+        public const string MemorySubDirName = "memory";
         public const string IndexFileName = "memory.md";
 
         // Cap the read so a hand-edited or runaway index can't bloat the prompt; the store keeps it
@@ -58,7 +61,9 @@ namespace GxPT
         {
             try
             {
-                string path = Path.Combine(Path.Combine(workingDir, MemoryDirName), IndexFileName);
+                string path = Path.Combine(
+                    Path.Combine(Path.Combine(workingDir, MemoryDirName), MemorySubDirName),
+                    IndexFileName);
                 if (!File.Exists(path)) return null;
                 string text = File.ReadAllText(path, Encoding.UTF8);
                 if (string.IsNullOrEmpty(text)) return null;

@@ -3425,7 +3425,7 @@ namespace GxPT
                     // across the turn's loop iterations; an edit takes effect on the next turn.
                     orch.ProjectInstructions = AgentsFileInjection.Build(ctx.WorkingDir);
 
-                    // Inject the workspace's persistent memory index (rebuilt from .gxpt/memory.md each
+                    // Inject the workspace's persistent memory index (rebuilt from .gxpt/memory/memory.md each
                     // request) only when memory is enabled and this conversation has a workspace.
                     if (AppSettings.GetBool("mcp_memory_enabled") && !string.IsNullOrEmpty(ctx.WorkingDir))
                     {

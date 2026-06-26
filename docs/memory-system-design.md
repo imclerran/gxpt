@@ -41,14 +41,17 @@ MCP server for the tool surface, plus host-side injection of a light index.
 
 ---
 
-## 3. On-disk layout (`<workdir>/.gxpt/`)
+## 3. On-disk layout (`<workdir>/.gxpt/memory/`)
 
 ```
-.gxpt/
+.gxpt/memory/
   memory.md        # primary index: light, injected every request
   <slug>.md        # detail files, read on demand
   .gitignore       # seeded automatically ("*") — personal memory not committed unless opted in
 ```
+
+Memory lives in its own `memory/` subfolder of the shared `.gxpt/` project home,
+alongside the `skills/` and `agents/` subfolders.
 
 `memory.md` is a flat list of entries:
 
@@ -96,7 +99,7 @@ overwrites when it means to add or vice versa.
 Because `memory.md` is in context every turn, the names are always in front of
 the model — it addresses entries by reading the name beside the summary it
 recognizes. Writes are atomic (temp file + rename). The server is sandboxed to
-`.gxpt/` (reuse `PathSandbox`).
+`.gxpt/memory/` (reuse `PathSandbox`).
 
 ---
 
@@ -181,7 +184,7 @@ memories as standalone entries.
   soft cap; it never compacts on its own.
 - **Soft cap defaults to 40 lines**, exposed as a user-configurable setting
   (alongside the `MemoryEnabled` toggle in the main settings tab).
-- **`.gxpt/.gitignore` is seeded automatically** (`*`) on first write.
+- **`.gxpt/memory/.gitignore` is seeded automatically** (`*`) on first write.
 - **Names are normalized to kebab-case** (lowercase, hyphen-joined; camelCase/underscore/
   whitespace boundaries); the slug is the index handle and the `<slug>.md` filename, so
   no name→file map is needed.

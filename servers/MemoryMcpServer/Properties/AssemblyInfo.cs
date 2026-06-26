@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("MemoryMcpServer")]
-[assembly: AssemblyDescription("First-party MCP server: persistent, project-scoped memory under <workdir>/.gxpt.")]
+[assembly: AssemblyDescription("First-party MCP server: persistent, project-scoped memory under <workdir>/.gxpt/memory.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("Mcp35")]

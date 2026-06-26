@@ -22,7 +22,7 @@ namespace MemoryMcpServer
     }
 
     /// <summary>
-    /// Reads and writes the .gxpt memory store. The server is the <b>only</b> writer, so
+    /// Reads and writes the .gxpt/memory store. The server is the <b>only</b> writer, so
     /// <c>memory.md</c> is rewritten canonically on every change - a flat list of
     /// "<c>- slug: summary</c>" lines (one entry per line, with a "<c> -> slug.md</c>" marker when a
     /// detail file exists). Detail lives in <c>&lt;slug&gt;.md</c>, read on demand. All writes are
@@ -266,7 +266,7 @@ namespace MemoryMcpServer
 
         // ---- store setup ----
 
-        // Create .gxpt and seed a gitignore so personal memory isn't committed unless opted in.
+        // Create .gxpt/memory and seed a gitignore so personal memory isn't committed unless opted in.
         private void EnsureStore()
         {
             Directory.CreateDirectory(_root);

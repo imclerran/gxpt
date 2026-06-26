@@ -4,7 +4,7 @@ using Mcp35.Server;
 namespace MemoryMcpServer
 {
     /// <summary>
-    /// First-party Memory MCP server: persistent, project-scoped memory under GXPT_WORKDIR/.gxpt.
+    /// First-party Memory MCP server: persistent, project-scoped memory under GXPT_WORKDIR/.gxpt/memory.
     /// The same five lines as every first-party server (servers-spec sec.1), around the Memory tool set.
     /// </summary>
     internal static class Program
