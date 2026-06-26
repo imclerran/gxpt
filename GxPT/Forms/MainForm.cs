@@ -3447,8 +3447,9 @@ namespace GxPT
                     if (enabledSkills.Count > 0)
                     {
                         List<Skill> enabledForTurn = enabledSkills;
+                        // Inventory list only; the static framing lives in the cached stable head.
                         orch.SkillsManifestSystemMessageProvider =
-                            delegate { return SkillInjection.BuildManifestMessage(enabledForTurn); };
+                            delegate { return SkillInjection.BuildList(enabledForTurn); };
                         // open_skill is enabled-scoped; read_skill_file spans the whole catalog.
                         orch.SkillTools = new SkillTools(enabledForTurn, skillCatalog);
                     }
@@ -3488,8 +3489,9 @@ namespace GxPT
                                     agentsForTurn.Add(agentCatalog.Agents[ai]);
                             if (agentsForTurn.Count > 0)
                             {
+                                // Inventory list only; the static framing lives in the cached stable head.
                                 orch.AgentsManifestSystemMessageProvider =
-                                    delegate { return AgentInjection.BuildManifestMessage(agentsForTurn); };
+                                    delegate { return AgentInjection.BuildList(agentsForTurn); };
                                 AgentDispatcher dispatcher = new AgentDispatcher(
                                     agentsForTurn, _client, _mcpRegistry, approval, model, ctx.WorkingDir,
                                     LoggerSink.Instance, tierOf,

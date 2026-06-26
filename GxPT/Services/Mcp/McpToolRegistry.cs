@@ -309,7 +309,7 @@ namespace GxPT
                 {
                     List<string> names = new List<string>(_byFunctionName.Keys);
                     names.Sort(StringComparer.Ordinal); // server__ prefix groups visually
-                    _manifestCache = BuildManifestText(names);
+                    _manifestCache = BuildListText(names);
                     _manifestDirty = false;
                 }
                 return _manifestCache;
@@ -319,7 +319,16 @@ namespace GxPT
         // Workdir-aware manifest: only the tools usable on a turn with this working directory (an exact
         // workdir match or a workdir-independent tool). Keeps a folderless turn from advertising another
         // folder's scoped tools (files/git/run_skill_script, ...), which would only fail at call time.
+        // Same content as NamesManifestList (the request path uses that name); kept for tests/callers.
         public string NamesManifestSystemMessage(string workdir)
+        {
+            return NamesManifestList(workdir);
+        }
+
+        // Workdir-aware tool inventory: the resolvable tool names + the git-steering note. The reveal-
+        // before-call rule itself is static and lives in the cached agent system prompt, so only this
+        // volatile list goes in the per-request ephemeral tail.
+        public string NamesManifestList(string workdir)
         {
             lock (_lock)
             {
@@ -327,21 +336,18 @@ namespace GxPT
                 foreach (KeyValuePair<string, List<CatalogEntry>> kv in _byFunctionName)
                     if (ResolvableForWorkdirLocked(kv.Value, workdir)) names.Add(kv.Key);
                 names.Sort(StringComparer.Ordinal);
-                return BuildManifestText(names);
+                return BuildListText(names);
             }
         }
 
-        // Builds the manifest text from an already-sorted, server-qualified name list.
-        private static string BuildManifestText(List<string> names)
+        // The tool inventory body: a "call reveal_tools first" header + the name list + the git-steering
+        // note. The full reveal-before-call rule lives in the agent system prompt (cached head); this is
+        // the volatile list with only a short reminder.
+        private static string BuildListText(List<string> names)
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("The following MCP tools are available, listed by name only. ");
-            sb.Append("You CANNOT call any of these tools directly from this list. ");
-            sb.Append("Before calling a tool, you MUST first call reveal_tools({\"names\":[...]}) ");
-            sb.Append("with the exact names you intend to use; that loads their full definitions ");
-            sb.Append("and makes them callable on the next step. You may reveal several at once. ");
-            sb.Append("Only reveal_tools and tools you have already revealed can be called.");
-            sb.Append("\n\nAvailable tools:");
+            sb.Append("Available tools (listed by name only - call reveal_tools to load a tool before you "
+                + "can call it; you may reveal several at once):");
             bool hasGit = false, hasCommand = false;
             for (int i = 0; i < names.Count; i++)
             {
@@ -562,7 +568,7 @@ namespace GxPT
             return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static JObject RevealToolsDef()
+        public static JObject RevealToolsDef()
         {
             JObject props = new JObject();
             JObject namesProp = new JObject();

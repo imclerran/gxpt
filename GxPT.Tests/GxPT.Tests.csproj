@@ -49,6 +49,7 @@
     <Compile Include="..\GxPT\Services\Mcp\ToolClassifier.cs" Link="Linked\Mcp\ToolClassifier.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ToolApprovalPolicy.cs" Link="Linked\Mcp\ToolApprovalPolicy.cs" />
     <Compile Include="..\GxPT\Services\Mcp\ApprovalStore.cs" Link="Linked\Mcp\ApprovalStore.cs" />
+    <Compile Include="..\GxPT\Services\Mcp\HostTool.cs" Link="Linked\Mcp\HostTool.cs" />
     <Compile Include="..\GxPT\Services\Mcp\McpToolRegistry.cs" Link="Linked\Mcp\McpToolRegistry.cs" />
     <Compile Include="..\GxPT\Services\Mcp\IChatStreamer.cs" Link="Linked\Mcp\IChatStreamer.cs" />
     <Compile Include="..\GxPT\Services\Mcp\McpChatOrchestrator.cs" Link="Linked\Mcp\McpChatOrchestrator.cs" />

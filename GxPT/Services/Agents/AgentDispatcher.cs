@@ -383,6 +383,16 @@ namespace GxPT
                 IList<string> parentNames = _registry.NamesForWorkdir(_workingDir);
                 List<string> hidden = AgentToolResolver.Hidden(agent.Tools, agent.MaxTier, parentNames, _tierOf);
                 if (hidden.Count > 0) child.HiddenToolNames = hidden;
+
+                // Pre-reveal the child's allowed tools (the parent catalog minus the hidden set). A sub-
+                // agent's tool set is fixed by its frontmatter - there is nothing to progressively discover
+                // - so pre-seeding RevealedToolNames spares it the reveal_tools round-trip the enforcement
+                // gate (McpChatOrchestrator.ExecuteCall) would otherwise force on its first iteration, which
+                // for a tight MaxTurns can cost the agent a whole turn before it reaches real work.
+                List<string> allowed = new List<string>();
+                for (int i = 0; i < parentNames.Count; i++)
+                    if (!hidden.Contains(parentNames[i])) allowed.Add(parentNames[i]);
+                child.RevealedToolNames = allowed;
             }
 
             List<ChatMessage> msgs = new List<ChatMessage>();

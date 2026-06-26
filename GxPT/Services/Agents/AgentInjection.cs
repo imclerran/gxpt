@@ -1,35 +1,45 @@
 using System.Collections.Generic;
-using System.Text;
 
 namespace GxPT
 {
-    // Host side of the agents feature: frames the always-on agents manifest for injection as an ephemeral
-    // system message (McpChatOrchestrator.AgentsManifestSystemMessageProvider), ordered after the skills
-    // block and before the MCP names manifest (design sec.5). Lists ALL discovered agents - there is no
+    // Host side of the agents feature: owns the agents injection text, split by volatility for prompt-
+    // cache reuse. The STATIC how-to (Framing) goes in the cached stable head; the DYNAMIC inventory
+    // (BuildList, via McpChatOrchestrator.AgentsManifestSystemMessageProvider) goes in the ephemeral
+    // tail, after the skills list and before the MCP tool list. Lists ALL discovered agents - there is no
     // per-agent enablement (design A15); the whole block is gated by the single feature toggle
-    // (AgentEnablement), so when agents are off the host never sets the provider and the feature leaves no
-    // trace in context. XP / .NET 3.5 friendly.
+    // (AgentEnablement), so when agents are off the host never sets the provider and neither the head
+    // framing nor the tail list appears. XP / .NET 3.5 friendly.
     internal static class AgentInjection
     {
-        // The ephemeral block: framing + the slug/description manifest over all discovered agents. Returns
-        // null when there are none, so a project with no agents injects nothing even when the feature is on.
-        public static string BuildManifestMessage(IList<Agent> agents)
+        // The STATIC framing: how to use agents, with no per-conversation data. Lives in the cached
+        // stable head (McpChatOrchestrator.BuildStableHead) when the agents feature is on, so its tokens
+        // are cached instead of re-sent in every request's ephemeral tail. The dynamic inventory (which
+        // agents exist) is BuildList, kept in the tail.
+        public const string Framing =
+            "# Agents\n\n"
+            + "Agents are specialists you can delegate a self-contained task to. Each runs in isolation "
+            + "- it does not see this conversation - does the work with its own tools, and returns only "
+            + "its final answer. Delegate by calling dispatch_agent with the agent's slug and a complete "
+            + "task description; you may dispatch several at once. dispatch_agent is directly callable - "
+            + "you do NOT need to reveal it first. Prefer delegating large or parallelizable sub-tasks "
+            + "(exploration, research, verification) to keep this conversation focused. Do not mention "
+            + "agents unless they are relevant to the request.";
+
+        // The DYNAMIC inventory: the slug/description list over all discovered agents, for the ephemeral
+        // tail. Returns null when there are none, so a project with no agents injects nothing.
+        public static string BuildList(IList<Agent> agents)
         {
             if (agents == null || agents.Count == 0) return null;
+            return "Available agents:\n" + AgentCatalog.BuildManifest(agents);
+        }
 
-            StringBuilder sb = new StringBuilder();
-            sb.Append("# Agents\n\n");
-            sb.Append("Agents are specialists you can delegate a self-contained task to. Each runs in ");
-            sb.Append("isolation - it does not see this conversation - does the work with its own tools, ");
-            sb.Append("and returns only its final answer. Delegate by calling dispatch_agent with the ");
-            sb.Append("agent's slug and a complete task description; you may dispatch several at once. ");
-            sb.Append("dispatch_agent is directly callable - you do NOT need to reveal it first. Prefer ");
-            sb.Append("delegating large or parallelizable sub-tasks (exploration, research, verification) ");
-            sb.Append("to keep this conversation focused. Do not mention agents unless they are relevant ");
-            sb.Append("to the request.\n\n");
-            sb.Append("Available agents:\n");
-            sb.Append(AgentCatalog.BuildManifest(agents));
-            return sb.ToString();
+        // Framing + inventory as one message. No longer used on the request path (framing is in the head,
+        // list in the tail); retained as the canonical full manifest for tests and any direct caller.
+        public static string BuildManifestMessage(IList<Agent> agents)
+        {
+            string list = BuildList(agents);
+            if (list == null) return null;
+            return Framing + "\n\n" + list;
         }
     }
 }

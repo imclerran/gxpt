@@ -64,6 +64,21 @@ namespace GxPT
             "You are an AI assistant operating as an agent with access to tools. Use them "
             + "proactively to accomplish the user's request instead of asking the user to do what "
             + "you can do yourself, and instead of guessing when a tool could give you the answer.\n\n"
+            + "When tools are available, some are listed by name only rather than loaded up front, and a "
+            + "tool listed by name must be loaded with reveal_tools before you can call it. To use such a "
+            + "tool, FIRST call reveal_tools({\"names\":[...]}) with its exact name(s) - that returns the "
+            + "tool's real parameters - and only then call the tool. A call to a tool you have not revealed "
+            + "fails, and without its parameters you would only be guessing its arguments, so treat "
+            + "revealing as a required first step, not optional background. Reveal everything you expect to "
+            + "need in one call, then use the tools.\n\n"
+            + "Tool calls you issue together in one turn run in parallel and cannot see each other's "
+            + "results, so do not issue a call whose result should shape your next move in the same turn "
+            + "as that move. In particular, if a skill is relevant to the task, opening it is your FIRST "
+            + "step: call open_skill by itself and wait for its instructions BEFORE any other tool call - "
+            + "before reading files, dispatching agents, or running commands - because the skill may tell "
+            + "you which files to read and how to approach the work, so acting first means acting blind. "
+            + "More generally, when a file's contents will guide your approach, read it before the actions "
+            + "it governs. Get the guidance first, then act on it.\n\n"
             + "Before saying you don't know or can't help, consider whether one of your tools could "
             + "answer the question - if so, use it. Do not return an empty or evasive response when "
             + "investigation is possible; make a genuine attempt with the tools available before "
@@ -195,6 +210,19 @@ namespace GxPT
         // decides, the same as the approval gate.
         public AskUserTool AskUser { get; set; }
 
+        // The host ("meta") tools for the current turn, built ONCE in RunTurn (BuildHostTools) and reused
+        // by the exposed-tools builder and ExecuteCall, so the list + its delegates aren't reconstructed
+        // per iteration / per call. Stable for the turn (its inputs - registry/SkillTools/AgentDispatcher/
+        // AskUser - don't change mid-turn).
+        private List<HostTool> _hostTools;
+
+        // Whether the skills / agents feature is active this turn: the SINGLE signal that gates both the
+        // host-tool exposure+dispatch (BuildHostTools) AND the cached head capability framing
+        // (BuildStableHead), so the two can never disagree. Keyed on the surface that actually makes the
+        // tool callable (SkillTools/AgentDispatcher present and non-empty).
+        private bool SkillsActive { get { return SkillTools != null && SkillTools.HasSkills; } }
+        private bool AgentsActive { get { return AgentDispatcher != null && AgentDispatcher.HasAgents; } }
+
         // Server-qualified MCP tool names to omit from this turn's context (names manifest + exposed
         // defs) and refuse to call. Used to gate the authoring tools on the meta-skills (ExtensionsToolGate).
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
@@ -312,6 +340,9 @@ namespace GxPT
                 + " msg(s), maxIterations=" + _maxIterations);
 
             if (RevealedToolNames == null) RevealedToolNames = new List<string>();
+            // The host-tool table is fixed for the turn; build it once and reuse across every iteration
+            // and tool call (exposed-tools builder + ExecuteCall), instead of reconstructing it each time.
+            _hostTools = BuildHostTools();
             // Provider-gated eviction, at turn boundaries only (mid-loop eviction would churn the
             // tools array between iterations for no benefit). See RevealedToolNames for the rationale.
             if (RevealedToolNames.Count > RevealEvictionCap
@@ -374,22 +405,19 @@ namespace GxPT
                 bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
                 IList<JObject> tools = hasMcpTools
                     ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
-                string manifest = hasMcpTools ? _registry.NamesManifestSystemMessage(resolveDir) : null;
-                if (SkillTools != null && SkillTools.HasSkills)
+                // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-call
+                // rule is static framing and lives in the cached agent system prompt, not re-sent here.
+                string manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
+                // Append the host ("meta") tool defs from the SAME table ExecuteCall dispatches against, so
+                // a tool is exposed here exactly when it is dispatch-exempt there (see BuildHostTools).
+                // reveal_tools is skipped: ExposedFunctionDefs already emitted it in lead position 0 (an
+                // appended entry can't lead), so the registry owns its exposure while the table owns its
+                // dispatch.
+                for (int h = 0; h < _hostTools.Count; h++)
                 {
+                    if (_registry != null && _registry.IsRevealTools(_hostTools[h].Name)) continue;
                     if (tools == null) tools = new List<JObject>();
-                    tools.Add(SkillTools.OpenSkillDef());
-                    tools.Add(SkillTools.ReadSkillFileDef());
-                }
-                if (AgentDispatcher != null && AgentDispatcher.HasAgents)
-                {
-                    if (tools == null) tools = new List<JObject>();
-                    tools.Add(AgentDispatcher.DispatchAgentDef());
-                }
-                if (AskUser != null)
-                {
-                    if (tools == null) tools = new List<JObject>();
-                    tools.Add(AskUser.AskUserDef());
+                    tools.Add(_hostTools[h].Def());
                 }
                 // Hide owned-but-locked tools (e.g. skill-authoring tools when the meta-skill is off):
                 // drop them from the exposed defs and the names manifest so the model can't see or call them.
@@ -398,9 +426,9 @@ namespace GxPT
                     tools = FilterHiddenDefs(tools, HiddenToolNames);
                     manifest = FilterHiddenManifest(manifest, HiddenToolNames);
                 }
-                // If filtering removed every tool line, drop the manifest entirely - otherwise the model
-                // is left with the framing ("The following MCP tools are available... Available tools:")
-                // over an empty list (e.g. a folderless turn whose only resolvable tools are all hidden).
+                // If filtering removed every tool line, drop the list entirely - otherwise the model is
+                // left with a bare "Available tools:" header over an empty list (e.g. a folderless turn
+                // whose only resolvable tools are all hidden).
                 if (manifest != null && manifest.IndexOf("\n- ", StringComparison.Ordinal) < 0)
                     manifest = null;
                 _lastOfferedTools = tools;
@@ -408,19 +436,20 @@ namespace GxPT
                     + ": requesting model with " + (tools != null ? tools.Count : 0) + " exposed tool(s)");
 
                 // Request layout, designed for prompt-cache reuse (three zones by volatility):
-                //   Zone A - stable head: constant agent prompt + workspace block + AGENTS.md
-                //            project instructions (system messages; byte-identical for the
-                //            conversation's lifetime). Cache breakpoint #1 on
-                //            its last message caches tools + system head together (tools render at
+                //   Zone A - stable head: constant agent prompt + workspace block + AGENTS.md project
+                //            instructions + the skills/agents capability framing (all static system
+                //            messages; byte-identical for the conversation's lifetime). Cache breakpoint
+                //            #1 on its last message caches tools + system head together (tools render at
                 //            position 0 of the prompt).
                 //   Zone B - the persisted history (append-only). Cache breakpoint #2 rides the
                 //            newest message, so each loop iteration / turn reads the previous
                 //            request's prefix from cache and extends it incrementally.
-                //   Zone C - one ephemeral user-role tail message holding everything that may change
-                //            between requests (memory, skills manifest, MCP names manifest). Placed
-                //            AFTER the breakpoints so its churn never invalidates the cached
-                //            transcript. Never persisted; rebuilt every request.
-                List<ChatMessage> requestMessages = BuildStableHead();
+                //   Zone C - one ephemeral user-role tail message holding the volatile INVENTORY that may
+                //            change between requests (memory, the skills/agents lists, the MCP tool-name
+                //            list). The static how-to framing for these lives in Zone A; only the lists
+                //            are here. Placed AFTER the breakpoints so its churn never invalidates the
+                //            cached transcript. Never persisted; rebuilt every request.
+                List<ChatMessage> requestMessages = BuildStableHead(SkillsActive, AgentsActive);
                 int headCount = requestMessages.Count;
 
                 // Build the sent messages from history, optionally transformed (e.g. attachments
@@ -430,11 +459,15 @@ namespace GxPT
                 requestMessages.AddRange(contextMessages);
                 ApplyCacheBreakpoints(requestMessages, headCount);
 
+                // The tail inventory lists are gated on the SAME signal as their head framing and host
+                // tools (SkillsActive/AgentsActive), so a feature's framing, its tools, and its list always
+                // appear together. Each provider is called at most once per iteration (the head framing
+                // takes the bool, not another provider call).
                 string memoryBlock = MemorySystemMessageProvider != null
                     ? MemorySystemMessageProvider() : null;
-                string skillsBlock = SkillsManifestSystemMessageProvider != null
+                string skillsBlock = SkillsActive && SkillsManifestSystemMessageProvider != null
                     ? SkillsManifestSystemMessageProvider() : null;
-                string agentsBlock = AgentsManifestSystemMessageProvider != null
+                string agentsBlock = AgentsActive && AgentsManifestSystemMessageProvider != null
                     ? AgentsManifestSystemMessageProvider() : null;
                 string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, agentsBlock, manifest);
                 if (!string.IsNullOrEmpty(ephemeralTail))
@@ -697,7 +730,7 @@ namespace GxPT
         private void RunCapWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
                                   string turnId)
         {
-            List<ChatMessage> requestMessages = BuildStableHead();
+            List<ChatMessage> requestMessages = BuildStableHead(SkillsActive, AgentsActive);
             int headCount = requestMessages.Count;
             IList<ChatMessage> contextMessages = RequestMessageTransform != null
                 ? RequestMessageTransform(history) : history;
@@ -787,9 +820,12 @@ namespace GxPT
 
         // Zone A: the stable system head, byte-identical for every request of a conversation (the
         // agent prompt is constant; the workspace block is constant while the workspace is; the
-        // project-instructions block is fixed per turn and constant while AGENTS.md is). Fresh
-        // message objects each call, so callers may set CacheControl on them directly.
-        private List<ChatMessage> BuildStableHead()
+        // project-instructions block is fixed per turn and constant while AGENTS.md is; the skills/agents
+        // capability framing is constant text, present while those features are active). Fresh message
+        // objects each call, so callers may set CacheControl on them directly. Both callers (the loop and
+        // the cap-wrap-up) pass the SAME skillsActive/agentsActive signals, producing a byte-identical
+        // head for cache reuse.
+        private List<ChatMessage> BuildStableHead(bool skillsActive, bool agentsActive)
         {
             List<ChatMessage> head = new List<ChatMessage>();
             head.Add(new ChatMessage("system", AgentSystemPrompt));
@@ -806,6 +842,17 @@ namespace GxPT
             }
             if (!string.IsNullOrEmpty(ProjectInstructions))
                 head.Add(new ChatMessage("system", ProjectInstructions));
+
+            // Capability framing (how to use skills / agents): static text, so it caches with the head
+            // instead of being re-sent in every request's ephemeral tail. Gated on the SAME signal that
+            // gates host-tool exposure/dispatch (SkillsActive/AgentsActive), so the framing and the tools
+            // it describes can never disagree, and a feature toggle (which already changes the cached
+            // tools array via its host meta-tools) is the only event that moves it. The MCP reveal rule is
+            // already in AgentSystemPrompt, so there is no separate tool framing here.
+            if (skillsActive)
+                head.Add(new ChatMessage("system", SkillInjection.Framing));
+            if (agentsActive)
+                head.Add(new ChatMessage("system", AgentInjection.Framing));
             return head;
         }
 
@@ -863,6 +910,66 @@ namespace GxPT
             if (ui != null) ui.Complete();
         }
 
+        // The host ("meta") tools for this turn, in dispatch order. SINGLE SOURCE OF TRUTH: the exposed-
+        // tools builder adds each Def and ExecuteCall dispatches each Handle, so a host tool is exposed IFF
+        // it is dispatch-exempt - adding one is a single entry here. reveal_tools is included too, so its
+        // dispatch and reveal-gate exemption flow through this same table; only its EXPOSURE stays registry-
+        // owned (ExposedFunctionDefs emits it in lead position 0, which an appended table entry can't), so
+        // the exposed-tools builder skips reveal_tools' Def and lets the registry provide it. Membership is
+        // gated on availability (registry present / SkillsActive / AgentsActive / AskUser), so an un-offered
+        // host tool falls through to the normal path and reports "[Unknown tool]". Built once per turn
+        // (RunTurn -> _hostTools); its inputs are fixed for the turn.
+        private List<HostTool> BuildHostTools()
+        {
+            List<HostTool> list = new List<HostTool>(5);
+            if (_registry != null)
+            {
+                list.Add(new HostTool(McpToolRegistry.RevealToolsName,
+                    delegate { return McpToolRegistry.RevealToolsDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        return _registry.Reveal(ParseRevealNames(c.ArgumentsJson), ResolutionWorkdir, RevealedToolNames);
+                    }));
+            }
+            if (SkillsActive)
+            {
+                list.Add(new HostTool(SkillTools.OpenSkillName,
+                    delegate { return SkillTools.OpenSkillDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        return SkillTools.Open(ParseRevealNames(c.ArgumentsJson));
+                    }));
+                list.Add(new HostTool(SkillTools.ReadSkillFileName,
+                    delegate { return SkillTools.ReadSkillFileDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        string slug, relpath;
+                        ParseSkillFileArgs(c.ArgumentsJson, out slug, out relpath);
+                        return SkillTools.ReadFile(slug, relpath);
+                    }));
+            }
+            if (AgentsActive)
+            {
+                list.Add(new HostTool(AgentDispatcher.DispatchAgentName,
+                    delegate { return AgentDispatcher.DispatchAgentDef(); },
+                    delegate(ToolCall c, out bool err)
+                    {
+                        err = false;
+                        return AgentDispatcher.Dispatch(c.ArgumentsJson);
+                    }));
+            }
+            if (AskUser != null)
+            {
+                list.Add(new HostTool(AskUserTool.AskUserName,
+                    delegate { return AskUser.AskUserDef(); },
+                    delegate(ToolCall c, out bool err) { return AskUser.Ask(c.ArgumentsJson, out err); }));
+            }
+            return list;
+        }
+
         // Executes one tool call, returning the text to feed back as the tool message content.
         // Failures are returned as content (not thrown) so the model can recover; isError flags the
         // UI marker. denied is set only when the user refuses the call at the approval gate (so the
@@ -874,50 +981,21 @@ namespace GxPT
             isError = false;
             denied = false;
 
-            if (_registry != null && _registry.IsRevealTools(call.Name))
+            // Host ("meta") tools - reveal_tools, open_skill, read_skill_file, dispatch_agent, ask_user -
+            // are answered locally (no MCP round-trip) and are exempt from reveal-before-call. _hostTools is
+            // the SAME table the exposed-tools builder uses, so a host tool is dispatch-exempt here IFF it
+            // was offered this turn; the exposure and the exemption can no longer drift apart. Each tool's
+            // Handle carries its own argument parsing and isError contract (e.g. ask_user flags malformed
+            // args; reveal_tools mutates the revealed set). Logged with raw args so a skill slug/relpath or
+            // a reveal name list stays auditable.
+            for (int h = 0; h < _hostTools.Count; h++)
             {
-                string[] names = ParseRevealNames(call.ArgumentsJson);
-                _log.Log("mcp", "[turn " + turnId + "] reveal_tools: " + names.Length + " name(s)");
-                return _registry.Reveal(names, ResolutionWorkdir, RevealedToolNames);
-            }
-
-            // open_skill is a host meta-tool (no MCP round-trip): load skill bodies by slug. Same
-            // {names:[...]} argument shape as reveal_tools, so the parser is reused.
-            if (SkillTools != null && SkillTools.IsOpenSkill(call.Name))
-            {
-                string[] slugs = ParseRevealNames(call.ArgumentsJson);
-                _log.Log("mcp", "[turn " + turnId + "] open_skill: " + slugs.Length + " name(s)");
-                return SkillTools.Open(slugs);
-            }
-
-            // read_skill_file is a host meta-tool too (ReadOnly): read a bundled asset by (slug, relpath).
-            if (SkillTools != null && SkillTools.IsReadSkillFile(call.Name))
-            {
-                string skillSlug, relpath;
-                ParseSkillFileArgs(call.ArgumentsJson, out skillSlug, out relpath);
-                _log.Log("mcp", "[turn " + turnId + "] read_skill_file: "
-                    + (skillSlug != null ? skillSlug : "?") + " / " + (relpath != null ? relpath : "?"));
-                return SkillTools.ReadFile(skillSlug, relpath);
-            }
-
-            // dispatch_agent is a host meta-tool too: run the sub-agent(s) in isolated child orchestrators
-            // and return their final answer(s). No MCP round-trip; the child gets no dispatcher, so it
-            // cannot nest (A12). Failures inside a child come back as content, not an exception.
-            if (AgentDispatcher != null && AgentDispatcher.IsDispatchAgent(call.Name))
-            {
-                _log.Log("mcp", "[turn " + turnId + "] dispatch_agent");
-                return AgentDispatcher.Dispatch(call.ArgumentsJson);
-            }
-
-            // ask_user is a host meta-tool too: show a multiple-choice panel and block until the user
-            // answers, returning their selection as the tool result. No MCP round-trip and no approval
-            // gate (the user is the one acting). A dismissed prompt is a non-error sentinel; only
-            // malformed arguments set isError so the model can correct the call.
-            if (AskUser != null && AskUser.IsAskUser(call.Name))
-            {
-                _log.Log("mcp", "[turn " + turnId + "] ask_user");
-                string answer = AskUser.Ask(call.ArgumentsJson, out isError);
-                return answer;
+                if (string.Equals(_hostTools[h].Name, call.Name, StringComparison.Ordinal))
+                {
+                    _log.Log("mcp", "[turn " + turnId + "] host tool '" + call.Name + "' "
+                        + (call.ArgumentsJson != null ? call.ArgumentsJson : "{}"));
+                    return _hostTools[h].Handle(call, out isError);
+                }
             }
 
             // A hidden (gated-off) tool must not be callable even if the model names it directly.
@@ -939,14 +1017,27 @@ namespace GxPT
                 return "[Unknown tool: " + call.Name + "]";
             }
 
-            // An actively-called tool moves to the end of the recency-ordered reveal list, so the
-            // provider-gated eviction (non-caching models only) trims idle defs first. Reordering the
-            // list is cache-safe: the emitted tools array is sorted by name, not list order.
-            if (RevealedToolNames != null && RevealedToolNames.Contains(call.Name))
+            // Reveal-before-call is ENFORCED here, not merely advised in the names manifest. A resolvable
+            // tool the model never revealed has no schema in this turn's context, so its argument shape is
+            // a blind guess (e.g. run_skill_script invoked with name/path instead of the real slug/relpath).
+            // Block it before the approval gate ever shows and feed back a self-correcting hint: the model
+            // reveals the tool next, sees the true schema, and re-issues a well-formed call. The host
+            // meta-tools (reveal_tools/open_skill/read_skill_file/dispatch_agent/ask_user) all returned far
+            // above via the _hostTools loop, so they are exempt by construction.
+            if (RevealedToolNames == null || !RevealedToolNames.Contains(call.Name))
             {
-                RevealedToolNames.Remove(call.Name);
-                RevealedToolNames.Add(call.Name);
+                isError = true;
+                _log.Log("mcp", "[turn " + turnId + "] blocked unrevealed tool '" + call.Name + "'");
+                return "[Tool '" + call.Name + "' is not revealed yet, so its parameters are unknown. "
+                    + "Call reveal_tools({\"names\":[\"" + call.Name + "\"]}) first to load its schema, "
+                    + "then call " + call.Name + " with the correct arguments.]";
             }
+
+            // Past the gate above, the tool is guaranteed present in RevealedToolNames; move it to the end
+            // so the provider-gated eviction (non-caching models only) trims idle defs first. Reordering is
+            // cache-safe: the emitted tools array is sorted by name, not list order.
+            RevealedToolNames.Remove(call.Name);
+            RevealedToolNames.Add(call.Name);
 
             JObject args;
             if (!TryParseArgs(call.ArgumentsJson, out args))

@@ -17,7 +17,13 @@ namespace GxPT.Tests.Mcp
 
         private static McpChatOrchestrator New(ScriptedStreamer s, McpToolRegistry reg)
         {
-            return new McpChatOrchestrator(s, reg, null, "test-model", null);
+            var orch = new McpChatOrchestrator(s, reg, null, "test-model", null);
+            // ExecuteCall now enforces reveal-before-call. Real turns reveal a tool before invoking it,
+            // so pre-reveal the whole catalog here to keep dispatch tests focused on the call path. Tests
+            // that need the unrevealed-tool or exposure behavior construct the orchestrator directly or
+            // overwrite RevealedToolNames after New().
+            if (reg != null) orch.RevealedToolNames = new List<string>(reg.NamesForWorkdir(null));
+            return orch;
         }
 
         [Fact]
@@ -116,20 +122,53 @@ namespace GxPT.Tests.Mcp
 
             New(streamer, reg).RunTurn(new List<ChatMessage>(), "hello", new RecordingUi());
 
-            // Request layout (prompt-caching zones): stable system head, then history, then the
-            // ephemeral context tail (a trailing user message carrying the names manifest).
+            // Request layout (prompt-caching zones): stable system head (carries the static reveal-
+            // before-call rule), then history, then the ephemeral context tail (the dynamic tool list).
             var msgs = streamer.SeenMessages[0];
             Assert.Equal("system", msgs[0].Role);
             Assert.Contains("operating as an agent", msgs[0].Content); // agentic behavior guidance
+            Assert.Contains("reveal_tools", msgs[0].Content);          // reveal rule lives in the cached head
             Assert.Equal("user", msgs[1].Role);
             Assert.Equal("hello", msgs[1].Content);
             var tail = msgs[msgs.Count - 1];
             Assert.Equal("user", tail.Role);
             Assert.Contains("Ephemeral context", tail.Content);  // framed as host-appended context
-            Assert.Contains("reveal_tools", tail.Content);       // manifest instructs reveal-before-call
-            Assert.Contains("files__read", tail.Content);        // and lists tool names
+            Assert.Contains("files__read", tail.Content);        // the tail carries the dynamic tool-name list
+            Assert.Contains("reveal_tools", tail.Content);       // and the list header re-anchors the reveal reminder
             // exposed tools always lead with reveal_tools
             Assert.Equal("reveal_tools", (string)streamer.SeenTools[0][0]["function"]["name"]);
+        }
+
+        [Fact]
+        public void Skill_framing_rides_the_cached_head_while_the_inventory_stays_in_the_tail()
+        {
+            // The static how-to framing belongs in the cached system head; only the volatile skill list
+            // belongs in the ephemeral tail. This is the ephemeral->head split: framing cached once,
+            // inventory re-sent.
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("hi"));
+            var orch = new McpChatOrchestrator(streamer, null, null, "test-model", null);
+            // Skills active (SkillTools has a skill) - the single signal that gates both the head framing
+            // and the tail inventory; the provider supplies the list text.
+            var skill = new Skill("demo", "Demo", "A demo skill.", null, null, SkillSource.Bundled);
+            orch.SkillTools = new SkillTools(new List<Skill> { skill }, null);
+            orch.SkillsManifestSystemMessageProvider =
+                delegate { return "Available skills:\n- demo - A demo skill."; };
+            orch.RunTurn(new List<ChatMessage>(), "hello", new RecordingUi());
+
+            var msgs = streamer.SeenMessages[0];
+            // framing (how-to) is a system message in the cached head...
+            bool framingInHead = false;
+            foreach (var m in msgs)
+                if (m.Role == "system" && m.Content != null
+                        && m.Content.Contains("open_skill is directly callable"))
+                    framingInHead = true;
+            Assert.True(framingInHead);
+            // ...and the dynamic inventory is in the trailing ephemeral user message, WITHOUT the framing.
+            var tail = msgs[msgs.Count - 1];
+            Assert.Equal("user", tail.Role);
+            Assert.Contains("Available skills:", tail.Content);
+            Assert.DoesNotContain("open_skill is directly callable", tail.Content);
         }
 
         [Fact]
@@ -661,6 +700,47 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Unrevealed_tool_is_blocked_before_approval_and_hits_no_transport()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__read", "{}"));
+            streamer.Turns.Add(Chunks.Text("ok"));
+
+            var ui = new RecordingUi();
+            // Constructed directly (not via New()) so the tool stays unrevealed - the model "called" it
+            // straight off the names manifest, the very case the enforcement gate must catch.
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            Assert.True(ui.ToolErrors[0]);
+            Assert.Contains("reveal_tools", ui.ToolResults[0]); // self-correcting hint, not a malformed run
+            Assert.Empty(ft.CalledTools);                       // never reached the transport (nor approval)
+        }
+
+        [Fact]
+        public void Unoffered_host_tool_is_not_silently_dispatched()
+        {
+            // No SkillTools/AgentDispatcher/AskUser are configured, so open_skill is NOT among this turn's
+            // host tools. Exposure and dispatch-exemption are both driven by BuildHostTools(), so a
+            // host tool that isn't offered must fall through to the normal path ("[Unknown tool]") rather
+            // than being silently handled - the two halves can't disagree.
+            var reg = new McpToolRegistry(null);
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "open_skill", "{\"names\":[\"x\"]}"));
+            streamer.Turns.Add(Chunks.Text("ok"));
+
+            var ui = new RecordingUi();
+            var orch = new McpChatOrchestrator(streamer, reg, null, "test-model", null);
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            Assert.True(ui.ToolErrors[0]);
+            Assert.Contains("Unknown tool", ui.ToolResults[0]);
+        }
+
+        [Fact]
         public void Malformed_arguments_surface_as_an_error()
         {
             RegistryFakeTransport ft;
@@ -690,6 +770,7 @@ namespace GxPT.Tests.Mcp
 
             var ui = new RecordingUi();
             var orch = new McpChatOrchestrator(streamer, reg, new DenyAllApprovalPolicy(), "m", null);
+            orch.RevealedToolNames = new List<string> { "files__read" }; // revealed, so the call reaches the approval gate
             orch.RunTurn(new List<ChatMessage>(), "go", ui);
 
             Assert.True(ui.ToolErrors[0]);
@@ -713,6 +794,7 @@ namespace GxPT.Tests.Mcp
 
             var ui = new RecordingUi();
             var orch = new McpChatOrchestrator(streamer, reg, new DenyAllApprovalPolicy(), "m", null);
+            orch.RevealedToolNames = new List<string> { "files__read" }; // revealed, so the call reaches the approval gate
             orch.RunTurn(new List<ChatMessage>(), "go", ui);
 
             Assert.True(ui.ToolErrors[0]);
@@ -751,6 +833,8 @@ namespace GxPT.Tests.Mcp
             // Denies only the first call it sees; would allow the rest. With auto-deny, the rest never
             // reach the policy at all, so nothing hits the transport.
             var orch = new McpChatOrchestrator(streamer, reg, new DenyFirstThenAllowPolicy(), "m", null);
+            // Revealed, so the calls reach the approval gate (denial precedence is what's under test here).
+            orch.RevealedToolNames = new List<string> { "files__read", "files__list", "files__write" };
             var history = new List<ChatMessage>();
             orch.RunTurn(history, "go", ui);
 
