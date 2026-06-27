@@ -127,6 +127,20 @@ gvplugin_dot_layout.dll dot_layout {
 		dot 0
 	}
 }
+gvplugin_neato_layout.dll neato_layout {
+	layout {
+		neato 0
+		fdp 0
+		sfdp 0
+		twopi 0
+		circo 0
+		nop 0
+		nop1 0
+		nop2 0
+		osage 0
+		patchwork 0
+	}
+}
 gvplugin_gdiplus.dll gdiplus {
 	render {
 		gdiplus 1

@@ -18,7 +18,7 @@ Copy these out of a Graphviz 2.38 Windows ZIP/install (`bin/` folder) into this 
 | File | Purpose |
 |---|---|
 | `dot.exe` | The layout/render driver GxPT invokes (`dot -Tpng`). |
-| `config6` | **Already committed here.** Trimmed plugin config — only loads the core, dot-layout, and GDI+ plugins so no extra dependency DLLs (cairo/pango/gd/iconv/...) are needed. Do not overwrite it with the stock `config6`, or `dot.exe` will try to load plugins whose dependencies aren't shipped and pop missing-DLL dialogs. |
+| `config6` | **Already committed here.** Trimmed plugin config — only loads the core, dot-layout, neato-layout, and GDI+ plugins so no extra dependency DLLs (cairo/pango/gd/iconv/...) are needed. Do not overwrite it with the stock `config6`, or `dot.exe` will try to load plugins whose dependencies aren't shipped and pop missing-DLL dialogs. |
 | `gvc.dll` | Graphviz context. |
 | `cdt.dll` | Container data types. |
 | `cgraph.dll` | Graph library. |
@@ -28,9 +28,29 @@ Copy these out of a Graphviz 2.38 Windows ZIP/install (`bin/` folder) into this 
 | `libexpat.dll` | XML parsing. |
 | `zlib1.dll` | Compression. |
 | `gvplugin_core.dll` | Core output devices. |
-| `gvplugin_dot_layout.dll` | The `dot` layout engine. |
+| `gvplugin_dot_layout.dll` | The `dot` layout engine (hierarchical). |
+| `gvplugin_neato_layout.dll` | The `neato`/`fdp`/`sfdp`/`twopi`/`circo`/`osage`/`patchwork` engines (force-directed, radial, circular, treemap). Needed for the more compact, square-ish layouts. |
 | `gvplugin_gdiplus.dll` | PNG output via the OS GDI+ (`gdiplus.dll`) — no extra image libraries to ship. |
 | `msvcr90.dll` | VC++ 2008 CRT. May already be present system-wide; ship it to be safe on a clean machine. |
+| `msvcp90.dll` | VC++ 2008 C++ runtime, required by `gvplugin_neato_layout.dll`. Omit only if you also drop neato support from `config6`. |
+
+## Layout engines
+
+GxPT picks the engine from the **code-fence language**, so the model can request whichever layout
+fits the graph:
+
+| Fence | Engine | Good for |
+|---|---|---|
+| ` ```dot ` (also `graphviz`, `gv`) | `dot` | Directed hierarchies / flowcharts. Can get very tall. |
+| ` ```neato ` | `neato` | Spring-model undirected graphs; compact, roughly square. |
+| ` ```fdp ` | `fdp` | Force-directed, handles clusters. |
+| ` ```sfdp ` | `sfdp` | Scalable force-directed for large graphs. |
+| ` ```twopi ` | `twopi` | Radial layout around a root node. |
+| ` ```circo ` | `circo` | Circular layout. |
+| ` ```osage ` / ` ```patchwork ` | `osage` / `patchwork` | Clustered / treemap layouts. |
+
+All non-`dot` engines come from `gvplugin_neato_layout.dll`; if that plugin (and `msvcp90.dll`)
+isn't present, those fences fall back to a normal highlighted code block.
 
 PNG output goes through the **GDI+** plugin, which uses the Windows-provided `gdiplus.dll`,
 so none of cairo/pango/freetype/fontconfig/libpng/jpeg/iconv are required.
@@ -40,7 +60,8 @@ so none of cairo/pango/freetype/fontconfig/libpng/jpeg/iconv are required.
 Stock Graphviz lists every plugin in `config6`. On startup `dot.exe` tries to `dlopen` each
 one; the gd/pango/neato plugins drag in `iconv.dll`, `jpeg62.dll`, `libcairo-2.dll`,
 `libfreetype-6.dll`, `libpng12.dll`, `msvcp90.dll`, etc. Missing-dependency dialogs result.
-The committed `config6` lists only `gvplugin_core`, `gvplugin_dot_layout`, and
-`gvplugin_gdiplus`, which keeps the shipped file set to the short list above.
+The committed `config6` lists only `gvplugin_core`, `gvplugin_dot_layout`,
+`gvplugin_neato_layout`, and `gvplugin_gdiplus`, which keeps the shipped file set to the short
+list above.
 
-If you ever regenerate the config (`dot -c`), re-trim it to these three plugins.
+If you ever regenerate the config (`dot -c`), re-trim it to these four plugins.

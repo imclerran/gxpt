@@ -32,9 +32,15 @@ namespace GxPT
         private const int RenderTimeoutMs = 20000;
 
         private static readonly Dictionary<string, GraphResult> _cache = new Dictionary<string, GraphResult>();
-        private static readonly Dictionary<string, string> _pending = new Dictionary<string, string>(); // key -> dot source
+        private static readonly Dictionary<string, WorkItem> _pending = new Dictionary<string, WorkItem>(); // key -> work
         private static readonly List<string> _lifo = new List<string>(); // act as a stack (pop from end)
         private static readonly object _lock = new object();
+
+        private struct WorkItem
+        {
+            public string Engine; // Graphviz layout engine (dot, neato, fdp, ...)
+            public string Dot;    // the DOT source
+        }
         private static Thread _worker;
 
         // Resolved once: false means dot.exe isn't present, so every render fails fast (no spawn churn).
@@ -61,18 +67,20 @@ namespace GxPT
             }
         }
 
-        private static string MakeKey(string dot)
+        // The cache key is engine + source: the same DOT renders differently under dot vs neato, so
+        // they must not collide.
+        private static string MakeKey(string engine, string dot)
         {
-            return Hash64(dot ?? string.Empty);
+            return (engine ?? string.Empty) + "|" + Hash64(dot ?? string.Empty);
         }
 
         /// <summary>
-        /// Returns the cached render for the given dot source, if one exists yet. A false return means
-        /// the work is still pending (or not yet enqueued) - callers should draw a placeholder.
+        /// Returns the cached render for the given engine + dot source, if one exists yet. A false
+        /// return means the work is still pending (or not yet enqueued) - draw a placeholder.
         /// </summary>
-        public static bool TryGetResult(string dot, out GraphResult result)
+        public static bool TryGetResult(string engine, string dot, out GraphResult result)
         {
-            string key = MakeKey(dot);
+            string key = MakeKey(engine, dot);
             lock (_lock)
             {
                 return _cache.TryGetValue(key, out result);
@@ -80,17 +88,18 @@ namespace GxPT
         }
 
         /// <summary>
-        /// Queue a dot source for background rendering. Cheap and idempotent: a source already cached
-        /// or in-flight is ignored. LIFO ordering means the most recently requested graphs render first.
+        /// Queue a dot source for background rendering with the given layout engine. Cheap and
+        /// idempotent: a source already cached or in-flight is ignored. LIFO ordering means the most
+        /// recently requested graphs render first.
         /// </summary>
-        public static void EnqueueRender(string dot)
+        public static void EnqueueRender(string engine, string dot)
         {
             if (string.IsNullOrEmpty(dot)) return;
-            string key = MakeKey(dot);
+            string key = MakeKey(engine, dot);
             lock (_lock)
             {
                 if (_cache.ContainsKey(key) || _pending.ContainsKey(key)) return;
-                _pending[key] = dot;
+                _pending[key] = new WorkItem { Engine = engine, Dot = dot };
                 _lifo.Add(key);
                 EnsureWorker();
             }
@@ -111,7 +120,8 @@ namespace GxPT
         {
             while (true)
             {
-                string key, dot;
+                string key;
+                WorkItem wi;
                 lock (_lock)
                 {
                     if (_lifo.Count == 0)
@@ -122,12 +132,12 @@ namespace GxPT
                     int last = _lifo.Count - 1;
                     key = _lifo[last];
                     _lifo.RemoveAt(last);
-                    dot = _pending[key];
+                    wi = _pending[key];
                     _pending.Remove(key);
                 }
 
                 GraphResult result;
-                try { result = RenderDot(dot); }
+                try { result = RenderDot(wi.Engine, wi.Dot); }
                 catch { result = new GraphResult(); result.Failed = true; }
 
                 lock (_lock)
@@ -172,19 +182,39 @@ namespace GxPT
         }
 
         // Invoke dot.exe with the dot source on stdin and capture the PNG it writes to stdout.
+        // Keep only [a-z0-9] from the engine name (lower-cased). Engines come from a fixed allowlist in
+        // the UI, but this is defense-in-depth so a stray value can never become an extra dot.exe flag.
+        private static string SanitizeEngine(string engine)
+        {
+            if (string.IsNullOrEmpty(engine)) return string.Empty;
+            var sb = new StringBuilder(engine.Length);
+            for (int i = 0; i < engine.Length; i++)
+            {
+                char ch = engine[i];
+                if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + 32);
+                if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
+            }
+            return sb.ToString();
+        }
+
         // No temp files. stdin is written on a helper thread so a large PNG filling the stdout pipe
         // can't deadlock against us still writing stdin.
-        private static GraphResult RenderDot(string dot)
+        private static GraphResult RenderDot(string engine, string dot)
         {
             var result = new GraphResult();
 
             string dotPath = ResolveDotPath();
             if (string.IsNullOrEmpty(dotPath)) { result.Failed = true; return result; }
 
+            // Select the layout engine with -K (dot.exe drives every engine; no separate exe needed).
+            // The engine is sanitized to a bare identifier so it can't inject extra arguments.
+            string safeEngine = SanitizeEngine(engine);
+            string args = (safeEngine.Length > 0 ? "-K" + safeEngine + " " : string.Empty) + "-Tpng";
+
             var psi = new ProcessStartInfo
             {
                 FileName = dotPath,
-                Arguments = "-Tpng",
+                Arguments = args,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

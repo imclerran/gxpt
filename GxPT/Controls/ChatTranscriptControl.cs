@@ -148,12 +148,40 @@ namespace GxPT
         // A fenced ```dot block is rendered as an image (via the bundled Graphviz). The same box
         // geometry is needed by the measure, draw, and hit-test passes, so it is computed once here.
 
+        // Map a code-fence language to the Graphviz layout engine it requests, e.g. ```neato renders
+        // with the neato engine. dot/graphviz/gv all mean the default hierarchical "dot" engine; the
+        // remaining names are the engines provided by the neato_layout plugin (force-directed, radial,
+        // circular, treemap), which give more compact / square graphs than dot's tall hierarchies.
+        // Returns false for any other language (rendered as ordinary highlighted code).
+        private static bool TryGetGraphEngine(string lang, out string engine)
+        {
+            engine = null;
+            if (string.IsNullOrEmpty(lang)) return false;
+            string l = lang.Trim().ToLowerInvariant();
+            switch (l)
+            {
+                case "dot":
+                case "graphviz":
+                case "gv":
+                    engine = "dot"; return true;
+                case "neato":
+                case "fdp":
+                case "sfdp":
+                case "twopi":
+                case "circo":
+                case "osage":
+                case "patchwork":
+                    engine = l; return true;
+                default:
+                    return false;
+            }
+        }
+
         // Languages whose code fences render as a Graphviz graph instead of highlighted source.
         private static bool IsGraphLanguage(string lang)
         {
-            if (string.IsNullOrEmpty(lang)) return false;
-            string l = lang.Trim().ToLowerInvariant();
-            return l == "dot" || l == "graphviz" || l == "gv";
+            string engine;
+            return TryGetGraphEngine(lang, out engine);
         }
 
         // Placeholder body height shown while a graph renders in the background.
@@ -198,6 +226,14 @@ namespace GxPT
             int minHeaderW = GetCodeMinHeaderWidth(g, c.Language);
             int avail = Math.Max(0, maxWidth - 2 * CodeBlockPadding);
 
+            // Resolve the requested layout engine (dot, neato, ...); non-graph languages never reach here.
+            string engine;
+            if (!TryGetGraphEngine(c.Language, out engine))
+            {
+                L.Failed = true;
+                return L;
+            }
+
             // Until the (possibly streaming) source looks complete, render it as ordinary code.
             if (!IsRenderableGraphSource(c.Text))
             {
@@ -205,9 +241,9 @@ namespace GxPT
                 return L;
             }
 
-            GraphvizRenderer.EnqueueRender(c.Text);
+            GraphvizRenderer.EnqueueRender(engine, c.Text);
             GraphvizRenderer.GraphResult res;
-            bool have = GraphvizRenderer.TryGetResult(c.Text, out res);
+            bool have = GraphvizRenderer.TryGetResult(engine, c.Text, out res);
 
             if (have && (res.Failed || res.Image == null))
             {
