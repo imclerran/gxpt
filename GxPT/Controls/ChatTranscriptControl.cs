@@ -360,7 +360,7 @@ namespace GxPT
                 try
                 {
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HalfPixel;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                     g.DrawImage(L.Image, dest);
                 }
                 catch { }
