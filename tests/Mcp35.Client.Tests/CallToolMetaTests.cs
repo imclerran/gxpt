@@ -11,7 +11,7 @@ namespace Mcp35.Client.Tests
     // this test uses an arbitrary one.
     public class CallToolMetaTests
     {
-        private static FakeTransport Ready(out JToken captured)
+        private static FakeTransport Ready()
         {
             var t = new FakeTransport();
             t.Handlers[McpMethods.Initialize] = delegate(JToken p)
@@ -36,8 +36,7 @@ namespace Mcp35.Client.Tests
         [Fact]
         public void CallTool_carries_meta_field_out_of_band()
         {
-            JToken dummy;
-            var t = Ready(out dummy);
+            var t = Ready();
             JToken captured = null;
             t.Handlers[McpMethods.ToolsCall] = delegate(JToken p)
             {
@@ -62,8 +61,7 @@ namespace Mcp35.Client.Tests
         [Fact]
         public void CallTool_omits_meta_when_absent()
         {
-            JToken dummy;
-            var t = Ready(out dummy);
+            var t = Ready();
             JToken captured = null;
             t.Handlers[McpMethods.ToolsCall] = delegate(JToken p)
             {
