@@ -5165,6 +5165,19 @@ namespace GxPT
                     return true;
                 }
                 case "reveal_tools": header = "Checked available tools"; return true;
+                case "cd":
+                {
+                    // Host meta-tool: a one-line label naming where the conversation moved. The model's
+                    // `path` arg is the relative path it changed to; an absent/empty arg is the no-arg
+                    // "return to the workspace root" case.
+                    string rel = Str(args, "path");
+                    rel = (rel == null ? string.Empty : rel.Trim()).Replace('\\', '/');
+                    while (rel.Length > 1 && rel[rel.Length - 1] == '/') rel = rel.Substring(0, rel.Length - 1);
+                    header = rel.Length == 0
+                        ? "Changed directory to the workspace root"
+                        : "Changed directory to " + rel;
+                    return true;
+                }
                 case "open_skill":
                 {
                     // Post-flight (completed) record label, so past tense like the other records.
