@@ -31,8 +31,39 @@ Copy these out of a Graphviz 2.38 Windows ZIP/install (`bin/` folder) into this 
 | `gvplugin_dot_layout.dll` | The `dot` layout engine (hierarchical). |
 | `gvplugin_neato_layout.dll` | The `neato`/`fdp`/`sfdp`/`twopi`/`circo`/`osage`/`patchwork` engines (force-directed, radial, circular, treemap). Needed for the more compact, square-ish layouts. |
 | `gvplugin_gdiplus.dll` | PNG output via the OS GDI+ (`gdiplus.dll`) — no extra image libraries to ship. |
-| `msvcr90.dll` | VC++ 2008 CRT. May already be present system-wide; ship it to be safe on a clean machine. |
-| `msvcp90.dll` | VC++ 2008 C++ runtime, required by `gvplugin_neato_layout.dll`. Omit only if you also drop neato support from `config6`. |
+
+Plus the **Visual C++ 2008 runtime** that these binaries link against — see the next section; it is
+**not** a simple drop-in and is not part of the Graphviz distribution.
+
+## Visual C++ 2008 runtime (`msvcr90.dll` / `msvcp90.dll`)
+
+The official Graphviz 2.38 binaries are built with Visual Studio 2008, so they depend on the VC9
+C runtime (`msvcr90.dll`) and — for `gvplugin_neato_layout.dll` — the C++ runtime (`msvcp90.dll`).
+These are **not** Graphviz files and are redistributed separately by Microsoft. (A dev box usually
+already has them in `WinSxS` because VS or some other app installed them, which is why `dot.exe` can
+render there with nothing extra. A clean Windows XP machine generally won't.)
+
+Crucially, the Graphviz DLLs carry embedded **side-by-side (SxS) manifests** that require the
+`Microsoft.VC90.CRT` assembly, so dropping the bare `msvcr90.dll`/`msvcp90.dll` next to `dot.exe`
+is **not** reliable — on a clean machine it raises a side-by-side configuration error. Use one of:
+
+- **Installer (preferred):** add the `Microsoft_VC90_CRT_x86.msm` merge module (plus
+  `policy_9_0_Microsoft_VC90_CRT_x86.msm`) to `GxPT.Setup`. Installs the CRT into `WinSxS`
+  correctly and satisfies the SxS manifests. Found under
+  `…\Common Files\Merge Modules\` on a machine with VS2008.
+- **Portable / xcopy build:** flatten the contents of the `Microsoft.VC90.CRT` folder — `msvcr90.dll`,
+  `msvcp90.dll`, `msvcm90.dll`, and `Microsoft.VC90.CRT.manifest` — directly into this directory, next
+  to `dot.exe` (not in a subfolder, so the `*.dll` / `*.manifest` content globs in `GxPT.csproj` copy
+  them to the output). App-local SxS resolves the assembly from the loading module's directory. Get the
+  folder from `…\Microsoft Visual Studio 9.0\VC\redist\x86\Microsoft.VC90.CRT\`.
+- **Or** install the **VC++ 2008 SP1 Redistributable** (`vcredist_x86.exe`, 9.0.30729) on the target.
+
+Use the **SP1 (9.0.30729)** version; its publisher policy also satisfies binaries that reference the
+older RTM (9.0.21022) CRT. If you skip the C++ runtime entirely, also drop the neato plugin (remove
+`gvplugin_neato_layout` from `config6`) — `dot` alone needs only the C runtime.
+
+Because rendering degrades gracefully (a `dot.exe` that can't start just makes the fence fall back to
+a code block), shipping the CRT is optional; without it, graphs simply won't render on a bare OS.
 
 ## Layout engines
 
