@@ -20,10 +20,10 @@ namespace Mcp35.Server
         {
         }
 
-        // meta carries the request's out-of-band params._meta (host-authoritative metadata such as the
-        // current working directory, McpMeta.CwdKey); normalized to an empty object so handlers never
-        // have to null-check ctx.Meta. It is NOT part of any tool's input schema and the model cannot
-        // set it — only the host injects it.
+        // meta carries the request's out-of-band params._meta (host-authoritative metadata); normalized
+        // to an empty object so handlers never have to null-check ctx.Meta. It is NOT part of any tool's
+        // input schema and the model cannot set it — only the host injects it. The framework is agnostic
+        // to which keys it holds (a consumer defines those).
         public ToolCallContext(string toolName, JObject arguments, ILogSink log, JObject meta)
         {
             _toolName = toolName;
@@ -42,19 +42,17 @@ namespace Mcp35.Server
         public JObject Meta { get { return _meta; } }
 
         /// <summary>
-        /// The host-injected current working directory for this call (absolute), or null when absent —
-        /// in which case the server falls back to its launch-time workspace root (GXPT_WORKDIR). Read
-        /// from <c>_meta[McpMeta.CwdKey]</c>; the model cannot supply this.
+        /// Convenience accessor for a string-valued <c>_meta</c> field by key, or null when absent or not
+        /// a string. Key-agnostic: the framework does not know or care which keys a consumer uses — the
+        /// meaning of any specific key (e.g. a current-directory convention) belongs to the consumer.
         /// </summary>
-        public string Cwd
+        public string MetaString(string key)
         {
-            get
-            {
-                JToken t = _meta[McpMeta.CwdKey];
-                if (t == null || t.Type == JTokenType.Null || t.Type != JTokenType.String) return null;
-                string s = (string)t;
-                return string.IsNullOrEmpty(s) ? null : s;
-            }
+            if (string.IsNullOrEmpty(key)) return null;
+            JToken t = _meta[key];
+            if (t == null || t.Type != JTokenType.String) return null;
+            string s = (string)t;
+            return string.IsNullOrEmpty(s) ? null : s;
         }
     }
 

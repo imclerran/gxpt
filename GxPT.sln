@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mcp35.Server", "src\Mcp35.S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mcp35.Client", "src\Mcp35.Client\Mcp35.Client.csproj", "{A043F034-FFF5-44CE-9605-B40FF0016262}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Gxpt.Mcp.Conventions", "src\Gxpt.Mcp.Conventions\Gxpt.Mcp.Conventions.csproj", "{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FilesMcpServer", "servers\FilesMcpServer\FilesMcpServer.csproj", "{FDE32AF9-71C6-4B14-8521-285BD2B36AB9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebSearchMcpServer", "servers\WebSearchMcpServer\WebSearchMcpServer.csproj", "{785B59BD-B282-488C-BD78-4529CD80BA49}"
@@ -49,6 +51,10 @@ Global
 		{A043F034-FFF5-44CE-9605-B40FF0016262}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A043F034-FFF5-44CE-9605-B40FF0016262}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A043F034-FFF5-44CE-9605-B40FF0016262}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{FDE32AF9-71C6-4B14-8521-285BD2B36AB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{FDE32AF9-71C6-4B14-8521-285BD2B36AB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDE32AF9-71C6-4B14-8521-285BD2B36AB9}.Release|Any CPU.ActiveCfg = Release|Any CPU

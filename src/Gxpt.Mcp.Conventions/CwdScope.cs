@@ -1,14 +1,19 @@
 using System;
 using System.IO;
-using Mcp35.Core.Protocol;
 using Mcp35.Core.Security;
+using Mcp35.Server;
 
-namespace Mcp35.Server
+namespace Gxpt.Mcp.Conventions
 {
     /// <summary>
     /// Resolves the effective working directory (and a matching <see cref="PathSandbox"/>) for one
-    /// workdir-scoped tool call, honoring the host-injected current directory
-    /// (<see cref="ToolCallContext.Cwd"/> / <see cref="McpMeta.CwdKey"/>).
+    /// workdir-scoped tool call, honoring GxPT's host-injected current directory
+    /// (<c>params._meta["gxpt.cwd"]</c>, see <see cref="GxptMeta.CwdKey"/>).
+    /// <para>
+    /// This is GxPT policy, not protocol: it lives here rather than in the generic server framework so
+    /// <c>Mcp35.Server</c> stays agnostic to which <c>_meta</c> fields a consumer uses. The server reads
+    /// the raw bag via <see cref="ToolCallContext.MetaString"/>; the interpretation lives here.
+    /// </para>
     /// <para>
     /// The server is launched once per <b>anchor</b> (its <c>GXPT_WORKDIR</c>); the host injects the
     /// conversation's <b>current</b> directory per call. Two roles that <c>GXPT_WORKDIR</c> used to play
@@ -43,7 +48,7 @@ namespace Mcp35.Server
             sandbox = anchor;
             error = null;
 
-            string cwd = ctx != null ? ctx.Cwd : null;
+            string cwd = ctx != null ? ctx.MetaString(GxptMeta.CwdKey) : null;
             if (string.IsNullOrEmpty(cwd)) return true;   // absent => the anchor (default floor)
 
             string full;

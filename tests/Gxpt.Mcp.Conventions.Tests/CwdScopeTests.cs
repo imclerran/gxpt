@@ -1,15 +1,14 @@
 using System;
 using System.IO;
-using Mcp35.Core.Protocol;
 using Mcp35.Core.Security;
 using Mcp35.Server;
 using Newtonsoft.Json.Linq;
 using Xunit;
 
-namespace Mcp35.Server.Tests
+namespace Gxpt.Mcp.Conventions.Tests
 {
-    // The host-cd plumbing on the server side: ToolCallContext surfaces params._meta["gxpt.cwd"], the
-    // dispatch loop threads it onto the context, and CwdScope re-validates it against the launch anchor.
+    // CwdScope interprets GxPT's host-injected current directory (params._meta["gxpt.cwd"]) and
+    // re-validates it against the server's launch anchor (defense in depth), independent of the host.
     public class CwdScopeTests : IDisposable
     {
         private readonly string _anchor;
@@ -31,27 +30,9 @@ namespace Mcp35.Server.Tests
         private static ToolCallContext CtxWithCwd(string cwd)
         {
             JObject meta = new JObject();
-            if (cwd != null) meta[McpMeta.CwdKey] = cwd;
+            if (cwd != null) meta[GxptMeta.CwdKey] = cwd;
             return new ToolCallContext("t", new JObject(), null, meta);
         }
-
-        // ---- ToolCallContext ----
-
-        [Fact]
-        public void Cwd_reads_meta_key()
-        {
-            Assert.Equal("C:/proj/sub", CtxWithCwd("C:/proj/sub").Cwd);
-        }
-
-        [Fact]
-        public void Cwd_is_null_when_absent_or_empty()
-        {
-            Assert.Null(new ToolCallContext("t", new JObject(), null).Cwd);
-            Assert.Null(CtxWithCwd(null).Cwd);
-            Assert.Null(CtxWithCwd("").Cwd);
-        }
-
-        // ---- CwdScope ----
 
         [Fact]
         public void Absent_cwd_resolves_to_the_anchor()
@@ -97,27 +78,18 @@ namespace Mcp35.Server.Tests
             Assert.NotNull(err);
         }
 
-        // ---- dispatch threads _meta onto the context ----
-
         [Fact]
-        public void Dispatch_threads_meta_cwd_to_the_handler()
+        public void TryResolveWorkingDir_validates_but_discards_the_sandbox()
         {
-            Implementation info = new Implementation();
-            info.Name = "t"; info.Version = "1.0";
-            McpServer server = new McpServer(info, null);
-            server.AddTool("echo_cwd", "echo cwd", SchemaBuilder.Object().Build(),
-                delegate(ToolCallContext ctx) { return ToolResults.Text(ctx.Cwd ?? "<null>"); });
+            string workDir; string err;
+            Assert.True(CwdScope.TryResolveWorkingDir(CtxWithCwd(_sub), _anchor, "workspace root",
+                out workDir, out err));
+            Assert.Equal(Path.GetFullPath(_sub), workDir);
 
-            JObject meta = new JObject();
-            meta[McpMeta.CwdKey] = "C:/proj/sub";
-            JObject prms = new JObject();
-            prms["name"] = "echo_cwd";
-            prms["_meta"] = meta;
-
-            var msgs = ServerHarness.Exchange(server, ServerHarness.Request(1, "tools/call", prms));
-            Assert.Single(msgs);
-            string text = (string)msgs[0]["result"]["content"][0]["text"];
-            Assert.Equal("C:/proj/sub", text);
+            string outside = Path.GetFullPath(Path.Combine(_anchor, ".."));
+            Assert.False(CwdScope.TryResolveWorkingDir(CtxWithCwd(outside), _anchor, "workspace root",
+                out workDir, out err));
+            Assert.NotNull(err);
         }
     }
 }

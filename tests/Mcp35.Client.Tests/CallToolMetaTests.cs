@@ -6,8 +6,9 @@ using Xunit;
 
 namespace Mcp35.Client.Tests
 {
-    // CallTool's _meta overload carries out-of-band request metadata (the host current directory) as a
-    // sibling of `arguments` in params._meta, where the model can neither see nor spoof it.
+    // CallTool's _meta overload carries out-of-band request metadata as a sibling of `arguments` in
+    // params._meta, where the model can neither see nor spoof it. The client is agnostic to the keys —
+    // this test uses an arbitrary one.
     public class CallToolMetaTests
     {
         private static FakeTransport Ready(out JToken captured)
@@ -33,7 +34,7 @@ namespace Mcp35.Client.Tests
         }
 
         [Fact]
-        public void CallTool_carries_cwd_in_params_meta()
+        public void CallTool_carries_meta_field_out_of_band()
         {
             JToken dummy;
             var t = Ready(out dummy);
@@ -48,14 +49,14 @@ namespace Mcp35.Client.Tests
             {
                 conn.Open(5000);
                 JObject meta = new JObject();
-                meta[McpMeta.CwdKey] = "C:/proj/sub";
+                meta["x.cwd"] = "C:/proj/sub";
                 conn.CallTool("echo", new JObject(), meta, 5000);
             }
 
             Assert.NotNull(captured);
             JObject po = (JObject)captured;
             Assert.NotNull(po["_meta"]);
-            Assert.Equal("C:/proj/sub", (string)po["_meta"][McpMeta.CwdKey]);
+            Assert.Equal("C:/proj/sub", (string)po["_meta"]["x.cwd"]);
         }
 
         [Fact]

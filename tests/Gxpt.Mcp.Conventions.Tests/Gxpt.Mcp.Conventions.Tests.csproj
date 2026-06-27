@@ -1,21 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Tests for FilesMcpServer (phase 7). Links Core + Server + the FilesMcpServer sources and
-    compiles them into the test assembly (same linked-source pattern as the other test projects).
-    Drives the server's Run(stdin, stdout) via the scripted-stream harness. Targets net48.
-
-    The server's Program.Main is excluded (a second entry point would conflict with the test host).
-
-    NOTE: intentionally NOT in GxPT.sln (VS2008 cannot load SDK-style projects).
+    Tests for Gxpt.Mcp.Conventions (the GxPT-specific _meta conventions layered on the generic MCP
+    protocol). Links Core + Server + the Conventions sources and exercises CwdScope's anchor
+    re-validation / sandbox re-rooting directly. Targets net48, same linked-source pattern as the
+    server test projects. NOT in GxPT.sln.
   -->
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
-    <AssemblyName>FilesMcpServer.Tests</AssemblyName>
-    <RootNamespace>FilesMcpServer.Tests</RootNamespace>
+    <AssemblyName>Gxpt.Mcp.Conventions.Tests</AssemblyName>
+    <RootNamespace>Gxpt.Mcp.Conventions.Tests</RootNamespace>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
   </PropertyGroup>
@@ -30,9 +27,6 @@
     <Compile Include="..\..\src\Gxpt.Mcp.Conventions\**\*.cs"
              Exclude="..\..\src\Gxpt.Mcp.Conventions\Properties\**\*.cs;..\..\src\Gxpt.Mcp.Conventions\obj\**\*.cs;..\..\src\Gxpt.Mcp.Conventions\bin\**\*.cs"
              Link="Linked\Conventions\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\..\servers\FilesMcpServer\**\*.cs"
-             Exclude="..\..\servers\FilesMcpServer\Program.cs;..\..\servers\FilesMcpServer\Properties\**\*.cs;..\..\servers\FilesMcpServer\obj\**\*.cs;..\..\servers\FilesMcpServer\bin\**\*.cs"
-             Link="Linked\Files\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

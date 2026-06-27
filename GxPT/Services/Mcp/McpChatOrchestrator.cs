@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using Gxpt.Mcp.Conventions;
 using Mcp35.Client;
 using Mcp35.Core.Diagnostics;
 using Mcp35.Core.Errors;
@@ -306,7 +307,7 @@ namespace GxPT
         // The conversation's CURRENT directory (host `cd`): a directory at or below the WorkingDir anchor
         // that the model has scoped into. Absolute path; null means "the anchor itself" (the default and
         // the floor). The host injects it into every workdir-scoped tool call out-of-band (params._meta,
-        // McpMeta.CwdKey) so files/git/command/msbuild operate there without the model being able to widen
+        // GxptMeta.CwdKey) so files/git/command/msbuild operate there without the model being able to widen
         // the root. Seeded from the conversation context at turn start and reset to the anchor on
         // conversation load (it is transient, never persisted). Mutated only by the `cd` host tool, which
         // re-validates it within the anchor. See the host-cd/worktree design.
@@ -1317,13 +1318,13 @@ namespace GxPT
         }
 
         // The host current directory injected into a workdir-scoped tool call as out-of-band metadata
-        // (params._meta, McpMeta.CwdKey). Null when at the anchor (absent => the server uses its own
+        // (params._meta, GxptMeta.CwdKey). Null when at the anchor (absent => the server uses its own
         // launch root, the safe floor) — so requests stay clean until the model has actually `cd`-ed.
         private JObject BuildCallMeta()
         {
             if (string.IsNullOrEmpty(CurrentDir)) return null;
             JObject meta = new JObject();
-            meta[McpMeta.CwdKey] = CurrentDir;
+            meta[GxptMeta.CwdKey] = CurrentDir;
             return meta;
         }
 

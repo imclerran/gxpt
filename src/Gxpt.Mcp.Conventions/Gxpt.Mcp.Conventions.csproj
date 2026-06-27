@@ -5,11 +5,11 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>9.0.30729</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{96B66F73-25A8-4B45-994B-D9EFAFCDF4F7}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <ProjectGuid>{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}</ProjectGuid>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>GitMcpServer</RootNamespace>
-    <AssemblyName>GitMcpServer</AssemblyName>
+    <RootNamespace>Gxpt.Mcp.Conventions</RootNamespace>
+    <AssemblyName>Gxpt.Mcp.Conventions</AssemblyName>
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -31,32 +31,22 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\src\Mcp35.Core\lib\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
-    <Compile Include="GitConfig.cs" />
-    <Compile Include="GitTools.cs" />
-    <Compile Include="ArgvQuoter.cs" />
+    <Compile Include="GxptMeta.cs" />
+    <Compile Include="CwdScope.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Gxpt.Mcp.Conventions\Gxpt.Mcp.Conventions.csproj">
-      <Project>{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}</Project>
-      <Name>Gxpt.Mcp.Conventions</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\src\Mcp35.Server\Mcp35.Server.csproj">
-      <Project>{DCA697A6-1B4C-430C-BC45-134CB5F90072}</Project>
-      <Name>Mcp35.Server</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\src\Mcp35.Core\Mcp35.Core.csproj">
+    <ProjectReference Include="..\Mcp35.Core\Mcp35.Core.csproj">
       <Project>{667AC466-F30B-4CDB-BEC9-7A139A709AA9}</Project>
       <Name>Mcp35.Core</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Mcp35.Server\Mcp35.Server.csproj">
+      <Project>{DCA697A6-1B4C-430C-BC45-134CB5F90072}</Project>
+      <Name>Mcp35.Server</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

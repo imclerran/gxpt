@@ -226,8 +226,9 @@ namespace Mcp35.Server
             }
 
             JObject args = prms["arguments"] as JObject;
-            // params._meta is out-of-band (a sibling of arguments, not part of any tool's schema): the
-            // host carries call metadata here, e.g. the current working directory (McpMeta.CwdKey).
+            // params._meta is out-of-band (a sibling of arguments, not part of any tool's schema): a
+            // host carries call metadata here. The framework stays agnostic to its keys (consumers read
+            // them via ctx.Meta / ctx.MetaString).
             JObject meta = prms["_meta"] as JObject;
             ToolCallContext ctx = new ToolCallContext(name, args, _log, meta);
 

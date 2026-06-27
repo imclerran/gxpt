@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using Mcp35.Core.Protocol;
+using Gxpt.Mcp.Conventions;
 using Newtonsoft.Json.Linq;
 using Xunit;
 
@@ -37,7 +37,7 @@ namespace FilesMcpServer.Tests
             if (cwd != null)
             {
                 JObject meta = new JObject();
-                meta[McpMeta.CwdKey] = cwd;
+                meta[GxptMeta.CwdKey] = cwd;
                 p["_meta"] = meta;
             }
             return Harness.Request(id, "tools/call", p);
