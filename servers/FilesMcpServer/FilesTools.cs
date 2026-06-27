@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using Gxpt.Mcp.Conventions;
 using Mcp35.Core.Protocol;
 using Mcp35.Core.Security;
 using Mcp35.Server;
@@ -42,7 +43,11 @@ namespace FilesMcpServer
 
         public static void Register(McpServer server, FilesConfig config)
         {
-            PathSandbox sandbox = new PathSandbox(config.WorkDir, "workspace root");
+            // The path sandbox is built PER CALL (WithCwd), rooted at the conversation's current
+            // directory (host `cd`, carried out-of-band in params._meta and re-validated against
+            // GXPT_WORKDIR) — not at the launch-time workspace root. So when the model has scoped into a
+            // subdirectory, every read/write/list/search is hard-confined to it (D2 enforcement). Absent a
+            // current dir the sandbox falls back to the workspace root, exactly as before.
 
             server.AddTool("read", "Read the UTF-8 text contents of a file under the workspace root. "
                 + "Optionally read a line range (1-based, inclusive) and/or prefix each line with its number. "
@@ -61,7 +66,7 @@ namespace FilesMcpServer
                         + "offset alone to read a raw byte window of a single over-cap line")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
-                delegate(ToolCallContext ctx) { return Read(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Read(sb, ctx); }); });
 
             server.AddTool("list", "List entries of a directory under the workspace root.",
                 SchemaBuilder.Object()
@@ -69,7 +74,7 @@ namespace FilesMcpServer
                     .Bool("recursive", false, "Recurse into subdirectories (bounded depth)")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
-                delegate(ToolCallContext ctx) { return List(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return List(sb, ctx); }); });
 
             server.AddTool("write", "Create or overwrite a text file under the workspace root.",
                 SchemaBuilder.Object()
@@ -78,12 +83,12 @@ namespace FilesMcpServer
                     .Bool("create_dirs", false, "Create missing parent directories")
                     .Build(),
                 ToolAnnotations.Write(),
-                delegate(ToolCallContext ctx) { return Write(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Write(sb, ctx); }); });
 
             server.AddTool("delete", "Delete a file or an empty directory under the workspace root.",
                 SchemaBuilder.Object().Str("path", true, "Path relative to the workspace root").Build(),
                 ToolAnnotations.Destructive(),
-                delegate(ToolCallContext ctx) { return Delete(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Delete(sb, ctx); }); });
 
             server.AddTool("edit", "Replace an exact text span in a file under the workspace root. "
                 + "Prefer this over write for large files: it is targeted and never rewrites the whole file. "
@@ -95,7 +100,7 @@ namespace FilesMcpServer
                     .Bool("replace_all", false, "Replace every occurrence instead of requiring a unique match")
                     .Build(),
                 ToolAnnotations.Write(),
-                delegate(ToolCallContext ctx) { return Edit(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Edit(sb, ctx); }); });
 
             server.AddTool("search", "Search file contents for a string or regex under the workspace root, "
                 + "returning matching {path, line, text}. Recursive, skips binary files. Line-oriented by "
@@ -114,7 +119,7 @@ namespace FilesMcpServer
                         + "multiline reads the whole file into memory and skips files over 1 MiB.")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
-                delegate(ToolCallContext ctx) { return Search(sandbox, ctx); });
+                delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Search(sb, ctx); }); });
         }
 
         // ---- read ----
@@ -938,6 +943,19 @@ namespace FilesMcpServer
         }
 
         // ---- helpers ----
+
+        // Resolve this call's effective path sandbox (rooted at the host current dir, re-validated
+        // against GXPT_WORKDIR) and invoke the handler with it. A current dir outside the anchor, or one
+        // that no longer exists, is rejected as an isError result rather than silently widening the root.
+        private static CallToolResult WithCwd(FilesConfig config, ToolCallContext ctx, Func<PathSandbox, CallToolResult> op)
+        {
+            string root;
+            PathSandbox sandbox;
+            string err;
+            if (!CwdScope.TryResolve(ctx, config.WorkDir, "workspace root", out root, out sandbox, out err))
+                return ToolResults.Error(err);
+            return op(sandbox);
+        }
 
         private static CallToolResult ResolvePath(PathSandbox sandbox, ToolCallContext ctx, out string full)
         {

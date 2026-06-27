@@ -29,6 +29,7 @@ namespace GxPT
         private readonly IApprovalStore _store;
         private readonly IToolAnnotationSource _annotations;
         private string _workdirKey; // canonical working dir for this turn (null = no workspace)
+        private string _currentDir; // raw absolute current dir for this CALL (host `cd`); null = anchor/unset
 
         // The working directory of the turn this policy serves, set per-turn by the host (mirrors
         // McpChatOrchestrator.WorkingDir). Stored canonicalized so a "all edits in this workspace"
@@ -37,6 +38,19 @@ namespace GxPT
         public string WorkingDir
         {
             set { _workdirKey = CanonicalWorkdir(value); }
+        }
+
+        // The directory a path argument resolves against for the current call: the conversation's current
+        // directory (host `cd`) when scoped into a subdir, else the workspace anchor. Set by the host
+        // (McpChatOrchestrator) before each Check. Used to key remembered PATH rules on the canonicalized
+        // ABSOLUTE location instead of the relative argument, whose meaning would otherwise shift as the
+        // model moves (design A1). Null/empty falls back to the old relative-path behavior (no workspace,
+        // or a unit test that doesn't set it). Stored raw (not lowercased) for filesystem resolution; the
+        // canonicalization that follows mirrors PathSandbox.Resolve so a stored rule and the server's
+        // independent re-check agree on whether a path matches.
+        public string CurrentDir
+        {
+            set { _currentDir = string.IsNullOrEmpty(value) ? null : value; }
         }
 
         public ToolApprovalPolicy(IToolClassifier classifier, IToolApprovalPrompt prompt, IApprovalStore store)
@@ -130,31 +144,63 @@ namespace GxPT
             string val = ArgValue(args, pol.ScopeArgPath);
             if (val == null) return false;
 
+            bool isPath = pol.ScopeArgPath == "path";
+            // Path rules key on the canonicalized ABSOLUTE location (resolved against the call's current
+            // dir), so a remembered "this folder and below" rule means a fixed place on disk no matter
+            // where the model has `cd`-ed (design A1).
+            string pathKey = isPath ? ResolvePathArg(val) : null;
+
             IList<ApprovalRule> rules = _store.RulesFor(functionName);
             for (int i = 0; i < rules.Count; i++)
             {
                 ApprovalRule r = rules[i];
                 if (r == null || r.ArgPath != pol.ScopeArgPath) continue;
-                if (r.Kind == RuleKind.ExactArgs)
+                if (isPath)
+                {
+                    if (r.Kind == RuleKind.ExactArgs)
+                    {
+                        if (string.Equals(NormalizePath(pathKey), NormalizePath(r.Pattern),
+                                StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+                    else // Prefix: directory-and-below, boundary-aware, on the absolute path
+                    {
+                        if (PrefixMatches(pathKey, r.Pattern, true)) return true;
+                    }
+                }
+                else if (r.Kind == RuleKind.ExactArgs)
                 {
                     if (string.Equals(val, r.Pattern, StringComparison.Ordinal)) return true;
                 }
-                else // Prefix
+                else
                 {
-                    if (pol.ScopeArgPath == "path")
-                    {
-                        if (PrefixMatches(val, r.Pattern, true)) return true;
-                    }
-                    else
-                    {
-                        // Command "pattern" rule: match by normalized signature (command + its
-                        // subcommand/file/first-flag, flags otherwise ignored), computed identically
-                        // for the stored rule and the candidate. NOT a prefix — see CommandSignature.
-                        if (string.Equals(CommandSignature(val), r.Pattern, StringComparison.Ordinal)) return true;
-                    }
+                    // Command "pattern" rule: match by normalized signature (command + its
+                    // subcommand/file/first-flag, flags otherwise ignored), computed identically
+                    // for the stored rule and the candidate. NOT a prefix — see CommandSignature.
+                    if (string.Equals(CommandSignature(val), r.Pattern, StringComparison.Ordinal)) return true;
                 }
             }
             return false;
+        }
+
+        // Resolve a path argument to a canonical, '/'-normalized ABSOLUTE path against the call's current
+        // directory, using the SAME canonicalization PathSandbox.Resolve uses (Path.GetFullPath over a
+        // Combine), so the gate's stored/matched key agrees with the server's independent sandbox check.
+        // When no current dir is set (no workspace, or a unit test), falls back to the relative-path
+        // normalization used before — preserving prior behavior.
+        private string ResolvePathArg(string rel)
+        {
+            if (rel == null) return null;
+            if (string.IsNullOrEmpty(_currentDir)) return NormalizePath(rel);
+            try
+            {
+                string combined = System.IO.Path.IsPathRooted(rel)
+                    ? rel : System.IO.Path.Combine(_currentDir, rel);
+                return NormalizePath(System.IO.Path.GetFullPath(combined));
+            }
+            catch
+            {
+                return NormalizePath(rel);
+            }
         }
 
         // ---- skill-script rule matching (run_skill_script's two remember dimensions) ----
@@ -256,7 +302,7 @@ namespace GxPT
                     break;
                 case ApprovalChoice.RememberExactArg:
                     _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.ExactArgs,
-                        req.Policy.ScopeArgPath, ArgValue(req.Arguments, req.Policy.ScopeArgPath)));
+                        req.Policy.ScopeArgPath, ExactPattern(req)));
                     break;
                 case ApprovalChoice.RememberPrefixArg:
                     _store.AddRule(new ApprovalRule(req.FunctionName, RuleKind.Prefix,
@@ -292,22 +338,31 @@ namespace GxPT
         // The structured pattern remembered for a RememberPrefixArg choice, derived from the actual
         // argument (no free-form entry — spec §3/§4): a "directory and below" prefix for a path rule,
         // or the normalized command signature (see CommandSignature) for a command rule.
-        private static string PrefixPattern(ApprovalRequest req)
+        private string PrefixPattern(ApprovalRequest req)
         {
             string val = ArgValue(req.Arguments, req.Policy.ScopeArgPath);
             if (val == null) return string.Empty;
             if (req.Policy.ScopeArgPath == "path")
             {
                 // "directory and below": the rule is the file's PARENT directory, so other files in
-                // the same folder match. Compute it with normalized '/' separators (NOT
-                // Path.GetDirectoryName, which yields '\' on Windows and wouldn't match the model's
-                // forward-slash paths). A root-level file yields "" — the workspace root.
-                string norm = NormalizePath(val);
+                // the same folder match. Computed on the canonicalized ABSOLUTE path (resolved against
+                // the call's current dir, A1) so the rule pins a fixed location, not a relative string.
+                // A file directly at the resolution root yields that root as the prefix.
+                string norm = NormalizePath(ResolvePathArg(val));
                 int slash = norm.LastIndexOf('/');
                 return slash < 0 ? string.Empty : norm.Substring(0, slash);
             }
             // command: the normalized signature (see CommandSignature).
             return CommandSignature(val);
+        }
+
+        // The pattern stored for a RememberExactArg choice: the canonicalized ABSOLUTE path for a
+        // path-scoped tool (A1), or the raw argument value otherwise (command/skill scopes).
+        private string ExactPattern(ApprovalRequest req)
+        {
+            string val = ArgValue(req.Arguments, req.Policy.ScopeArgPath);
+            if (req.Policy.ScopeArgPath == "path") return ResolvePathArg(val);
+            return val;
         }
 
         // The "command pattern" signature: the invariant identity of a command, ignoring incidental

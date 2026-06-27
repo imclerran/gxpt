@@ -426,6 +426,12 @@
       <Project>{A043F034-FFF5-44CE-9605-B40FF0016262}</Project>
       <Name>Mcp35.Client</Name>
     </ProjectReference>
+    <!-- GxPT-specific MCP conventions (the host current-directory _meta key it injects). Direct
+         reference for the same reason as above: VS2008 doesn't flow project references transitively. -->
+    <ProjectReference Include="..\src\Gxpt.Mcp.Conventions\Gxpt.Mcp.Conventions.csproj">
+      <Project>{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}</Project>
+      <Name>Gxpt.Mcp.Conventions</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- Deploy the first-party MCP server exes next to GxPT.exe in a flat 'mcp-servers' folder, so the

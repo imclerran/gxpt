@@ -428,7 +428,7 @@ namespace ExtensionsMcpServer
             catch (SkillScriptException ex) { return ToolResults.Error(ex.Message); }
 
             ProcessResult result;
-            try { result = scripts.RunResolved(target, args, timeout); }
+            try { result = scripts.RunResolved(target, args, timeout, ctx); }
             catch (SkillScriptException ex) { return ToolResults.Error(ex.Message); } // bad argument token
             catch (Exception ex) { return ToolResults.Error("failed to run script: " + ex.Message); }
 
