@@ -43,14 +43,17 @@ fits the graph:
 |---|---|---|
 | ` ```dot ` (also `graphviz`, `gv`) | `dot` | Directed hierarchies / flowcharts. Can get very tall. |
 | ` ```neato ` | `neato` | Spring-model undirected graphs; compact, roughly square. |
-| ` ```fdp ` | `fdp` | Force-directed, handles clusters. |
-| ` ```sfdp ` | `sfdp` | Scalable force-directed for large graphs. |
+| ` ```fdp ` | `fdp` | Force-directed; handles `subgraph cluster_*` groupings. |
 | ` ```twopi ` | `twopi` | Radial layout around a root node. |
 | ` ```circo ` | `circo` | Circular layout. |
-| ` ```osage ` / ` ```patchwork ` | `osage` / `patchwork` | Clustered / treemap layouts. |
 
-All non-`dot` engines come from `gvplugin_neato_layout.dll`; if that plugin (and `msvcp90.dll`)
+The non-`dot` engines come from `gvplugin_neato_layout.dll`; if that plugin (and `msvcp90.dll`)
 isn't present, those fences fall back to a normal highlighted code block.
+
+`gvplugin_neato_layout.dll` also provides `sfdp` (large-graph force-directed) and
+`osage`/`patchwork` (treemap) — `config6` loads them — but GxPT does not expose those fences,
+since they rarely suit programming diagrams. To enable one, add its name to `TryGetGraphEngine`
+in `Controls/ChatTranscriptControl.cs`.
 
 PNG output goes through the **GDI+** plugin, which uses the Windows-provided `gdiplus.dll`,
 so none of cairo/pango/freetype/fontconfig/libpng/jpeg/iconv are required.

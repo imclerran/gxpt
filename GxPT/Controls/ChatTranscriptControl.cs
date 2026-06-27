@@ -149,10 +149,12 @@ namespace GxPT
         // geometry is needed by the measure, draw, and hit-test passes, so it is computed once here.
 
         // Map a code-fence language to the Graphviz layout engine it requests, e.g. ```neato renders
-        // with the neato engine. dot/graphviz/gv all mean the default hierarchical "dot" engine; the
-        // remaining names are the engines provided by the neato_layout plugin (force-directed, radial,
-        // circular, treemap), which give more compact / square graphs than dot's tall hierarchies.
-        // Returns false for any other language (rendered as ordinary highlighted code).
+        // with the neato engine. dot/graphviz/gv all mean the default hierarchical "dot" engine; neato
+        // and fdp are compact force-directed layouts, twopi is radial, circo is circular - the layouts
+        // that actually suit code diagrams. The neato_layout plugin also provides sfdp (large-graph) and
+        // osage/patchwork (treemap), but those are deliberately not exposed here: they're rarely useful
+        // for programming diagrams, so we don't tempt the model into them. Returns false for any other
+        // language (rendered as ordinary highlighted code).
         private static bool TryGetGraphEngine(string lang, out string engine)
         {
             engine = null;
@@ -166,11 +168,8 @@ namespace GxPT
                     engine = "dot"; return true;
                 case "neato":
                 case "fdp":
-                case "sfdp":
                 case "twopi":
                 case "circo":
-                case "osage":
-                case "patchwork":
                     engine = l; return true;
                 default:
                     return false;
