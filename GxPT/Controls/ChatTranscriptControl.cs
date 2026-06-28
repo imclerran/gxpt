@@ -3301,6 +3301,12 @@ namespace GxPT
                     Invalidate();
                     return;
                 }
+                // Graph image click → open the pan/zoom viewer (but not when finishing a text drag-select)
+                if (ui.Hit && ui.Which == CodeUiHit.GraphImage && ui.Item != null && !_hasSelection)
+                {
+                    OpenGraphInViewer((CodeBlock)ui.Block);
+                    return;
+                }
                 // Clear any pressed copy state on mouse up
                 if (_copyPressedItem != null)
                 { _copyPressedItem = null; _copyPressedCodeIndex = -1; Invalidate(); }
@@ -3534,7 +3540,7 @@ namespace GxPT
             // Hover check for copy button and set cursor
             var ui = HitTestCodeUI(e.Location);
             bool overInteractive = false;
-            if (ui.Hit && (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack))
+            if (ui.Hit && (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack || ui.Which == CodeUiHit.GraphImage))
             {
                 overInteractive = true;
                 if (ui.Which == CodeUiHit.CopyButton)
@@ -3581,7 +3587,7 @@ namespace GxPT
             {
                 // Use standard cursor for scroll bars; hand for copy
                 if (ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack) Cursor = Cursors.Default;
-                else if (ui.Which == CodeUiHit.CopyButton) Cursor = Cursors.Hand;
+                else if (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.GraphImage) Cursor = Cursors.Hand;
                 else Cursor = Cursors.Default;
             }
             else
@@ -3643,6 +3649,33 @@ namespace GxPT
                     dlg.StartPosition = FormStartPosition.CenterParent;
                     dlg.LoadAttachment(af, dark);
                     dlg.ShowDialog(FindForm());
+                }
+            }
+            catch { }
+        }
+
+        // Open a rendered dot block in the standalone pan/zoom viewer. Hands the viewer a copy of the
+        // cached bitmap (so disposing the viewer can't free the transcript's image) plus the engine and
+        // DOT source, which the viewer uses for Copy and for a crisp high-DPI re-render.
+        private void OpenGraphInViewer(CodeBlock cb)
+        {
+            try
+            {
+                if (cb == null) return;
+                string engine;
+                if (!TryGetGraphEngine(cb.Language, out engine)) return;
+                GraphvizRenderer.GraphResult res;
+                if (!GraphvizRenderer.TryGetResult(engine, cb.Text, out res)) return;
+                if (res.Failed || res.Image == null) return;
+
+                Bitmap copy;
+                try { copy = new Bitmap(res.Image); }
+                catch { return; }
+
+                using (var viewer = new GraphImageViewerForm(copy, engine, cb.Text))
+                {
+                    viewer.StartPosition = FormStartPosition.CenterParent;
+                    viewer.ShowDialog(FindForm());
                 }
             }
             catch { }
@@ -3872,7 +3905,7 @@ namespace GxPT
         }
 
         // --------- Helpers for code block UI hit testing ---------
-        private enum CodeUiHit { None, CopyButton, ScrollThumb, ScrollTrack, Text }
+        private enum CodeUiHit { None, CopyButton, ScrollThumb, ScrollTrack, Text, GraphImage }
         private struct CodeUiInfo
         {
             public bool Hit;
@@ -3975,6 +4008,15 @@ namespace GxPT
                                     if (gCopyRect.Contains(virt))
                                     {
                                         info.Hit = true; info.Which = CodeUiHit.CopyButton; info.Item = it; info.Block = blk; info.CodeIndex = codeIdx; return info;
+                                    }
+                                    // The image body (below the header) opens the pan/zoom viewer - only once rendered.
+                                    if (gl.Ready && gl.Image != null)
+                                    {
+                                        Rectangle gBody = new Rectangle(gbox.X, gbox.Top + gl.HeaderH, gbox.Width, gbox.Height - gl.HeaderH);
+                                        if (gBody.Contains(virt))
+                                        {
+                                            info.Hit = true; info.Which = CodeUiHit.GraphImage; info.Item = it; info.Block = blk; info.CodeIndex = codeIdx; return info;
+                                        }
                                     }
                                     y += gbox.Height + 4;
                                     codeIdx++;

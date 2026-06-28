@@ -298,6 +298,7 @@
     </Compile>
     <Compile Include="Services\SessionState.cs" />
     <Compile Include="Services\GraphvizRenderer.cs" />
+    <Compile Include="Forms\GraphImageViewerForm.cs" />
     <Compile Include="Services\SyntaxHighlightingRenderer.cs" />
     <Compile Include="Services\TranscriptWidthSettings.cs" />
     <Compile Include="Managers\TabManager.cs" />

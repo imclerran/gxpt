@@ -137,7 +137,7 @@ namespace GxPT
                 }
 
                 GraphResult result;
-                try { result = RenderDot(wi.Engine, wi.Dot); }
+                try { result = RenderDot(wi.Engine, wi.Dot, 0); }
                 catch { result = new GraphResult(); result.Failed = true; }
 
                 lock (_lock)
@@ -197,9 +197,18 @@ namespace GxPT
             return sb.ToString();
         }
 
+        // Render synchronously on the calling thread (no cache). Used by the graph viewer to produce a
+        // crisp high-DPI copy for zooming. Returns a result with Image set, or Failed on any error.
+        public static GraphResult RenderNow(string engine, string dot, int dpi)
+        {
+            try { return RenderDot(engine, dot, dpi); }
+            catch { var r = new GraphResult(); r.Failed = true; return r; }
+        }
+
         // No temp files. stdin is written on a helper thread so a large PNG filling the stdout pipe
-        // can't deadlock against us still writing stdin.
-        private static GraphResult RenderDot(string engine, string dot)
+        // can't deadlock against us still writing stdin. dpi > 0 raises the raster resolution
+        // (-Gdpi=<n>); 0 leaves Graphviz's default (96).
+        private static GraphResult RenderDot(string engine, string dot, int dpi)
         {
             var result = new GraphResult();
 
@@ -207,9 +216,14 @@ namespace GxPT
             if (string.IsNullOrEmpty(dotPath)) { result.Failed = true; return result; }
 
             // Select the layout engine with -K (dot.exe drives every engine; no separate exe needed).
-            // The engine is sanitized to a bare identifier so it can't inject extra arguments.
+            // The engine is sanitized to a bare identifier so it can't inject extra arguments. dpi is an
+            // int from our own code, so it's safe to format directly.
             string safeEngine = SanitizeEngine(engine);
-            string args = (safeEngine.Length > 0 ? "-K" + safeEngine + " " : string.Empty) + "-Tpng";
+            var argsb = new StringBuilder();
+            if (safeEngine.Length > 0) argsb.Append("-K").Append(safeEngine).Append(' ');
+            if (dpi > 0) argsb.Append("-Gdpi=").Append(dpi.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(' ');
+            argsb.Append("-Tpng");
+            string args = argsb.ToString();
 
             var psi = new ProcessStartInfo
             {
