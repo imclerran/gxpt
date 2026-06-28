@@ -83,10 +83,30 @@
             globally with <code>/toggle-agents</code>, and delegate explicitly with
             <code>/dispatch-agent</code>.</dd>
 
+          <dt>What are plugins?</dt>
+          <dd>A plugin is a single <code>.gxpl</code> file that bundles interdependent skills and
+            agents so you can share and manage them as one unit. Install, upgrade, enable/disable,
+            or uninstall a plugin by name from the Manage Plugins dialog (File &gt; Plugins) or the
+            <code>/plugin</code> command &mdash; or just double-click a <code>.gxpl</code> file to
+            install it. Installed members work exactly like skills and agents you authored yourself.</dd>
+
+          <dt>Can GxPT render diagrams?</dt>
+          <dd>Yes. Fenced graph code blocks (<code>dot</code>, <code>neato</code>, <code>fdp</code>,
+            and other Graphviz engines) render inline as images using a small, portable bundled
+            Graphviz, and clicking a graph opens it in a pan/zoom viewer so dense diagrams stay
+            readable.</dd>
+
+          <dt>Can the agent ask me questions?</dt>
+          <dd>Yes &mdash; when the model needs a decision, it can ask a multiple-choice or
+            multi-select question right in the transcript. Pick an option, check several, or type
+            your own answer, and the agent waits for your reply before continuing.</dd>
+
           <dt>Is it safe to let the agent run tools?</dt>
           <dd>Every tool call is gated by an in-app approval prompt, and file, git, and
-            command tools stay confined to the workspace you choose. You can also cancel
-            an in-flight request at any time with the stop button.</dd>
+            command tools stay confined to the workspace you choose. Command approvals also
+            include an Explain button that opens a fresh chat tab asking the model to break
+            down exactly what a pending command does. You can cancel an in-flight request at
+            any time with the stop button.</dd>
 
           <dt>How much does it cost?</dt>
           <dd>GxPT itself is free and open source. You pay only for the AI usage billed
