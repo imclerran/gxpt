@@ -59,9 +59,9 @@
             you choose which model to use per conversation.</dd>
 
           <dt>Can I attach images and files?</dt>
-          <dd>Yes &mdash; attach text files, images, and PDFs to any message. Images go to
-            vision-capable models and PDFs use fast local text extraction (with
-            full-document escalation where supported).</dd>
+          <dd>Yes &mdash; attach text files, images, PDFs, and docx files to any message. Images
+            go to vision-capable models and PDFs use fast local text extraction (with full-document
+            escalation and OCR on supported models).</dd>
 
           <dt>Is my data private?</dt>
           <dd>Conversations are stored locally on your machine. You can enforce Zero Data
@@ -75,8 +75,8 @@
           <dt>What are sub-agents?</dt>
           <dd>Sub-agents are specialist helpers you can delegate self-contained tasks to.
             Each one runs its own loop in an isolated context and reports back only its
-            final answer, so the main conversation stays lean. Agents are simple markdown
-            files whose frontmatter sets a tool allowlist, capability tier, and turn budget;
+            final answer, so the main conversation stays lean. Agents have an allowed tool
+            list, capability tier, and turn budget;
             read-only agents can run in parallel, and every tool call still goes through the
             approval gate. GxPT ships bundled specialists &mdash; explore, plan, code-reviewer,
             verify, web-research, and general-purpose. Turn the feature on per conversation or
@@ -84,17 +84,17 @@
             <code>/dispatch-agent</code>.</dd>
 
           <dt>What are plugins?</dt>
-          <dd>A plugin is a single <code>.gxpl</code> file that bundles interdependent skills and
+          <dd>A plugin is a single <code>.gxpl</code> file that bundles a group of skills and
             agents so you can share and manage them as one unit. Install, upgrade, enable/disable,
             or uninstall a plugin by name from the Manage Plugins dialog (File &gt; Plugins) or the
             <code>/plugin</code> command &mdash; or just double-click a <code>.gxpl</code> file to
             install it. Installed members work exactly like skills and agents you authored yourself.</dd>
 
           <dt>Can GxPT render diagrams?</dt>
-          <dd>Yes. Fenced graph code blocks (<code>dot</code>, <code>neato</code>, <code>fdp</code>,
-            and other Graphviz engines) render inline as images using a small, portable bundled
-            Graphviz, and clicking a graph opens it in a pan/zoom viewer so dense diagrams stay
-            readable.</dd>
+          <dd>Yes. GxPT renders diagrams inline, including flowcharts, UML-style class diagrams,
+            dependency graphs, ER diagrams, state machines, workflow DAGs, and more. Large diagrams
+            can be opened in an interactive pan/zoom viewer for easier viewing. Just ask the model
+            for the diagram you need.</dd>
 
           <dt>Can the agent ask me questions?</dt>
           <dd>Yes &mdash; when the model needs a decision, it can ask a multiple-choice or
