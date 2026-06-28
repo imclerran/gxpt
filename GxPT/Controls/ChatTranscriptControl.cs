@@ -144,6 +144,246 @@ namespace GxPT
             return Math.Min(maxWidth, Math.Max(boxW, minHeaderW));
         }
 
+        // ---------- Graphviz "dot" blocks ----------
+        // A fenced ```dot block is rendered as an image (via the bundled Graphviz). The same box
+        // geometry is needed by the measure, draw, and hit-test passes, so it is computed once here.
+
+        // Map a code-fence language to the Graphviz layout engine it requests, e.g. ```neato renders
+        // with the neato engine. dot/graphviz/gv all mean the default hierarchical "dot" engine; neato
+        // and fdp are compact force-directed layouts, twopi is radial, circo is circular - the layouts
+        // that actually suit code diagrams. The neato_layout plugin also provides sfdp (large-graph) and
+        // osage/patchwork (treemap), but those are deliberately not exposed here: they're rarely useful
+        // for programming diagrams, so we don't tempt the model into them. Returns false for any other
+        // language (rendered as ordinary highlighted code).
+        private static bool TryGetGraphEngine(string lang, out string engine)
+        {
+            engine = null;
+            if (string.IsNullOrEmpty(lang)) return false;
+            string l = lang.Trim().ToLowerInvariant();
+            switch (l)
+            {
+                case "dot":
+                case "graphviz":
+                case "gv":
+                    engine = "dot"; return true;
+                case "neato":
+                case "fdp":
+                case "twopi":
+                case "circo":
+                    engine = l; return true;
+                default:
+                    return false;
+            }
+        }
+
+        // Languages whose code fences render as a Graphviz graph instead of highlighted source.
+        private static bool IsGraphLanguage(string lang)
+        {
+            string engine;
+            return TryGetGraphEngine(lang, out engine);
+        }
+
+        // Placeholder body height shown while a graph renders in the background.
+        private const int GraphPlaceholderHeight = 40;
+
+        // A streaming dot block arrives a few characters at a time; rendering each partial would spawn a
+        // dot.exe per token and flicker. Only treat a source as renderable once its braces balance and it
+        // ends with a closing brace. Until then the fence is shown as ordinary code. This is a heuristic
+        // (braces inside quoted labels aren't excluded), which is fine for a completeness gate.
+        private static bool IsRenderableGraphSource(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            int open = 0, close = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char ch = s[i];
+                if (ch == '{') open++;
+                else if (ch == '}') close++;
+            }
+            if (open == 0 || open != close) return false;
+            string t = s.TrimEnd();
+            return t.Length > 0 && t[t.Length - 1] == '}';
+        }
+
+        private struct GraphBlockLayout
+        {
+            public bool Failed;   // render failed / Graphviz unavailable -> caller falls back to a code block
+            public bool Ready;    // Image is available
+            public Bitmap Image;  // non-null when Ready
+            public int BoxW, BoxH;
+            public int HeaderH;
+            public int DrawW, DrawH; // image draw size (downscaled to fit width)
+        }
+
+        // Compute the on-screen geometry of a dot block. Enqueues a background render if needed and
+        // returns either the ready image size, a placeholder size, or Failed (so the caller renders
+        // the fence as ordinary code). maxWidth is the available bubble content width.
+        private GraphBlockLayout ComputeGraphLayout(Graphics g, CodeBlock c, int maxWidth)
+        {
+            var L = new GraphBlockLayout();
+            L.HeaderH = GetCodeHeaderHeight();
+            int minHeaderW = GetCodeMinHeaderWidth(g, c.Language);
+            int avail = Math.Max(0, maxWidth - 2 * CodeBlockPadding);
+
+            // Resolve the requested layout engine (dot, neato, ...); non-graph languages never reach here.
+            string engine;
+            if (!TryGetGraphEngine(c.Language, out engine))
+            {
+                L.Failed = true;
+                return L;
+            }
+
+            // Until the (possibly streaming) source looks complete, render it as ordinary code.
+            if (!IsRenderableGraphSource(c.Text))
+            {
+                L.Failed = true;
+                return L;
+            }
+
+            GraphvizRenderer.EnqueueRender(engine, c.Text);
+            GraphvizRenderer.GraphResult res;
+            bool have = GraphvizRenderer.TryGetResult(engine, c.Text, out res);
+
+            if (have && (res.Failed || res.Image == null))
+            {
+                L.Failed = true;
+                return L;
+            }
+
+            if (have && res.Image != null)
+            {
+                L.Ready = true;
+                L.Image = res.Image;
+                int iw = res.Image.Width;
+                int ih = res.Image.Height;
+                int dw = iw, dh = ih;
+                // Downscale to fit the available width, preserving aspect ratio; never upscale.
+                if (iw > avail && iw > 0 && avail > 0)
+                {
+                    dw = avail;
+                    dh = (int)Math.Round((double)ih * avail / iw);
+                    if (dh < 1) dh = 1;
+                }
+                L.DrawW = dw;
+                L.DrawH = dh;
+                L.BoxW = Math.Min(maxWidth, Math.Max(dw + 2 * CodeBlockPadding, minHeaderW));
+                L.BoxH = L.HeaderH + dh + 2 * CodeBlockPadding;
+                return L;
+            }
+
+            // Pending: stable placeholder box until the render completes (OnGraphReady re-measures).
+            L.DrawW = 0;
+            L.DrawH = GraphPlaceholderHeight;
+            int phBodyW = Math.Min(avail, 240);
+            L.BoxW = Math.Min(maxWidth, Math.Max(phBodyW + 2 * CodeBlockPadding, minHeaderW));
+            L.BoxH = L.HeaderH + GraphPlaceholderHeight + 2 * CodeBlockPadding;
+            return L;
+        }
+
+        // Draw a dot block as a framed image with a code-style header (language label + Copy button
+        // that copies the dot source). The header geometry intentionally matches the code-block path
+        // so the existing copy hit-testing/hover/press state works unchanged.
+        private void DrawGraphBlock(Graphics g, CodeBlock c, GraphBlockLayout L, int x0, int y, MessageItem owner, int codeIndex)
+        {
+            int headerH = L.HeaderH;
+            Rectangle box = new Rectangle(x0, y, L.BoxW, L.BoxH);
+
+            using (var sb = new SolidBrush(_clrCodeBack))
+            using (var pen = new Pen(_clrCodeBorder))
+            {
+                g.FillRectangle(sb, box);
+                g.DrawRectangle(pen, box);
+            }
+
+            int headerTop = box.Top;
+
+            // Copy button (top-right) - copies the dot source (c.Text), matching the code-block layout.
+            string copyText = "Copy";
+            SizeF copySizeF;
+            using (var fmt = StringFormat.GenericTypographic)
+            {
+                fmt.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
+                copySizeF = g.MeasureString(copyText, _baseFont, PointF.Empty, fmt);
+            }
+            int copyW = (int)Math.Ceiling(copySizeF.Width) + CodeCopyButtonPad * 2;
+            int copyH = headerH;
+            Rectangle copyRect = new Rectangle(box.Right - CodeCopyButtonPad - copyW, headerTop, copyW, copyH);
+
+            bool hoverCopy = (_hoverCopyItem == owner && _hoverCopyCodeIndex == codeIndex);
+            if (hoverCopy || (owner == _copyPressedItem && codeIndex == _copyPressedCodeIndex))
+            {
+                bool pressed = (owner == _copyPressedItem && codeIndex == _copyPressedCodeIndex);
+                using (var sb = new SolidBrush(pressed ? _clrCopyPressed : _clrCopyHover))
+                using (var pen = new Pen(_clrCodeBorder))
+                {
+                    g.FillRectangle(sb, copyRect);
+                    g.DrawRectangle(pen, copyRect);
+                }
+            }
+            using (var brush = new SolidBrush(_clrLink))
+            using (var fmt = StringFormat.GenericTypographic)
+            {
+                fmt.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
+                var textPt = new PointF(copyRect.X + CodeCopyButtonPad, copyRect.Y + (copyRect.Height - _baseFont.Height) / 2f);
+                g.DrawString(copyText, _baseFont, brush, textPt, fmt);
+            }
+
+            // Language label (top-left)
+            string langLabel = c.Language;
+            if (!string.IsNullOrEmpty(langLabel))
+            {
+                using (var brush = new SolidBrush(ForeColor))
+                using (var fmt = StringFormat.GenericTypographic)
+                {
+                    fmt.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
+                    var labelFont = _boldFont ?? _baseFont;
+                    var langPt = new PointF(box.Left + CodeCopyButtonPad, headerTop + (headerH - labelFont.Height) / 2f);
+                    g.DrawString(langLabel, labelFont, brush, langPt, fmt);
+                }
+            }
+
+            // Header separator line
+            using (var pen = new Pen(_clrCodeBorder))
+            {
+                int headerBottom = headerTop + headerH;
+                g.DrawLine(pen, box.Left + CodeBlockPadding, headerBottom, box.Right - CodeBlockPadding, headerBottom);
+            }
+
+            int bodyTop = headerTop + headerH + CodeBlockPadding;
+            if (L.Ready && L.Image != null)
+            {
+                int imgX = box.X + (box.Width - L.DrawW) / 2; // center horizontally
+                if (imgX < box.X + CodeBlockPadding) imgX = box.X + CodeBlockPadding;
+                Rectangle dest = new Rectangle(imgX, bodyTop, L.DrawW, L.DrawH);
+                var savedInterp = g.InterpolationMode;
+                var savedPixel = g.PixelOffsetMode;
+                try
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                    g.DrawImage(L.Image, dest);
+                }
+                catch { }
+                finally
+                {
+                    g.InterpolationMode = savedInterp;
+                    g.PixelOffsetMode = savedPixel;
+                }
+            }
+            else
+            {
+                string msg = "Rendering graph…";
+                using (var brush = new SolidBrush(ForeColor))
+                using (var fmt = StringFormat.GenericTypographic)
+                {
+                    fmt.FormatFlags |= StringFormatFlags.MeasureTrailingSpaces;
+                    float mx = box.X + CodeBlockPadding;
+                    float my = bodyTop + (GraphPlaceholderHeight - _baseFont.Height) / 2f;
+                    g.DrawString(msg, _baseFont, brush, new PointF(mx, my), fmt);
+                }
+            }
+        }
+
         // Colors (theme-aware); default to light
         private Color _clrAppBack = SystemColors.Window;
         private Color _clrAppText = SystemColors.WindowText;
@@ -456,6 +696,14 @@ namespace GxPT
                 SyntaxHighlightingRenderer.SegmentsReady += OnSegmentsReady;
             }
             catch { }
+
+            // Listen for async Graphviz render completions. Unlike highlight, a finished graph changes
+            // the block's measured size (placeholder -> natural image size), so we re-measure as well.
+            try
+            {
+                GraphvizRenderer.GraphReady += OnGraphReady;
+            }
+            catch { }
         }
 
         // When async highlight for any block completes, repaint to pick up colored segments progressively.
@@ -471,6 +719,26 @@ namespace GxPT
                     catch { }
                     return;
                 }
+                Invalidate();
+            }
+            catch { }
+        }
+
+        // When an async Graphviz render completes, the dot block's size is now known (it was a
+        // placeholder before), so invalidate cached layout, re-measure, and repaint.
+        private void OnGraphReady(string key)
+        {
+            if (!IsHandleCreated) return;
+            try
+            {
+                if (this.InvokeRequired)
+                {
+                    try { this.BeginInvoke((MethodInvoker)delegate { OnGraphReady(key); }); }
+                    catch { }
+                    return;
+                }
+                InvalidateAllLayout();
+                Reflow();
                 Invalidate();
             }
             catch { }
@@ -1290,6 +1558,14 @@ namespace GxPT
                 case BlockType.CodeBlock:
                     {
                         var c = (CodeBlock)blk;
+                        // A dot fence renders as a Graphviz image; measure the image/placeholder box.
+                        // A failed render falls through to the ordinary code measurement below.
+                        if (IsGraphLanguage(c.Language))
+                        {
+                            var gl = ComputeGraphLayout(g, c, maxWidth);
+                            if (!gl.Failed)
+                                return new Size(Math.Max(24, gl.BoxW), Math.Max(gl.HeaderH + 2 * CodeBlockPadding, gl.BoxH));
+                        }
                         // Measure colored segments without wrapping to know full content width.
                         // Reuses the caller's Graphics instead of allocating one per code block per reflow.
                         {
@@ -2122,6 +2398,24 @@ namespace GxPT
                 else if (blk.Type == BlockType.CodeBlock)
                 {
                     var c = (CodeBlock)blk;
+                    // A dot fence renders as a Graphviz image; a failed render falls back to code below.
+                    GraphBlockLayout graph = new GraphBlockLayout();
+                    bool asGraph = false;
+                    if (IsGraphLanguage(c.Language))
+                    {
+                        graph = ComputeGraphLayout(g, c, maxWidth);
+                        asGraph = !graph.Failed;
+                    }
+                    if (asGraph)
+                    {
+                        DrawGraphBlock(g, c, graph, x0, y, owner, codeIndex);
+                        y += graph.BoxH + 4;
+                        if (owner != null) { if (owner.DrawnSegments == null) owner.DrawnSegments = new List<DrawnSeg>(); owner.DrawnSegments.Add(new DrawnSeg { IsNewLine = true, IsHardBreak = true, Rect = new Rectangle(x0, y, 0, 0), Text = null, Font = _baseFont }); }
+                        codeIndex++;
+                        numberedCounters.Clear();
+                    }
+                    else
+                    {
                     // Colored segments and content size without wrapping
                     SyntaxHighlightingRenderer.EnqueueHighlight(c.Language, _isDarkTheme, c.Text, _monoFont);
                     var coloredSegments = SyntaxHighlightingRenderer.GetColoredSegments(c.Text, c.Language, _monoFont, _isDarkTheme);
@@ -2272,6 +2566,7 @@ namespace GxPT
                     codeIndex++;
                     // Reset numbering when leaving list context
                     numberedCounters.Clear();
+                    }
                 }
                 else if (blk.Type == BlockType.Table)
                 {
@@ -3006,6 +3301,12 @@ namespace GxPT
                     Invalidate();
                     return;
                 }
+                // Graph image click → open the pan/zoom viewer (but not when finishing a text drag-select)
+                if (ui.Hit && ui.Which == CodeUiHit.GraphImage && ui.Item != null && !_hasSelection)
+                {
+                    OpenGraphInViewer((CodeBlock)ui.Block);
+                    return;
+                }
                 // Clear any pressed copy state on mouse up
                 if (_copyPressedItem != null)
                 { _copyPressedItem = null; _copyPressedCodeIndex = -1; Invalidate(); }
@@ -3239,7 +3540,7 @@ namespace GxPT
             // Hover check for copy button and set cursor
             var ui = HitTestCodeUI(e.Location);
             bool overInteractive = false;
-            if (ui.Hit && (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack))
+            if (ui.Hit && (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack || ui.Which == CodeUiHit.GraphImage))
             {
                 overInteractive = true;
                 if (ui.Which == CodeUiHit.CopyButton)
@@ -3286,7 +3587,7 @@ namespace GxPT
             {
                 // Use standard cursor for scroll bars; hand for copy
                 if (ui.Which == CodeUiHit.ScrollThumb || ui.Which == CodeUiHit.ScrollTrack) Cursor = Cursors.Default;
-                else if (ui.Which == CodeUiHit.CopyButton) Cursor = Cursors.Hand;
+                else if (ui.Which == CodeUiHit.CopyButton || ui.Which == CodeUiHit.GraphImage) Cursor = Cursors.Hand;
                 else Cursor = Cursors.Default;
             }
             else
@@ -3348,6 +3649,33 @@ namespace GxPT
                     dlg.StartPosition = FormStartPosition.CenterParent;
                     dlg.LoadAttachment(af, dark);
                     dlg.ShowDialog(FindForm());
+                }
+            }
+            catch { }
+        }
+
+        // Open a rendered dot block in the standalone pan/zoom viewer. Hands the viewer a copy of the
+        // cached bitmap (so disposing the viewer can't free the transcript's image) plus the engine and
+        // DOT source, which the viewer uses for Copy and for a crisp high-DPI re-render.
+        private void OpenGraphInViewer(CodeBlock cb)
+        {
+            try
+            {
+                if (cb == null) return;
+                string engine;
+                if (!TryGetGraphEngine(cb.Language, out engine)) return;
+                GraphvizRenderer.GraphResult res;
+                if (!GraphvizRenderer.TryGetResult(engine, cb.Text, out res)) return;
+                if (res.Failed || res.Image == null) return;
+
+                Bitmap copy;
+                try { copy = new Bitmap(res.Image); }
+                catch { return; }
+
+                using (var viewer = new GraphImageViewerForm(copy, engine, cb.Text))
+                {
+                    viewer.StartPosition = FormStartPosition.CenterParent;
+                    viewer.ShowDialog(FindForm());
                 }
             }
             catch { }
@@ -3577,7 +3905,7 @@ namespace GxPT
         }
 
         // --------- Helpers for code block UI hit testing ---------
-        private enum CodeUiHit { None, CopyButton, ScrollThumb, ScrollTrack, Text }
+        private enum CodeUiHit { None, CopyButton, ScrollThumb, ScrollTrack, Text, GraphImage }
         private struct CodeUiInfo
         {
             public bool Hit;
@@ -3666,6 +3994,35 @@ namespace GxPT
                         else if (blk.Type == BlockType.CodeBlock)
                         {
                             var cb = (CodeBlock)blk;
+                            // Dot blocks: only the Copy button is interactive (no horizontal scroll).
+                            // Mirror the graph box geometry so the copy hit-rect matches DrawGraphBlock.
+                            if (IsGraphLanguage(cb.Language))
+                            {
+                                GraphBlockLayout gl = ComputeGraphLayout(g, cb, contentW);
+                                if (!gl.Failed)
+                                {
+                                    Rectangle gbox = new Rectangle(contentX, y, gl.BoxW, gl.BoxH);
+                                    SizeF gCopySizeF = g.MeasureString("Copy", _baseFont, PointF.Empty, StringFormat.GenericTypographic);
+                                    int gCopyW = (int)Math.Ceiling(gCopySizeF.Width) + CodeCopyButtonPad * 2;
+                                    Rectangle gCopyRect = new Rectangle(gbox.Right - CodeCopyButtonPad - gCopyW, gbox.Top, gCopyW, gl.HeaderH);
+                                    if (gCopyRect.Contains(virt))
+                                    {
+                                        info.Hit = true; info.Which = CodeUiHit.CopyButton; info.Item = it; info.Block = blk; info.CodeIndex = codeIdx; return info;
+                                    }
+                                    // The image body (below the header) opens the pan/zoom viewer - only once rendered.
+                                    if (gl.Ready && gl.Image != null)
+                                    {
+                                        Rectangle gBody = new Rectangle(gbox.X, gbox.Top + gl.HeaderH, gbox.Width, gbox.Height - gl.HeaderH);
+                                        if (gBody.Contains(virt))
+                                        {
+                                            info.Hit = true; info.Which = CodeUiHit.GraphImage; info.Item = it; info.Block = blk; info.CodeIndex = codeIdx; return info;
+                                        }
+                                    }
+                                    y += gbox.Height + 4;
+                                    codeIdx++;
+                                    continue;
+                                }
+                            }
                             var colored = SyntaxHighlightingRenderer.GetColoredSegments(cb.Text, cb.Language, _monoFont, _isDarkTheme);
                             Size content = SyntaxHighlightingRenderer.MeasureColoredSegmentsNoWrap(g, colored);
                             int viewportW = Math.Max(0, contentW - 2 * CodeBlockPadding);
