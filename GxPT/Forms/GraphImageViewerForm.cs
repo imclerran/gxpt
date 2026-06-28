@@ -101,6 +101,8 @@ namespace GxPT
             _zoomLabel.AutoSize = false;
             _zoomLabel.Width = 56;
             _zoomLabel.TextAlign = ContentAlignment.MiddleCenter;
+            // Blend into the toolbar chrome instead of painting the form's (dark) inherited BackColor.
+            _zoomLabel.BackColor = Color.Transparent;
 
             var copyBtn = new ToolStripButton("Copy DOT");
             copyBtn.Alignment = ToolStripItemAlignment.Right;
