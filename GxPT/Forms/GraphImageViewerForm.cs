@@ -119,6 +119,7 @@ namespace GxPT
             _toolStrip.Items.Add(new ToolStripSeparator());
             _toolStrip.Items.Add(fitBtn);
             _toolStrip.Items.Add(actualBtn);
+            _toolStrip.Items.Add(new ToolStripSeparator());
             _toolStrip.Items.Add(_zoomLabel);
             _toolStrip.Items.Add(saveBtn);
             _toolStrip.Items.Add(copyBtn);
@@ -137,6 +138,14 @@ namespace GxPT
             menu.Items.Add("Copy DOT source", null, delegate { CopySource(); });
             menu.Items.Add("Save image as…", null, delegate { SaveImage(); });
             ContextMenuStrip = menu;
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            // Match the app's title-bar icon (clones the owner/MainForm icon, falls back to the exe's).
+            try { PluginImportExportManager.ApplyOwnerIcon(this); }
+            catch { }
         }
 
         protected override void OnShown(EventArgs e)
