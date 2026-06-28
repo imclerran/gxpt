@@ -1,8 +1,13 @@
 // GraphImageViewerForm.cs
 // A lightweight pan/zoom viewer for a rendered Graphviz graph. Opened from the chat transcript when
 // the user clicks an inline graph (which is downscaled to fit the bubble and often unreadable for a
-// complex graph). Shows the image at full resolution with scroll-to-zoom and drag-to-pan, and - since
-// we still have the DOT source - re-renders a crisp high-DPI copy in the background for deep zooming.
+// complex graph). Shows the image at full resolution with discrete, staged zoom (Fit / 0.5 / 0.75 /
+// 1x / 1.5x / 2x / 3x / 4x) via toolbar buttons, scroll wheel, or keys, plus drag-to-pan. Since we
+// still have the DOT source, it re-renders a crisp high-DPI copy in the background for deep zooming.
+//
+// Zoom is tracked in LOGICAL units where 1.0 == the graph's natural (96dpi) size, independent of the
+// bitmap actually displayed. That way swapping in the 2x high-DPI bitmap doesn't change what "100%"
+// means - it only adds resolution.
 // Target: .NET 3.5, Windows XP compatible. Code-only (no designer/.resx).
 
 using System;
@@ -17,10 +22,11 @@ namespace GxPT
     public sealed class GraphImageViewerForm : Form
     {
         private Bitmap _image;          // owned by this form; swapped to a hi-res copy when ready
+        private float _imageScale = 1f; // bitmap pixels per logical unit (1 = 96dpi, 2 = 192dpi)
         private readonly string _dot;   // DOT source (for Copy + hi-res re-render)
         private readonly string _engine;
 
-        private float _zoom = 1f;       // on-screen pixels per image pixel
+        private float _zoom = 1f;       // LOGICAL zoom; 1.0 == natural graph size
         private float _offsetX, _offsetY; // image top-left in client coordinates
         private bool _fit = true;       // true while tracking fit-to-window on resize
 
@@ -30,9 +36,16 @@ namespace GxPT
 
         private bool _hiResStarted;
 
-        private const float MinZoom = 0.02f;
-        private const float MaxZoom = 16f;
-        private const int HiResDpi = 192; // ~2x Graphviz's default 96dpi, for crisp zooming
+        private ToolStrip _toolStrip;
+        private ToolStripLabel _zoomLabel;
+
+        // Discrete logical zoom stages stepped through by the buttons / wheel / +- keys.
+        private static readonly float[] Stages = { 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f };
+        private const float MinZoom = 0.05f;
+        private const float MaxZoom = 8f;
+        private const float Eps = 0.001f;
+
+        private const int HiResDpi = 192; // ~2x Graphviz's default, for crisp zooming past 1x
 
         public GraphImageViewerForm(Bitmap image, string engine, string dot)
         {
@@ -47,7 +60,6 @@ namespace GxPT
             BackColor = Color.FromArgb(0x55, 0x57, 0x66); // neutral slate so a white graph stands out
             StartPosition = FormStartPosition.CenterScreen;
 
-            // Default to a comfortable size, clamped to the working area.
             try
             {
                 Rectangle wa = Screen.PrimaryScreen.WorkingArea;
@@ -57,12 +69,66 @@ namespace GxPT
             }
             catch { ClientSize = new Size(800, 600); }
 
+            BuildToolbar();
             BuildContextMenu();
+        }
+
+        private int TopInset { get { return _toolStrip != null ? _toolStrip.Height : 0; } }
+
+        private void BuildToolbar()
+        {
+            _toolStrip = new ToolStrip();
+            _toolStrip.GripStyle = ToolStripGripStyle.Hidden;
+            _toolStrip.RenderMode = ToolStripRenderMode.System;
+
+            var outBtn = new ToolStripButton("Zoom Out");
+            outBtn.ToolTipText = "Zoom out (-)";
+            outBtn.Click += delegate { ZoomOut(ViewportCenterX(), ViewportCenterY()); };
+
+            var inBtn = new ToolStripButton("Zoom In");
+            inBtn.ToolTipText = "Zoom in (+)";
+            inBtn.Click += delegate { ZoomIn(ViewportCenterX(), ViewportCenterY()); };
+
+            var fitBtn = new ToolStripButton("Fit");
+            fitBtn.ToolTipText = "Fit to window (0)";
+            fitBtn.Click += delegate { DoFit(); };
+
+            var actualBtn = new ToolStripButton("100%");
+            actualBtn.ToolTipText = "Actual size (1)";
+            actualBtn.Click += delegate { DoActual(); };
+
+            _zoomLabel = new ToolStripLabel("Fit");
+            _zoomLabel.AutoSize = false;
+            _zoomLabel.Width = 56;
+            _zoomLabel.TextAlign = ContentAlignment.MiddleCenter;
+
+            var copyBtn = new ToolStripButton("Copy DOT");
+            copyBtn.Alignment = ToolStripItemAlignment.Right;
+            copyBtn.ToolTipText = "Copy the DOT source (Ctrl+C)";
+            copyBtn.Click += delegate { CopySource(); };
+
+            var saveBtn = new ToolStripButton("Save…");
+            saveBtn.Alignment = ToolStripItemAlignment.Right;
+            saveBtn.ToolTipText = "Save image as PNG (Ctrl+S)";
+            saveBtn.Click += delegate { SaveImage(); };
+
+            _toolStrip.Items.Add(outBtn);
+            _toolStrip.Items.Add(inBtn);
+            _toolStrip.Items.Add(new ToolStripSeparator());
+            _toolStrip.Items.Add(fitBtn);
+            _toolStrip.Items.Add(actualBtn);
+            _toolStrip.Items.Add(_zoomLabel);
+            _toolStrip.Items.Add(saveBtn);
+            _toolStrip.Items.Add(copyBtn);
+
+            Controls.Add(_toolStrip);
         }
 
         private void BuildContextMenu()
         {
             var menu = new ContextMenuStrip();
+            menu.Items.Add("Zoom in", null, delegate { ZoomIn(ViewportCenterX(), ViewportCenterY()); });
+            menu.Items.Add("Zoom out", null, delegate { ZoomOut(ViewportCenterX(), ViewportCenterY()); });
             menu.Items.Add("Fit to window", null, delegate { DoFit(); });
             menu.Items.Add("Actual size (100%)", null, delegate { DoActual(); });
             menu.Items.Add(new ToolStripSeparator());
@@ -84,21 +150,31 @@ namespace GxPT
             if (_fit) DoFit(); else Invalidate();
         }
 
-        // ---------- View math ----------
+        // ---------- View math (logical zoom + bitmap resolution scale) ----------
+        // On-screen pixels per bitmap pixel for the current logical zoom.
+        private float EffScale() { return _zoom / _imageScale; }
+
+        private float LogicalWidth() { return _image != null ? _image.Width / _imageScale : 0f; }
+        private float LogicalHeight() { return _image != null ? _image.Height / _imageScale : 0f; }
+
+        private int ViewportCenterX() { return ClientSize.Width / 2; }
+        private int ViewportCenterY() { return TopInset + (ClientSize.Height - TopInset) / 2; }
+
         private void DoFit()
         {
             if (_image == null) return;
-            int cw = ClientSize.Width, ch = ClientSize.Height;
+            int cw = ClientSize.Width, ch = ClientSize.Height - TopInset;
             if (cw <= 0 || ch <= 0) return;
-            float zx = (float)cw / _image.Width;
-            float zy = (float)ch / _image.Height;
-            float z = Math.Min(zx, zy);
-            if (z > 1f) z = 1f;            // never upscale in fit; small graphs show at 100%
+            float lw = LogicalWidth(), lh = LogicalHeight();
+            if (lw <= 0 || lh <= 0) return;
+            float z = Math.Min(cw / lw, ch / lh);
+            if (z > 1f) z = 1f;          // never upscale in fit; small graphs show at 100%
             if (z < MinZoom) z = MinZoom;
             _zoom = z;
-            _offsetX = (cw - _image.Width * z) / 2f;
-            _offsetY = (ch - _image.Height * z) / 2f;
+            _offsetX = (cw - lw * z) / 2f;
+            _offsetY = TopInset + (ch - lh * z) / 2f;
             _fit = true;
+            UpdateZoomLabel();
             Invalidate();
         }
 
@@ -106,36 +182,68 @@ namespace GxPT
         {
             if (_image == null) return;
             _zoom = 1f;
-            _offsetX = (ClientSize.Width - _image.Width) / 2f;
-            _offsetY = (ClientSize.Height - _image.Height) / 2f;
+            int ch = ClientSize.Height - TopInset;
+            float drawW = LogicalWidth();   // == _image.Width * EffScale() at zoom 1
+            float drawH = LogicalHeight();
+            _offsetX = (ClientSize.Width - drawW) / 2f;
+            _offsetY = TopInset + (ch - drawH) / 2f;
             _fit = false;
+            UpdateZoomLabel();
             Invalidate();
         }
 
-        private void ZoomBy(float factor, float cx, float cy)
+        // Set an absolute logical zoom, keeping the image point under (cx,cy) fixed on screen.
+        private void SetZoom(float target, float cx, float cy)
         {
             if (_image == null) return;
-            float old = _zoom;
-            float nz = old * factor;
-            if (nz < MinZoom) nz = MinZoom;
-            if (nz > MaxZoom) nz = MaxZoom;
-            if (nz == old) return;
-            // Keep the image point under (cx,cy) fixed.
-            float ix = (cx - _offsetX) / old;
-            float iy = (cy - _offsetY) / old;
-            _offsetX = cx - ix * nz;
-            _offsetY = cy - iy * nz;
-            _zoom = nz;
+            if (target < MinZoom) target = MinZoom;
+            if (target > MaxZoom) target = MaxZoom;
+            float oldEff = EffScale();
+            float ix = (cx - _offsetX) / oldEff;
+            float iy = (cy - _offsetY) / oldEff;
+            _zoom = target;
+            float newEff = EffScale();
+            _offsetX = cx - ix * newEff;
+            _offsetY = cy - iy * newEff;
             _fit = false;
+            UpdateZoomLabel();
             Invalidate();
+        }
+
+        private void ZoomIn(float cx, float cy)
+        {
+            float cur = _zoom;
+            for (int i = 0; i < Stages.Length; i++)
+            {
+                if (Stages[i] > cur + Eps) { SetZoom(Stages[i], cx, cy); return; }
+            }
+            // Already at/above the top stage: nudge toward the max if there's room.
+            if (cur < MaxZoom - Eps) SetZoom(Math.Min(MaxZoom, cur * 1.5f), cx, cy);
+        }
+
+        private void ZoomOut(float cx, float cy)
+        {
+            float cur = _zoom;
+            for (int i = Stages.Length - 1; i >= 0; i--)
+            {
+                if (Stages[i] < cur - Eps) { SetZoom(Stages[i], cx, cy); return; }
+            }
+            // Below the smallest stage: fall back to whole-graph Fit.
+            DoFit();
+        }
+
+        private void UpdateZoomLabel()
+        {
+            if (_zoomLabel == null) return;
+            _zoomLabel.Text = _fit ? "Fit" : (Math.Round(_zoom * 100f).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%");
         }
 
         // ---------- Input ----------
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
-            float factor = e.Delta > 0 ? 1.15f : (1f / 1.15f);
-            ZoomBy(factor, e.X, e.Y);
+            if (e.Delta > 0) ZoomIn(e.X, e.Y);
+            else if (e.Delta < 0) ZoomOut(e.X, e.Y);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -185,15 +293,15 @@ namespace GxPT
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            float cx = ClientSize.Width / 2f, cy = ClientSize.Height / 2f;
+            float cx = ViewportCenterX(), cy = ViewportCenterY();
             switch (e.KeyCode)
             {
                 case Keys.Add:
                 case Keys.Oemplus:
-                    ZoomBy(1.15f, cx, cy); e.Handled = true; break;
+                    ZoomIn(cx, cy); e.Handled = true; break;
                 case Keys.Subtract:
                 case Keys.OemMinus:
-                    ZoomBy(1f / 1.15f, cx, cy); e.Handled = true; break;
+                    ZoomOut(cx, cy); e.Handled = true; break;
                 case Keys.D0:
                 case Keys.NumPad0:
                     DoFit(); e.Handled = true; break;
@@ -216,17 +324,17 @@ namespace GxPT
             Graphics g = e.Graphics;
             if (_image != null)
             {
-                var rect = new RectangleF(_offsetX, _offsetY, _image.Width * _zoom, _image.Height * _zoom);
+                float eff = EffScale();
+                var rect = new RectangleF(_offsetX, _offsetY, _image.Width * eff, _image.Height * eff);
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.PixelOffsetMode = PixelOffsetMode.Half;
                 try { g.DrawImage(_image, rect); }
                 catch { }
             }
 
-            // Small hint, bottom-left.
             try
             {
-                string hint = "Scroll to zoom · drag to pan · double-click to fit · right-click for more";
+                string hint = "Scroll or +/- to zoom · drag to pan · double-click to fit";
                 using (var f = new Font(FontFamily.GenericSansSerif, 8f))
                 using (var sh = new SolidBrush(Color.FromArgb(140, 0, 0, 0)))
                 using (var fg = new SolidBrush(Color.FromArgb(230, 255, 255, 255)))
@@ -270,19 +378,20 @@ namespace GxPT
             t.Start();
         }
 
-        // Replace the displayed image with a higher-resolution copy, keeping the current view stable:
-        // offsets are in client coords (unchanged), and zoom is scaled by oldW/newW so the on-screen
-        // size stays identical - the image just gains resolution for zooming in.
+        // Replace the displayed image with a higher-resolution copy. The new bitmap renders the same
+        // graph at more pixels, so its resolution scale relative to the current one is just the width
+        // ratio. Tracking that in _imageScale keeps logical zoom (and "100%") meaning the same natural
+        // size, so the on-screen view is unchanged - the image just gains pixels for crisper zooming.
         private void SwapImage(Bitmap bmp)
         {
             if (bmp == null) return;
             if (IsDisposed) { try { bmp.Dispose(); } catch { } return; }
 
             Bitmap old = _image;
-            float k = (old != null && bmp.Width > 0) ? (float)old.Width / bmp.Width : 1f;
+            if (old != null && old.Width > 0)
+                _imageScale = _imageScale * ((float)bmp.Width / old.Width);
             _image = bmp;
-            if (_fit) DoFit();
-            else { _zoom *= k; Invalidate(); }
+            if (_fit) DoFit(); else Invalidate();
             if (old != null && !ReferenceEquals(old, bmp))
             {
                 try { old.Dispose(); }
