@@ -232,8 +232,11 @@ resolution (like `IsOpenSkill`), so it never hits a server.
 ### `dispatch_agent` — the meta-tool
 
 ```
-dispatch_agent(agents: [ { name: string, task: string }, … ])   // batch (A9)
+dispatch_agent(agents: [ { name: string, task: string, model?: string }, … ])   // batch (A9)
 ```
+The optional per-entry `model` overrides that agent's frontmatter model (and the
+default parent model) for this dispatch only — precedence is
+`model` arg → frontmatter `model` → parent turn's model.
 Definition shape mirrors `open_skill`/`reveal_tools` so the model treats it the
 same way. Description: *"Delegate one or more self-contained sub-tasks to specialist
 agents that work in isolation and report back. Pass each agent's slug (from the

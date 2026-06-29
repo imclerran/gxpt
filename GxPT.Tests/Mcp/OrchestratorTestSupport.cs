@@ -74,6 +74,7 @@ namespace GxPT.Tests.Mcp
         public readonly List<IList<ChatMessage>> SeenMessages = new List<IList<ChatMessage>>();
         public readonly List<IList<JObject>> SeenTools = new List<IList<JObject>>();
         public readonly List<ClientProperties> SeenProps = new List<ClientProperties>();
+        public readonly List<string> SeenModels = new List<string>();
 
         public void StreamChat(string model, IList<ChatMessage> messages, IList<JObject> tools,
                                ClientProperties props, Action<ChatCompletionChunk> onChunk, Action<string> onError,
@@ -83,6 +84,7 @@ namespace GxPT.Tests.Mcp
             SeenMessages.Add(messages);
             SeenTools.Add(tools);
             SeenProps.Add(props);
+            SeenModels.Add(model);
 
             // Test hook fired with this call's index, e.g. to simulate the user pressing Stop
             // mid-turn (cancel.Cancel()) after a particular streamed response.

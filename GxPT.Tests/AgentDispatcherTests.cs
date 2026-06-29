@@ -152,8 +152,90 @@ namespace GxPT.Tests
             Assert.Equal("function", (string)def["type"]);
             Assert.Equal("dispatch_agent", (string)def["function"]["name"]);
             Assert.NotNull(def["function"]["parameters"]["properties"]["agents"]);
+            // Each agent entry exposes an optional model override alongside name/task.
+            JToken entryProps = def["function"]["parameters"]["properties"]["agents"]["items"]["properties"];
+            Assert.NotNull(entryProps["name"]);
+            Assert.NotNull(entryProps["task"]);
+            Assert.NotNull(entryProps["model"]);
+            // model is not required: only name and task are.
+            JArray required = (JArray)def["function"]["parameters"]["properties"]["agents"]["items"]["required"];
+            Assert.Contains("name", required.Values<string>());
+            Assert.Contains("task", required.Values<string>());
+            Assert.DoesNotContain("model", required.Values<string>());
             Assert.True(d.IsDispatchAgent("dispatch_agent"));
             Assert.False(d.IsDispatchAgent("files__read"));
+        }
+
+        // ---- per-call model override ----
+
+        // Writes an agent whose frontmatter pins a model, so override precedence can be exercised.
+        private Agent WriteAgentWithModel(string slug, string model)
+        {
+            string file = Path.Combine(_dir, slug + ".md");
+            File.WriteAllText(file,
+                "---\nname: " + slug + "\ndescription: d\nmodel: " + model + "\n---\nbody\n",
+                new UTF8Encoding(false));
+            AgentCatalog cat = AgentCatalog.Build(_dir, null);
+            Agent a;
+            cat.TryGet(slug, out a);
+            return a;
+        }
+
+        [Fact]
+        public void ModelOverride_RunsChildWithOverride_NotFrontmatterOrParent()
+        {
+            Agent a = WriteAgentWithModel("explorer", "frontmatter-model");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            Dispatcher(streamer, a)
+                .Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\",\"model\":\"override-model\"}]}");
+
+            Assert.True(streamer.SeenModels.Count > 0);
+            Assert.Equal("override-model", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void NoModelOverride_FallsBackToFrontmatterModel()
+        {
+            Agent a = WriteAgentWithModel("explorer", "frontmatter-model");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            Dispatcher(streamer, a)
+                .Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.True(streamer.SeenModels.Count > 0);
+            Assert.Equal("frontmatter-model", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void NoModelAnywhere_FallsBackToParentModel()
+        {
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");   // no frontmatter model
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            Dispatcher(streamer, a)   // parent model is "parent-model"
+                .Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.True(streamer.SeenModels.Count > 0);
+            Assert.Equal("parent-model", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void ModelOverride_IsReportedToActivityUiModelList()
+        {
+            Agent a = WriteAgentWithModel("explorer", "frontmatter-model");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            var ui = new FakeActivityUi();
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.ActivityUi = ui;
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\",\"model\":\"override-model\"}]}");
+
+            Assert.Equal("override-model", ui.LastFanOutFirstModel);
         }
 
         [Fact]
