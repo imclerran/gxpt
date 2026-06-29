@@ -1289,19 +1289,22 @@ namespace GxPT
             this.grpAgents.SuspendLayout();
             try
             {
-                // Give the Sub-agents group room for the extra row (its tblMcp row is Absolute height).
+                // Give the Sub-agents group room for the stacked caption + combo row (its tblMcp row is
+                // Absolute height).
                 if (this.tblMcp != null && this.tblMcp.RowStyles.Count > 2
                     && this.tblMcp.RowStyles[2] is RowStyle)
                 {
                     ((RowStyle)this.tblMcp.RowStyles[2]).SizeType = SizeType.Absolute;
-                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 96F;
+                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 112F;
                 }
 
+                // Left row-label, vertically centered against the taller stacked row (Anchor=Left with no
+                // Top/Bottom centers it in the cell).
                 Label lbl = new Label();
-                lbl.Text = "Effort tier models";
+                lbl.Text = "Effort models";
                 lbl.AutoSize = true;
                 lbl.Anchor = AnchorStyles.Left;
-                lbl.Margin = new Padding(3, 6, 8, 0);
+                lbl.Margin = new Padding(3, 0, 8, 0);
                 _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
                     + "dispatch_agent) can ask for low/medium/high without naming a model.");
 
@@ -1329,7 +1332,7 @@ namespace GxPT
                 layout.RowCount = 2;
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
                 layout.Controls.Add(effortRow, 0, 1);
                 this.grpAgents.Controls.Add(layout);
@@ -1337,44 +1340,44 @@ namespace GxPT
             finally { this.grpAgents.ResumeLayout(); }
         }
 
-        // The three captioned effort-tier pickers in a 6-column grid (caption + stretchy combo for each of
-        // low/medium/high). Percent combo columns so all three always fit the width (no horizontal overflow).
+        // The three effort-tier pickers as a 3-column x 2-row grid: each tier's caption (Low/Medium/High)
+        // sits directly above its combo. Equal Percent columns so all three fit the width with no clipping;
+        // the caption centers over its combo.
         private TableLayoutPanel BuildEffortGrid()
         {
             TableLayoutPanel grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
-            grid.ColumnCount = 6;
-            grid.RowCount = 1;
-            grid.Margin = new Padding(0, 2, 0, 2);
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            grid.ColumnCount = 3;
+            grid.RowCount = 2;
+            grid.Margin = new Padding(0, 1, 0, 1);
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            grid.RowStyles.Add(new RowStyle());
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // captions
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // combos
 
             this.cmbEffortLow = MakeEffortCombo();
             this.cmbEffortMedium = MakeEffortCombo();
             this.cmbEffortHigh = MakeEffortCombo();
 
             grid.Controls.Add(MakeEffortCaption("Low"), 0, 0);
-            grid.Controls.Add(this.cmbEffortLow, 1, 0);
-            grid.Controls.Add(MakeEffortCaption("Medium"), 2, 0);
-            grid.Controls.Add(this.cmbEffortMedium, 3, 0);
-            grid.Controls.Add(MakeEffortCaption("High"), 4, 0);
-            grid.Controls.Add(this.cmbEffortHigh, 5, 0);
+            grid.Controls.Add(MakeEffortCaption("Medium"), 1, 0);
+            grid.Controls.Add(MakeEffortCaption("High"), 2, 0);
+            grid.Controls.Add(this.cmbEffortLow, 0, 1);
+            grid.Controls.Add(this.cmbEffortMedium, 1, 1);
+            grid.Controls.Add(this.cmbEffortHigh, 2, 1);
             return grid;
         }
 
+        // A tier caption that centers over its combo: Dock=Fill + centered text, with the same right margin
+        // the combo uses so the two line up.
         private static Label MakeEffortCaption(string text)
         {
             Label c = new Label();
             c.Text = text;
-            c.AutoSize = true;
-            c.Anchor = AnchorStyles.Left;
-            c.Margin = new Padding(6, 0, 3, 0);
-            c.TextAlign = ContentAlignment.MiddleLeft;
+            c.Dock = DockStyle.Fill;
+            c.TextAlign = ContentAlignment.MiddleCenter;
+            c.Margin = new Padding(0, 0, 6, 0);
             return c;
         }
 
