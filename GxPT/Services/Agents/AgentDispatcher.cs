@@ -119,9 +119,12 @@ namespace GxPT
             JObject taskP = new JObject(); taskP["type"] = "string";
             JObject modelP = new JObject();
             modelP["type"] = "string";
-            modelP["description"] = "Optional model id to run this agent with. Overrides the agent's "
-                + "frontmatter model (and the default parent model) for this dispatch only. Omit to use "
-                + "the agent's own model.";
+            modelP["description"] = "Optional, and almost always omit it. Each agent already declares the "
+                + "right model for its job, so leaving this unset (the default) is correct for nearly every "
+                + "dispatch - you do not need to pick a model. Only set it when there is a specific reason to "
+                + "override the agent's usual model (e.g. the user explicitly asked, or the task plainly needs "
+                + "a more or less capable model than the agent's default). When set, it overrides the agent's "
+                + "frontmatter model (and the default parent model) for this dispatch only.";
             JObject entryProps = new JObject();
             entryProps["name"] = nameP;
             entryProps["task"] = taskP;
