@@ -69,7 +69,6 @@ namespace GxPT
             HookEvents();
             InitializeDragAndDrop();
             InitializeClient();
-            BuildPluginsMenu();
 
             // Setup initial tab context for the designer-created tab
             SetupInitialConversationTab();
@@ -2259,25 +2258,8 @@ namespace GxPT
             SlashRefreshSkillsServer();
         }
 
-        // Adds a single "Plugins Manager..." item to the File menu (after Export) in code rather than the
-        // Designer, to avoid hand-editing generated menu plumbing. Install/uninstall/export/author all live
-        // in the dialog, so one entry suffices; /plugin still offers the same actions from the command bar.
-        private void BuildPluginsMenu()
-        {
-            try
-            {
-                if (miFile == null) return;
-
-                var manage = new ToolStripMenuItem("&Plugins Manager...");
-                manage.Click += new EventHandler(miPluginManage_Click);
-
-                int idx = miExport != null ? miFile.DropDownItems.IndexOf(miExport) : -1;
-                if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, manage);
-                else miFile.DropDownItems.Add(manage);
-            }
-            catch { }
-        }
-
+        // File > Plugins Manager... lives in the Designer; install/uninstall/export/author all live in the
+        // dialog, so one entry suffices; /plugin still offers the same actions from the command bar.
         private void miPluginManage_Click(object sender, EventArgs e) { SlashManagePlugins(); }
 
         // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
