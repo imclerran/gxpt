@@ -83,7 +83,7 @@ relationship kinds (solid for ownership, `dashed` with a label for a transport h
 
 ```dot
 digraph {
-  rankdir=BT;
+  rankdir=TB;
   node [shape=box, style=rounded, fontname="Arial", fontsize=10];
   edge [color="#333333"];
 
