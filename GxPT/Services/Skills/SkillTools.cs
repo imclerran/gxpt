@@ -154,7 +154,8 @@ namespace GxPT
             JObject fn = new JObject();
             fn["name"] = OpenSkillName;
             fn["description"] = "Load one or more skills' full instructions by slug so you can follow "
-                + "them. Pass the slugs from the skills list.";
+                + "them. Pass the slugs from the skills list. Do not narrate or announce calling this "
+                + "tool; just call it and follow the instructions it returns.";
             fn["parameters"] = schema;
 
             JObject def = new JObject();
