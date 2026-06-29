@@ -101,8 +101,37 @@ anywhere a table replaces a plain text label. They do **not** apply to plain-tex
 (`label="Customer"` on a `shape=box, style=rounded`); that case has neither problem, so only reach
 for `shape=none, margin=0` when you're actually using a `<table>` label.
 
+### Three routing constraints these nodes impose
+
+Because `shape=none, margin=0` tightens the logical boundary right up against the table, edge
+routing around these nodes gets fragile in three specific ways. They apply equally to UML class
+diagrams, ER diagrams, database schema diagrams, component/deployment diagrams, and any other
+diagram where a structured multi-row HTML table replaces a plain text label.
+
+- **Don't use `splines=ortho` with HTML-table nodes.** Ortho forces every edge into right-angle
+  segments and computes its corner points from the node bounding box. With the box pulled tight
+  against the table, the orthogonal router can't find valid attachment points at the border and
+  ends up routing *through* the node interior. Leave splines at the default - the default router
+  attaches to the border correctly.
+
+- **Omit compass port anchors (`:e`, `:w`, `:n`, `:s`) on HTML-table nodes.** With `shape=none`
+  the node's logical boundary is derived from the label's computed size and can be misaligned from
+  the rendered table edge, so `Node:e` / `Node:w` attach to that invisible boundary - arrows look
+  detached or start/end inside the box. Let Graphviz pick the nearest border point automatically.
+  The one exception is a named cell port (`<td port="pk">...</td>`), which targets a specific cell
+  *inside* the table and does attach reliably; reference it as `Node:pk`.
+
+- **Tune `labeldistance` and `labelangle` for `headlabel`/`taillabel`.** Their defaults place
+  multiplicity/role labels right at the arrowhead, where they overlap the node border - worse on
+  nodes made wide by long table content. A `labeldistance` around `2.0`-`2.5` plus a `labelangle`
+  that pushes the label off the edge line clears it. These are layout-specific adjustments, not
+  fixed defaults: the right values depend on node size and edge direction, so expect to tweak them
+  per diagram.
+
 A UML class diagram - colored header `<td>`, separate rows for attributes and operations,
-inheritance via an empty arrowhead, and an association with quoted multiplicity labels:
+inheritance via an empty arrowhead, and an association with quoted multiplicity labels pushed
+clear of the boxes via `labeldistance`/`labelangle` (and note: no `splines=ortho`, no port
+anchors):
 
 ```dot
 digraph {
@@ -133,6 +162,8 @@ digraph {
   Dog -> Animal;
 
   edge [arrowhead="none"];
-  Owner -> Dog [headlabel="1..*", taillabel="1", label="owns"];
+  Owner -> Dog [label="owns",
+                headlabel="1..*", taillabel="1",
+                labeldistance=2.2, labelangle=25];
 }
 ```
