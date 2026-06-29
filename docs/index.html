@@ -56,8 +56,8 @@
 
         <div class="section">
           <h2 class="bar">Screenshot</h2>
-          <img class="shot" src="assets/GxPT-subagents.PNG" alt="GxPT dispatching sub-agents on Windows XP" />
-          <p class="shot-cap">GxPT &mdash; Sub-agents on Windows XP &middot;
+          <img class="shot" src="assets/GxPT-diagrams.PNG" alt="GxPT rendering a Graphviz diagram inline on Windows XP" />
+          <p class="shot-cap">GxPT &mdash; Diagrams on Windows XP &middot;
             <a href="screenshots.html">See more screenshots &raquo;</a></p>
         </div>
 
@@ -65,14 +65,17 @@
           <h2 class="bar">Features</h2>
           <ul class="features">
             <li><b>Agentic Workflows</b> &mdash; autonomously chains tool calls until your task is done: agentic coding (file/git/shell), web search &amp; fetch, and GitHub access via MCP.</li>
-            <li><b>Skills</b> &mdash; teach GxPT reusable workflows that bundle instructions and optional scripts; author your own with the built-in skill-writer and enable them with <code>/list-skills</code>, <code>/toggle-skills</code>, <code>/toggle-skill</code>, and <code>/use-skill</code>.</li>
-            <li><b>Sub-Agents</b> &mdash; delegate self-contained tasks to specialist agents that work in an isolated context and report back only their final answer, keeping the main conversation lean. Read-only agents fan out in parallel, every call still hits the approval gate, and bundled specialists (explore, plan, code-reviewer, verify, web-research, general-purpose) ship ready to use. Toggle with <code>/toggle-agents</code> and delegate with <code>/dispatch-agent</code>.</li>
+            <li><b>Skills</b> &mdash; teach GxPT reusable workflows that bundle instructions and optional scripts; author your own with the built-in skill-writer.</li>
+            <li><b>Sub-Agents</b> &mdash; delegate self-contained tasks to specialist agents that work in an isolated context and report back only their final answer, keeping the main conversation lean.</li>
+            <li><b>Plugins</b> &mdash; bundle skills and agents into a single shareable <code>.gxpl</code> plugin you can install, upgrade, enable/disable, and uninstall by name.</li>
+            <li><b>Interactive Questions</b> &mdash; when the model needs a decision, it can ask a multiple-choice (or multi-select) question right in the transcript; pick an option, check several, or type your own answer.</li>
+            <li><b>Diagrams</b> &mdash; render diagrams inline just by asking the model: flowcharts, UML-style class diagrams, dependency graphs, ER diagrams, state machines, and more; open large ones in an interactive pan/zoom viewer.</li>
             <li><b>Persistent Memory</b> &mdash; records durable facts about each workspace and recalls them in later conversations, so context carries over.</li>
             <li><b>AGENTS.md Support</b> &mdash; project instructions in your workspace root's <code>AGENTS.md</code> are injected into the agent's system prompt automatically.</li>
             <li><b>Prompt Caching</b> &mdash; requests are zoned for provider prompt caches, with sticky routing that keeps follow-ups on the warm cache &mdash; up to ~90% off input costs on long agentic sessions.</li>
             <li><b>Usage Status Bar</b> &mdash; a live context meter plus running cost and cache-savings totals for every conversation.</li>
-            <li><b>Tool Approval &amp; Sandboxing</b> &mdash; every tool call is gated by an in-app approval prompt; file/git/command tools stay confined to the workspace you choose.</li>
-            <li><b>Slash Commands</b> &mdash; quick <code>/</code> actions with autocomplete: <code>/model</code>, <code>/toggle-tool</code>, <code>/new-conversation</code>, <code>/export</code>, and <code>/compact</code>.</li>
+            <li><b>Tool Approval &amp; Sandboxing</b> &mdash; every tool call is gated by an in-app approval prompt; command approvals add an Explain button that asks the model to break down what a pending command does. File/git/command tools stay confined to the workspace you choose.</li>
+            <li><b>Slash Commands</b> &mdash; quick <code>/</code> actions with autocomplete: <code>/model</code>, <code>/toggle-tool</code>, <code>/new-conversation</code>, <code>/export</code>, <code>/plugin</code>, and <code>/compact</code>.</li>
             <li><b>Markdown &amp; Syntax Highlighting</b> &mdash; rich Markdown rendering plus code highlighting for 50+ languages.</li>
             <li><b>File Attachments</b> &mdash; attach text files, images, and PDFs; images go to vision-capable models, and PDFs use fast local text extraction with full-document escalation where supported.</li>
             <li><b>Privacy &amp; Local Storage</b> &mdash; conversations stored locally; enforce Zero Data Retention (ZDR) per conversation.</li>
