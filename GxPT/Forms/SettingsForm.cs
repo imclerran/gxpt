@@ -1298,13 +1298,13 @@ namespace GxPT
                     ((RowStyle)this.tblMcp.RowStyles[2]).Height = 112F;
                 }
 
-                // Left row-label, vertically centered against the taller stacked row (Anchor=Left with no
-                // Top/Bottom centers it in the cell).
+                // Left row-label in a fixed-width column, filling the cell with vertically-centered text so it
+                // lines up midway between the captions and the combos. Kept short so the pickers get the width.
                 Label lbl = new Label();
-                lbl.Text = "Effort models";
-                lbl.AutoSize = true;
-                lbl.Anchor = AnchorStyles.Left;
-                lbl.Margin = new Padding(3, 0, 8, 0);
+                lbl.Text = "Models";
+                lbl.Dock = DockStyle.Fill;
+                lbl.TextAlign = ContentAlignment.MiddleLeft;
+                lbl.Margin = new Padding(3, 0, 6, 0);
                 _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
                     + "dispatch_agent) can ask for low/medium/high without naming a model.");
 
@@ -1314,7 +1314,7 @@ namespace GxPT
                 effortRow.ColumnCount = 2;
                 effortRow.RowCount = 1;
                 effortRow.Margin = new Padding(0);
-                effortRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                effortRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));
                 effortRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 effortRow.RowStyles.Add(new RowStyle());
                 effortRow.Controls.Add(lbl, 0, 0);
