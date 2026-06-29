@@ -125,10 +125,10 @@ namespace GxPT
             JObject effortP = new JObject();
             effortP["type"] = "string";
             effortP["enum"] = new JArray("low", "medium", "high");
-            effortP["description"] = "Optional capability level to run this agent at: \"low\" (fastest, "
-                + "cheapest), \"medium\", or \"high\" (most capable). The user maps each level to a model in "
-                + "settings, so pick by how hard the task is - you do not need a model id. Overrides the "
-                + "agent's frontmatter effort for this dispatch only; omit to use the agent's own setting.";
+            effortP["description"] = "Optional override for the effort level (low | medium | high) this "
+                + "agent runs at. Each agent already has a tuned default, so normally omit this and let it "
+                + "run at its configured effort. Set it only when the user or a skill explicitly asks for a "
+                + "different level.";
             JObject modelP = new JObject();
             modelP["type"] = "string";
             modelP["description"] = "Optional explicit model id, in OpenRouter format "
