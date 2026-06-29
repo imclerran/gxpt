@@ -1295,7 +1295,7 @@ namespace GxPT
                     && this.tblMcp.RowStyles[2] is RowStyle)
                 {
                     ((RowStyle)this.tblMcp.RowStyles[2]).SizeType = SizeType.Absolute;
-                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 94F;
+                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 100F;
                 }
 
                 // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
@@ -1310,7 +1310,7 @@ namespace GxPT
                 layout.RowCount = 2;
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
                 layout.Controls.Add(BuildEffortGrid(), 0, 1);
                 this.grpAgents.Controls.Add(layout);
