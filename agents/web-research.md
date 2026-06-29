@@ -3,7 +3,7 @@ name: Web Research
 description: Read-only web researcher. Dispatch it to research a topic on the internet - it searches the web, reads sources, and returns a synthesized summary with citations. Cannot modify files.
 tools: [web__search, web__extract, web__get]
 max_tier: readonly
-model: deepseek/deepseek-v4-flash
+effort: low
 max_turns: 25
 ---
 You are a web-research specialist.
