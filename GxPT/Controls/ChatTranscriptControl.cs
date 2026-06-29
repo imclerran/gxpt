@@ -63,6 +63,10 @@ namespace GxPT
         private const int BulletGap = 8;
         private const int CodeBlockPadding = 6;
 
+        // Horizontal rule ("---" divider): vertical padding above and below the 1px line.
+        private const int DividerVPad = 16;
+        private const int DividerHeight = DividerVPad * 2 + 1;
+
         // Edit-diff record layout: a one-line clickable header, then (when expanded) a chromeless
         // diff body indented under it.
         private const int EditDiffHeaderPad = 3;  // vertical padding around the header text
@@ -1619,6 +1623,11 @@ namespace GxPT
                         var er = (ErrorBlock)blk;
                         return MeasureInlineParagraph(g, BuildErrorInlines(er.Message), _baseFont, maxWidth, true);
                     }
+                case BlockType.Divider:
+                    {
+                        // A full-width thematic break; the line is centered in DividerHeight vertically.
+                        return new Size(maxWidth, DividerHeight);
+                    }
                 case BlockType.Table:
                     {
                         var t = (TableBlock)blk;
@@ -2393,6 +2402,23 @@ namespace GxPT
                         owner.RetryRect = btn;
                         y += btnSz.Height;
                     }
+                    numberedCounters.Clear();
+                }
+                else if (blk.Type == BlockType.Divider)
+                {
+                    // Full-width horizontal rule, centered vertically within DividerHeight.
+                    int lineY = y + DividerVPad;
+                    using (var pen = new Pen(_clrCodeBorder))
+                        g.DrawLine(pen, x0, lineY, x0 + maxWidth, lineY);
+                    // Record a selectable segment so the rule round-trips through copy as "---".
+                    if (owner != null)
+                    {
+                        if (owner.DrawnSegments == null) owner.DrawnSegments = new List<DrawnSeg>();
+                        owner.DrawnSegments.Add(new DrawnSeg { IsNewLine = true, IsHardBreak = true, Rect = new Rectangle(x0, y, 0, 0), Text = null, Font = _baseFont });
+                        owner.DrawnSegments.Add(new DrawnSeg { Rect = new Rectangle(x0, lineY, maxWidth, 1), Text = "---", Font = _baseFont, IsLogicalLineStart = true, LineFirstTextLeft = x0 });
+                        owner.DrawnSegments.Add(new DrawnSeg { IsNewLine = true, IsHardBreak = true, Rect = new Rectangle(x0, y + DividerHeight, 0, 0), Text = null, Font = _baseFont });
+                    }
+                    y += DividerHeight;
                     numberedCounters.Clear();
                 }
                 else if (blk.Type == BlockType.CodeBlock)
@@ -3990,6 +4016,10 @@ namespace GxPT
                                 int used = MeasureInlineParagraphHeight(g, contentW - (textX - contentX), item.Content, _baseFont);
                                 y += Math.Max(used, _baseFont.Height) + 2;
                             }
+                        }
+                        else if (blk.Type == BlockType.Divider)
+                        {
+                            y += DividerHeight;
                         }
                         else if (blk.Type == BlockType.CodeBlock)
                         {

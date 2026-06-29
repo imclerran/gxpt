@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 namespace GxPT
 {
     // ---------- Markdown model ----------
-    public enum BlockType { Paragraph, Heading, CodeBlock, BulletList, NumberedList, Table, EditDiff, Error }
+    public enum BlockType { Paragraph, Heading, CodeBlock, BulletList, NumberedList, Table, EditDiff, Error, Divider }
 
     [Flags]
     public enum RunStyle { Normal = 0, Bold = 1, Italic = 2, Code = 4, Link = 8 }
@@ -53,6 +53,12 @@ namespace GxPT
     public sealed class ErrorBlock : Block
     {
         public string Message;
+    }
+
+    // A horizontal rule / thematic break, emitted for a line of 3+ '-', '*', or '_' (the markdown
+    // "---" divider syntax). Carries no content; the transcript control draws a full-width line.
+    public sealed class DividerBlock : Block
+    {
     }
 
     public sealed class BulletListBlock : Block
@@ -290,6 +296,17 @@ namespace GxPT
                     flushBullets();
                     flushNumbered();
                     blocks.Add(new ErrorBlock { Type = BlockType.Error, Message = errorMessage });
+                    continue;
+                }
+
+                // horizontal rule / thematic break (--- / *** / ___)? Checked before bullets so that a
+                // spaced rule like "- - -" isn't mistaken for a bullet item.
+                if (IsHorizontalRule(line))
+                {
+                    flushParagraph();
+                    flushBullets();
+                    flushNumbered();
+                    blocks.Add(new DividerBlock { Type = BlockType.Divider });
                     continue;
                 }
 
@@ -648,6 +665,28 @@ namespace GxPT
                 return true;
             }
             return false;
+        }
+
+        // A thematic break: a line made up solely of 3 or more of the same marker ('-', '*', or '_'),
+        // optionally separated by spaces or tabs (e.g. "---", "***", "___", "- - -"). Matches the
+        // CommonMark thematic-break rule. Note a lone "---" never reaches the table path because that
+        // requires a preceding header row containing a pipe.
+        private static bool IsHorizontalRule(string line)
+        {
+            if (line == null) return false;
+            string s = line.Trim();
+            if (s.Length < 3) return false;
+            char marker = s[0];
+            if (marker != '-' && marker != '*' && marker != '_') return false;
+            int count = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == marker) count++;
+                else if (c == ' ' || c == '\t') continue;
+                else return false;
+            }
+            return count >= 3;
         }
 
         private static int HeadingLevel(string line)

@@ -222,6 +222,60 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void Divider_TripleDash_ProducesDividerBlock()
+        {
+            var blocks = MarkdownParser.ParseMarkdown("above\n\n---\n\nbelow");
+            Assert.NotNull(FirstBlock<DividerBlock>(blocks));
+            // The divider separates the two paragraphs.
+            int dividerIdx = blocks.FindIndex(b => b is DividerBlock);
+            Assert.True(dividerIdx > 0 && dividerIdx < blocks.Count - 1);
+            Assert.IsType<ParagraphBlock>(blocks[dividerIdx - 1]);
+            Assert.IsType<ParagraphBlock>(blocks[dividerIdx + 1]);
+        }
+
+        [Fact]
+        public void Divider_AsteriskAndUnderscoreMarkers_ProduceDividers()
+        {
+            Assert.NotNull(FirstBlock<DividerBlock>(MarkdownParser.ParseMarkdown("***")));
+            Assert.NotNull(FirstBlock<DividerBlock>(MarkdownParser.ParseMarkdown("___")));
+            Assert.NotNull(FirstBlock<DividerBlock>(MarkdownParser.ParseMarkdown("-----")));
+        }
+
+        [Fact]
+        public void Divider_SpacedDashes_AreNotBullets()
+        {
+            var blocks = MarkdownParser.ParseMarkdown("- - -");
+            Assert.NotNull(FirstBlock<DividerBlock>(blocks));
+            Assert.Null(FirstBlock<BulletListBlock>(blocks));
+        }
+
+        [Fact]
+        public void Divider_TwoDashes_IsNotADivider()
+        {
+            var blocks = MarkdownParser.ParseMarkdown("--");
+            Assert.Null(FirstBlock<DividerBlock>(blocks));
+        }
+
+        [Fact]
+        public void Divider_AfterParagraphWithoutBlankLine_SplitsParagraph()
+        {
+            var blocks = MarkdownParser.ParseMarkdown("text\n---");
+            var p = FirstBlock<ParagraphBlock>(blocks);
+            Assert.NotNull(p);
+            Assert.Equal("text", InlineText(p.Inlines));
+            Assert.NotNull(FirstBlock<DividerBlock>(blocks));
+        }
+
+        [Fact]
+        public void Divider_TableSeparator_IsStillParsedAsTable()
+        {
+            // A "---" separator that belongs to a pipe table must not be hijacked as a divider.
+            var blocks = MarkdownParser.ParseMarkdown("| A | B |\n| --- | --- |\n| 1 | 2 |");
+            Assert.NotNull(FirstBlock<TableBlock>(blocks));
+            Assert.Null(FirstBlock<DividerBlock>(blocks));
+        }
+
+        [Fact]
         public void Crlf_IsNormalized()
         {
             var blocks = MarkdownParser.ParseMarkdown("# Heading\r\n\r\nA paragraph");
