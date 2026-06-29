@@ -62,11 +62,10 @@ namespace GxPT.Tests
             Assert.Equal(ModelDefaults.DefaultEffortLow, SettingsSchema.StringDefault("model_effort_low"));
             Assert.Equal(ModelDefaults.DefaultEffortMedium, SettingsSchema.StringDefault("model_effort_medium"));
             Assert.Equal(ModelDefaults.DefaultEffortHigh, SettingsSchema.StringDefault("model_effort_high"));
-            // Medium mirrors the overall default model.
-            Assert.Equal(ModelDefaults.DefaultModel, SettingsSchema.StringDefault("model_effort_medium"));
-            // The seeded tier models are part of the shipped catalog.
+            // The seeded tier models are all part of the shipped catalog (so the combos start on a real model).
             var models = new System.Collections.Generic.List<string>((string[])d["models"]);
             Assert.Contains(ModelDefaults.DefaultEffortLow, models);
+            Assert.Contains(ModelDefaults.DefaultEffortMedium, models);
             Assert.Contains(ModelDefaults.DefaultEffortHigh, models);
         }
 
