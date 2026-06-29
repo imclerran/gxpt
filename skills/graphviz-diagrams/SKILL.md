@@ -115,10 +115,13 @@ diagram where a structured multi-row HTML table replaces a plain text label.
   up routing *through* the node interior. The fix is to give the node a genuine rectangle: switch
   `shape=none` to `shape=box` and set the `<table>`'s `border="0"` so the box draws the single
   outer border (no double border) and ortho attaches to it cleanly. The trade-off is that the
-  outer border is now a plain rectangle - you lose table-level border styling like rounded corners
-  or per-side outer borders, though inner `cellborder` row separators are unaffected. If you don't
-  need ortho, plain `shape=none` with the default spline router also attaches to the border
-  correctly; if you want styled outer borders *and* ortho, you can't have both, so pick one.
+  outer border is now a single enclosing rectangle: rounded corners, color, and thickness are
+  still available (`style=rounded`, `color`, `penwidth` on the node), but border effects that
+  aren't one uniform rectangle are not - a border offset from the cells via `cellspacing`, or a
+  partial/per-side outer border such as a rule under just the header. Inner `cellborder` row
+  separators are unaffected either way. If you don't need ortho, plain `shape=none` with the
+  default spline router also attaches to the border correctly; reach for `shape=box` only when you
+  want ortho and a plain rectangular outer border is acceptable.
 
 - **Omit compass port anchors (`:e`, `:w`, `:n`, `:s`) on HTML-table nodes.** With `shape=none`
   the node's logical boundary is derived from the label's computed size and can be misaligned from
