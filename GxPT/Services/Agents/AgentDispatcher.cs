@@ -119,7 +119,8 @@ namespace GxPT
             JObject taskP = new JObject(); taskP["type"] = "string";
             JObject modelP = new JObject();
             modelP["type"] = "string";
-            modelP["description"] = "Optional model id to run this agent with. Overrides the agent's "
+            modelP["description"] = "Optional model id to run this agent with, in OpenRouter format "
+                + "\"model-author/model-name\" (e.g. \"z-ai/glm-5.2\"). Overrides the agent's "
                 + "frontmatter model (and the default parent model) for this dispatch only. Omit to use "
                 + "the agent's own model.";
             JObject entryProps = new JObject();
