@@ -75,3 +75,64 @@ graph {
   Products -- Reviews;
 }
 ```
+
+## UML-style and structured HTML-label nodes
+
+Multi-compartment boxes - UML classes, ER entities, database tables, component boxes with a
+header and a body - are drawn with an **HTML table label** (`label=<...>`), the standard way to
+get several rows inside one node. Two defaults sabotage these, and both must be overridden on the
+node defaults:
+
+```dot
+node [shape=none, margin=0, fontname="Arial", fontsize=11];
+```
+
+- **`shape=none`** suppresses the node's own shape. Without it, the default shape (or `shape=plain`)
+  draws a border around the *whole node* in addition to the borders of your `<table>`/`<td>`, so
+  every box appears double-bordered.
+- **`margin=0`** pulls the node's logical boundary tight against the table. Even with `shape=none`,
+  Graphviz keeps a default margin around the label, so the node's edge sits *outside* the visible
+  table - and edges then attach to that invisible boundary, leaving arrows looking detached from
+  the box.
+
+These two settings are universal to **any node whose label is an HTML `<table>`**: UML class
+diagrams, ER diagrams, database schemas, component/deployment boxes, swim-lane or action nodes -
+anywhere a table replaces a plain text label. They do **not** apply to plain-text labels
+(`label="Customer"` on a `shape=box, style=rounded`); that case has neither problem, so only reach
+for `shape=none, margin=0` when you're actually using a `<table>` label.
+
+A UML class diagram - colored header `<td>`, separate rows for attributes and operations,
+inheritance via an empty arrowhead, and an association with quoted multiplicity labels:
+
+```dot
+digraph {
+  rankdir=BT;
+  node [shape=none, margin=0, fontname="Arial", fontsize=11];
+
+  Animal [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#cfe2ff"><b>Animal</b></td></tr>
+      <tr><td align="left">- name: String</td></tr>
+      <tr><td align="left">+ makeSound(): void</td></tr>
+    </table>>];
+
+  Dog [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#cfe2ff"><b>Dog</b></td></tr>
+      <tr><td align="left">- breed: String</td></tr>
+      <tr><td align="left">+ makeSound(): void</td></tr>
+    </table>>];
+
+  Owner [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="4">
+      <tr><td bgcolor="#d1e7dd"><b>Owner</b></td></tr>
+      <tr><td align="left">- name: String</td></tr>
+    </table>>];
+
+  edge [arrowhead="empty"];
+  Dog -> Animal;
+
+  edge [arrowhead="none"];
+  Owner -> Dog [headlabel="1..*", taillabel="1", label="owns"];
+}
+```
