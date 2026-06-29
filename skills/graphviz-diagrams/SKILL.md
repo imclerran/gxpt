@@ -115,13 +115,16 @@ diagram where a structured multi-row HTML table replaces a plain text label.
   up routing *through* the node interior. The fix is to give the node a genuine rectangle: switch
   `shape=none` to `shape=box` and set the `<table>`'s `border="0"` so the box draws the single
   outer border (no double border) and ortho attaches to it cleanly. The trade-off is that the
-  outer border is now a single enclosing rectangle: rounded corners, color, and thickness are
-  still available (`style=rounded`, `color`, `penwidth` on the node), but border effects that
-  aren't one uniform rectangle are not - a border offset from the cells via `cellspacing`, or a
-  partial/per-side outer border such as a rule under just the header. Inner `cellborder` row
-  separators are unaffected either way. If you don't need ortho, plain `shape=none` with the
-  default spline router also attaches to the border correctly; reach for `shape=box` only when you
-  want ortho and a plain rectangular outer border is acceptable.
+  outer border is now a square rectangle drawn by the node: `color` and `penwidth` work, but keep
+  the corners square - **do not add `style=rounded`** on a `shape=box` table node. The box rounds
+  only the outline, not the square `bgcolor` cell fills inside the table, so a colored header bleeds
+  past the rounded corner (and `cellspacing` insets don't reliably hide it across Graphviz
+  versions). Other table-drawn border effects are likewise unavailable - a border offset from the
+  cells via `cellspacing`, or a partial/per-side outer border such as a rule under just the header.
+  Inner `cellborder` row separators are unaffected. If you need rounded corners or those other
+  effects, keep `shape=none` (where the table draws its own border and `<table style="rounded">`
+  clips the fill correctly) and don't use ortho. In short: `shape=box` + `border="0"` for ortho
+  with a plain square border; `shape=none` + the default spline router for anything fancier.
 
 - **Omit compass port anchors (`:e`, `:w`, `:n`, `:s`) on HTML-table nodes.** With `shape=none`
   the node's logical boundary is derived from the label's computed size and can be misaligned from
