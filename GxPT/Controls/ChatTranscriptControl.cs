@@ -64,7 +64,7 @@ namespace GxPT
         private const int CodeBlockPadding = 6;
 
         // Horizontal rule ("---" divider): vertical padding above and below the 1px line.
-        private const int DividerVPad = 6;
+        private const int DividerVPad = 11;
         private const int DividerHeight = DividerVPad * 2 + 1;
 
         // Edit-diff record layout: a one-line clickable header, then (when expanded) a chromeless
