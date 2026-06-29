@@ -5164,6 +5164,28 @@ namespace GxPT
                     }
                     return true;
                 }
+                case "git__worktree":
+                {
+                    string action = Str(args, "action"); if (action.Length == 0) action = "list";
+                    string path = Str(args, "path");
+                    switch (action.ToLowerInvariant())
+                    {
+                        case "add":
+                        {
+                            // The new branch (if any) is the most useful detail; otherwise name the dir.
+                            string branch = Str(args, "branch");
+                            string at = path.Length > 0 ? " at " + path : "";
+                            header = branch.Length > 0
+                                ? ("Added worktree" + at + " on new branch " + branch)
+                                : ("Added worktree" + at);
+                            break;
+                        }
+                        case "remove": header = path.Length > 0 ? ("Removed worktree " + path) : "Removed worktree"; break;
+                        case "prune": header = "Pruned worktrees"; break;
+                        default: header = "Listed worktrees"; break;
+                    }
+                    return true;
+                }
                 case "reveal_tools": header = "Checked available tools"; return true;
                 case "cd":
                 {
