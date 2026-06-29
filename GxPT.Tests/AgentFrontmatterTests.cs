@@ -32,17 +32,19 @@ namespace GxPT.Tests
             Assert.Equal("You are a code-exploration specialist.", fm.Body);
         }
 
+        // expectedName is the AgentEffort member name (compared via ToString) so the public test signature
+        // doesn't expose the internal AgentEffort enum (which would be CS0051: inconsistent accessibility).
         [Theory]
-        [InlineData("low", AgentEffort.Low)]
-        [InlineData("medium", AgentEffort.Medium)]
-        [InlineData("MED", AgentEffort.Medium)]      // alias + case-insensitive
-        [InlineData("high", AgentEffort.High)]
-        [InlineData("turbo", AgentEffort.Unset)]     // unrecognized => Unset (lenient, not rejected)
-        public void Parse_ReadsEffort(string value, AgentEffort expected)
+        [InlineData("low", "Low")]
+        [InlineData("medium", "Medium")]
+        [InlineData("MED", "Medium")]      // alias + case-insensitive
+        [InlineData("high", "High")]
+        [InlineData("turbo", "Unset")]     // unrecognized => Unset (lenient, not rejected)
+        public void Parse_ReadsEffort(string value, string expectedName)
         {
             AgentFrontmatter fm = AgentFrontmatter.Parse(
                 "---\ndescription: d\neffort: " + value + "\n---\nbody\n");
-            Assert.Equal(expected, fm.Effort);
+            Assert.Equal(expectedName, fm.Effort.ToString());
         }
 
         [Fact]
