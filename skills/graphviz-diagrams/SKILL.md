@@ -108,11 +108,17 @@ routing around these nodes gets fragile in three specific ways. They apply equal
 diagrams, ER diagrams, database schema diagrams, component/deployment diagrams, and any other
 diagram where a structured multi-row HTML table replaces a plain text label.
 
-- **Don't use `splines=ortho` with HTML-table nodes.** Ortho forces every edge into right-angle
-  segments and computes its corner points from the node bounding box. With the box pulled tight
-  against the table, the orthogonal router can't find valid attachment points at the border and
-  ends up routing *through* the node interior. Leave splines at the default - the default router
-  attaches to the border correctly.
+- **`splines=ortho` needs a real node boundary - give it one with `shape=box`.** Ortho forces
+  every edge into right-angle segments and computes its corner points from the node's geometry.
+  With `shape=none` the node has no shape of its own, so its boundary is *inferred* from the label
+  size and pulled tight against the table - the router can't find valid attachment points and ends
+  up routing *through* the node interior. The fix is to give the node a genuine rectangle: switch
+  `shape=none` to `shape=box` and set the `<table>`'s `border="0"` so the box draws the single
+  outer border (no double border) and ortho attaches to it cleanly. The trade-off is that the
+  outer border is now a plain rectangle - you lose table-level border styling like rounded corners
+  or per-side outer borders, though inner `cellborder` row separators are unaffected. If you don't
+  need ortho, plain `shape=none` with the default spline router also attaches to the border
+  correctly; if you want styled outer borders *and* ortho, you can't have both, so pick one.
 
 - **Omit compass port anchors (`:e`, `:w`, `:n`, `:s`) on HTML-table nodes.** With `shape=none`
   the node's logical boundary is derived from the label's computed size and can be misaligned from
@@ -130,8 +136,9 @@ diagram where a structured multi-row HTML table replaces a plain text label.
 
 A UML class diagram - colored header `<td>`, separate rows for attributes and operations,
 inheritance via an empty arrowhead, and an association with quoted multiplicity labels pushed
-clear of the boxes via `labeldistance`/`labelangle` (and note: no `splines=ortho`, no port
-anchors):
+clear of the boxes via `labeldistance`/`labelangle`. It uses `shape=none` with the default spline
+router and no port anchors; to route these edges with `splines=ortho` instead, switch the node
+default to `shape=box` and set each `<table>`'s `border="0"` as described above:
 
 ```dot
 digraph {
