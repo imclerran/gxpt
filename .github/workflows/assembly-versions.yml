@@ -1,0 +1,26 @@
+name: Assembly Versions
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  verify-versions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so we can diff against the base branch / previous commit.
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin "${{ github.base_ref }}"
+
+      - name: Verify assembly versions
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: bash .github/scripts/verify-assembly-versions.sh "$BASE_SHA"
