@@ -55,6 +55,14 @@ match_ref() {
   printf '%s' "$out"
 }
 
+# Normalize a version to its leading X.Y.Z, discarding any 4th+ component
+# (e.g. "0.23.1.0" and "0.23.1.%2a" both become "0.23.1").
+xyz() {
+  local out
+  out="$(printf '%s' "$1" | grep -oP '^\d+\.\d+\.\d+')" || true
+  printf '%s' "$out"
+}
+
 # True if any changed path is inside the given directory.
 dir_changed() {
   local dir="$1"
@@ -146,6 +154,28 @@ if (( changed_asmver || changed_asmfile || changed_appver || changed_prodver ));
   (( changed_prodcode )) || { errors+=("GxPT version is being changed, but the installer ProductCode in $GXPT_VDPROJ was not regenerated."); }
 else
   echo "  No GxPT release version change detected; nothing to enforce."
+fi
+
+# ---------------------------------------------------------------------------
+# Check 3: the X.Y.Z prefix must match across all four GxPT version fields
+# (any 4th+ component, e.g. ".0" or ".%2a", is disregarded).
+# ---------------------------------------------------------------------------
+echo "== Check 3: X.Y.Z consistency across GxPT version fields =="
+
+v_asmver="$(xyz "$new_asmver")"
+v_asmfile="$(xyz "$new_asmfile")"
+v_appver="$(xyz "$new_appver")"
+v_prodver="$(xyz "$new_prodver")"
+
+echo "    AssemblyVersion     ($GXPT_ASM):    $v_asmver"
+echo "    AssemblyFileVersion ($GXPT_ASM):    $v_asmfile"
+echo "    ApplicationVersion  ($GXPT_CSPROJ): $v_appver"
+echo "    ProductVersion      ($GXPT_VDPROJ): $v_prodver"
+
+if [[ "$v_asmver" == "$v_asmfile" && "$v_asmver" == "$v_appver" && "$v_asmver" == "$v_prodver" ]]; then
+  echo "  All four agree on $v_asmver  OK"
+else
+  errors+=("GxPT version fields disagree on X.Y.Z: AssemblyVersion=$v_asmver, AssemblyFileVersion=$v_asmfile, ApplicationVersion=$v_appver, ProductVersion=$v_prodver. They must all share the same X.Y.Z.")
 fi
 
 # ---------------------------------------------------------------------------
