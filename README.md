@@ -1,13 +1,13 @@
 # GxPT
 
-![Windows XP Goes Agentic!](GxPT-banner.png)
+![Windows XP Goes Agentic!](docs/assets/GxPT-banner.png)
 
 An agentic AI harness and coding agent for Windows XP. GxPT aims to provide modern agentic coding and AI chat features in a period-appropriate interface on legacy Windows systems. GxPT brings agentic web search, tool calling, custom skills, and sub-agent dispatching to the era of Luna and Aero, along with per-conversation privacy controls to keep your data safe.
 
 ## Screenshot
 
-### Subagents:
-![GxPT Subagents Screenshot](GxPT-subagents.PNG)
+### Diagrams:
+![GxPT Diagrams Screenshot](docs/assets/GxPT-diagrams.PNG)
 
 ## Features
 
