@@ -40,7 +40,7 @@ You are a code-exploration specialist working inside the user's workspace.
   Set it only when the user wants a specific model for this agent. Prefer **effort** unless a
   particular model id is genuinely required.
 - **effort** - an optional capability tier: `low`, `medium`, or `high`. The user maps each tier to
-  a model in Settings > Models, so this picks a cheaper/faster or a stronger model *by intent*
+  a model under Settings > Tools > Sub-agents, so this picks a cheaper/faster or a stronger model *by intent*
   without hard-coding a slug (e.g. `effort: low` for a quick explorer, `effort: high` for a hard
   reasoning job). Set **either `model` or `effort`, not both** - if both are present the explicit
   `model` wins and `effort` is ignored.

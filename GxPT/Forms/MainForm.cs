@@ -3263,10 +3263,18 @@ namespace GxPT
         // value stays the full "author/model" id.
         private void cmbModel_DrawItem(object sender, DrawItemEventArgs e)
         {
+            DrawModelComboItem(e, this.cmbModel);
+        }
+
+        // Shared owner-draw for any model-list combo: render only the short model name (ShortModelName)
+        // while the item value stays the full "author/model" id. Used by the main window's model selector
+        // and the settings effort-tier pickers so the two render identically.
+        internal static void DrawModelComboItem(DrawItemEventArgs e, ComboBox combo)
+        {
             e.DrawBackground();
-            if (e.Index >= 0 && this.cmbModel != null && e.Index < this.cmbModel.Items.Count)
+            if (combo != null && e.Index >= 0 && e.Index < combo.Items.Count)
             {
-                string full = Convert.ToString(this.cmbModel.Items[e.Index]);
+                string full = Convert.ToString(combo.Items[e.Index]);
                 // Clip the name at the edge like a native combo (no ellipsis).
                 TextRenderer.DrawText(e.Graphics, ShortModelName(full), e.Font, e.Bounds, e.ForeColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
