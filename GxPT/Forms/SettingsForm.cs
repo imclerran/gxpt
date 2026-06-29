@@ -1298,29 +1298,7 @@ namespace GxPT
                     ((RowStyle)this.tblMcp.RowStyles[2]).Height = 112F;
                 }
 
-                // Left row-label in a fixed-width column, filling the cell with vertically-centered text so it
-                // lines up midway between the captions and the combos. Kept short so the pickers get the width.
-                Label lbl = new Label();
-                lbl.Text = "Models";
-                lbl.Dock = DockStyle.Fill;
-                lbl.TextAlign = ContentAlignment.MiddleLeft;
-                lbl.Margin = new Padding(3, 0, 6, 0);
-                _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
-                    + "dispatch_agent) can ask for low/medium/high without naming a model.");
-
-                // The effort row: a left caption + the three captioned model pickers.
-                TableLayoutPanel effortRow = new TableLayoutPanel();
-                effortRow.Dock = DockStyle.Fill;
-                effortRow.ColumnCount = 2;
-                effortRow.RowCount = 1;
-                effortRow.Margin = new Padding(0);
-                effortRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));
-                effortRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-                effortRow.RowStyles.Add(new RowStyle());
-                effortRow.Controls.Add(lbl, 0, 0);
-                effortRow.Controls.Add(BuildEffortGrid(), 1, 0);
-
-                // Re-host the existing enable checkbox + the effort row in a 2-row table docked into the group
+                // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
                 // (the checkbox keeps its name/state/wiring - only its parent changes).
                 this.grpAgents.Controls.Remove(this.chkAgents);
                 this.chkAgents.Anchor = AnchorStyles.Left;
@@ -1334,38 +1312,51 @@ namespace GxPT
                 layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
-                layout.Controls.Add(effortRow, 0, 1);
+                layout.Controls.Add(BuildEffortGrid(), 0, 1);
                 this.grpAgents.Controls.Add(layout);
             }
             finally { this.grpAgents.ResumeLayout(); }
         }
 
-        // The three effort-tier pickers as a 3-column x 2-row grid: each tier's caption (Low/Medium/High)
-        // sits directly above its combo. Equal Percent columns so all three fit the width with no clipping;
-        // the caption centers over its combo.
+        // The effort-tier pickers: a 4-column x 2-row grid. Column 0 is the "Models" row-label (spanning both
+        // rows so it centers vertically against the caption+combo block); columns 1-3 stack each tier's caption
+        // ("Low/Medium/High effort") directly above its combo. Equal Percent tier columns fit the width with no
+        // clipping; each caption centers over its combo.
         private TableLayoutPanel BuildEffortGrid()
         {
             TableLayoutPanel grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
-            grid.ColumnCount = 3;
+            grid.ColumnCount = 4;
             grid.RowCount = 2;
             grid.Margin = new Padding(0, 1, 0, 1);
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));   // row label
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // captions
             grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // combos
 
+            // Row label spanning both rows -> vertically centered across the caption+combo block.
+            Label lbl = new Label();
+            lbl.Text = "Models";
+            lbl.Dock = DockStyle.Fill;
+            lbl.TextAlign = ContentAlignment.MiddleLeft;
+            lbl.Margin = new Padding(3, 0, 6, 0);
+            grid.Controls.Add(lbl, 0, 0);
+            grid.SetRowSpan(lbl, 2);
+            _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
+                + "dispatch_agent) can ask for low/medium/high without naming a model.");
+
             this.cmbEffortLow = MakeEffortCombo();
             this.cmbEffortMedium = MakeEffortCombo();
             this.cmbEffortHigh = MakeEffortCombo();
 
-            grid.Controls.Add(MakeEffortCaption("Low"), 0, 0);
-            grid.Controls.Add(MakeEffortCaption("Medium"), 1, 0);
-            grid.Controls.Add(MakeEffortCaption("High"), 2, 0);
-            grid.Controls.Add(this.cmbEffortLow, 0, 1);
-            grid.Controls.Add(this.cmbEffortMedium, 1, 1);
-            grid.Controls.Add(this.cmbEffortHigh, 2, 1);
+            grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
+            grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
+            grid.Controls.Add(MakeEffortCaption("High effort"), 3, 0);
+            grid.Controls.Add(this.cmbEffortLow, 1, 1);
+            grid.Controls.Add(this.cmbEffortMedium, 2, 1);
+            grid.Controls.Add(this.cmbEffortHigh, 3, 1);
             return grid;
         }
 
