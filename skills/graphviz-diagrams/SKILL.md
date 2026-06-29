@@ -76,13 +76,53 @@ graph {
 }
 ```
 
+An architecture diagram that groups nodes into layers with `subgraph cluster_*`. Each cluster gets
+a `style="rounded,dashed"` outline in its own `color` (with a matching `fontcolor` for its label),
+the nodes are plain `shape=box, style=rounded` with `\n` line breaks, and edge styles distinguish
+relationship kinds (solid for ownership, `dashed` with a label for a transport hop):
+
+```dot
+digraph {
+  rankdir=BT;
+  node [shape=box, style=rounded, fontname="Arial", fontsize=10];
+  edge [color="#333333"];
+
+  subgraph cluster_ui {
+    label="UI Layer"; style="rounded,dashed"; color="#4A90D9"; fontcolor="#4A90D9"; fontsize=11;
+    MainForm [label="MainForm\n(app shell)"];
+    TabManager [label="TabManager\n(conversation lifecycle)"];
+  }
+
+  subgraph cluster_services {
+    label="Core Services"; style="rounded,dashed"; color="#2ECC71"; fontcolor="#2ECC71"; fontsize=11;
+    Orchestrator [label="McpChatOrchestrator\n(tool-call loop)"];
+    McpHost [label="McpHost\n(connection mgmt)"];
+  }
+
+  subgraph cluster_servers {
+    label="MCP Servers"; style="rounded,dashed"; color="#9B59B6"; fontcolor="#9B59B6"; fontsize=11;
+    Files [label="FilesMcpServer\n(read/write)"];
+    Git [label="GitMcpServer\n(git commands)"];
+  }
+
+  MainForm -> TabManager;
+  TabManager -> Orchestrator;
+  Orchestrator -> McpHost;
+  McpHost -> Files [style=dashed, label="stdio"];
+  McpHost -> Git [style=dashed];
+}
+```
+
 ## Multi-compartment nodes (UML classes, ER entities, DB tables)
 
-When a node needs several rows - a UML class with a name / attributes / operations stack, an ER
-entity, a database table, a component box with a header and a body - its label is an HTML `<table>`
-(`label=<...>`) rather than plain text. These nodes have their own rules, and getting them wrong is
-what makes a hand-written class box look double-bordered, cramped, or covered in oversized
-overlapping edge labels. The essentials:
+When a node needs **visible internal structure** - compartment dividers, a colored header band,
+per-cell borders, or named cell ports, as in a UML class with a name / attributes / operations
+stack, an ER entity, or a database table - its label is an HTML `<table>` (`label=<...>`) rather
+than plain text. A box that is just a title and a few lines of description is **not** this case:
+that's a plain `shape=box` node with `\n` line breaks (see the architecture example above), and none
+of the rules below apply to it. When you do need a table, these nodes have their own rules, and
+getting them wrong is what makes a hand-written class box look double-bordered, cramped, or covered
+in oversized overlapping edge labels. The essentials:
 
 - `shape=none, margin=0` on the node defaults are **mandatory** for any `<table>` label.
 - Separate compartments with `<hr/>` rules, and set a small `edge [fontsize=10]` so association
