@@ -3602,6 +3602,20 @@ namespace GxPT
                                 // the parent orchestrator was configured with above.
                                 dispatcher.Zdr = orch.Zdr;
                                 dispatcher.ProviderDataCollectionAllowed = orch.ProviderDataCollectionAllowed;
+                                // Map agent effort tiers to the models the user configured in Settings, so a
+                                // frontmatter `effort:` or a dispatch `effort` arg resolves to a real id.
+                                // Read live from AppSettings (EnsureSeeded guarantees a value); a blank tier
+                                // simply falls through to the model/parent fallbacks in ResolveModel.
+                                dispatcher.EffortModel = delegate(AgentEffort eff)
+                                {
+                                    switch (eff)
+                                    {
+                                        case AgentEffort.Low: return AppSettings.GetString("model_effort_low");
+                                        case AgentEffort.Medium: return AppSettings.GetString("model_effort_medium");
+                                        case AgentEffort.High: return AppSettings.GetString("model_effort_high");
+                                        default: return null;
+                                    }
+                                };
                                 // Child usage adds to cost/token totals but must NOT move the parent's context
                                 // gauge (the child has its own isolated context) - so it routes through the
                                 // updateContextGauge=false overload, not orch.UsageReported.

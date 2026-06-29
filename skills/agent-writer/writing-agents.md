@@ -36,8 +36,14 @@ You are a code-exploration specialist working inside the user's workspace.
   - `destructive` - can also run irreversible tools (delete, git push/reset, command__run, etc.).
     Opt into this only when the job truly needs it.
   Pick the **lowest** tier that does the job.
-- **model** - an optional model id override. Omit it to inherit the parent turn's model. Set it
-  only when the user wants a specific (often cheaper/faster) model for this agent.
+- **model** - an optional explicit model id override. Omit it to inherit the parent turn's model.
+  Set it only when the user wants a specific model for this agent. Prefer **effort** unless a
+  particular model id is genuinely required.
+- **effort** - an optional capability tier: `low`, `medium`, or `high`. The user maps each tier to
+  a model in Settings > Models, so this picks a cheaper/faster or a stronger model *by intent*
+  without hard-coding a slug (e.g. `effort: low` for a quick explorer, `effort: high` for a hard
+  reasoning job). Set **either `model` or `effort`, not both** - if both are present the explicit
+  `model` wins and `effort` is ignored.
 - **max_turns** - an optional iteration budget (tool-call rounds). Keep explorers and reviewers
   low (e.g. 20-30); allow a builder more. A tight budget is also a safety bound on an unattended
   run. Omit for the host default.

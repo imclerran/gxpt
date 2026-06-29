@@ -168,7 +168,14 @@ find something after a genuine search, say so and name where you looked.
     child orchestrator's `maxIterations` ctor arg (A17). Omitted ⇒ the host default
     (`DefaultMaxIterations`). Lets an `explore` agent cap at ~15 while a `coder` runs
     ~30, so an unattended specialist's cost is bounded *to its job*, not the parent's.
-  - `model` *(optional)* — model id override; omitted ⇒ the parent turn's model.
+  - `model` *(optional)* — explicit model id override; omitted ⇒ the parent turn's
+    model. Prefer `effort` unless a specific id is required.
+  - `effort` *(optional, A18)* — capability tier `low` \| `medium` \| `high`, mapped
+    to a concrete model id by the user's settings (`model_effort_low/medium/high`).
+    Lets an agent ask for a cheaper/faster or a stronger model **by intent**, without
+    hard-coding a slug. Unrecognized ⇒ ignored (no hint). An explicit `model` is more
+    specific and **wins over `effort`** when both are set. Distinct from `max_tier`
+    (a tool-permission ceiling, a different axis) — deliberately *not* called "tier".
   - ~~`autonomy`~~ — **dropped.** It was redundant with `max_tier` + the approval
     gate (read-only auto-allows, write/destructive prompt — for `gated` *and*
     `auto-readonly` alike), so it never produced a distinct behavior. The key is
@@ -232,11 +239,14 @@ resolution (like `IsOpenSkill`), so it never hits a server.
 ### `dispatch_agent` — the meta-tool
 
 ```
-dispatch_agent(agents: [ { name: string, task: string, model?: string }, … ])   // batch (A9)
+dispatch_agent(agents: [ { name: string, task: string, effort?: string, model?: string }, … ])   // batch (A9)
 ```
-The optional per-entry `model` overrides that agent's frontmatter model (and the
-default parent model) for this dispatch only — precedence is
-`model` arg → frontmatter `model` → parent turn's model.
+The optional per-entry `effort` (`low`\|`medium`\|`high`) and `model` override that
+agent's own frontmatter for this dispatch only. Full precedence (A18), dispatch-level
+beating frontmatter and an explicit model beating an effort tier within each level:
+`model` arg → `effort` arg → frontmatter `model` → frontmatter `effort` → parent
+turn's model. An effort tier maps to a model via the user's settings; a tier that maps
+to nothing is skipped, so resolution always lands on a concrete model.
 Definition shape mirrors `open_skill`/`reveal_tools` so the model treats it the
 same way. Description: *"Delegate one or more self-contained sub-tasks to specialist
 agents that work in isolation and report back. Pass each agent's slug (from the
@@ -251,7 +261,8 @@ conversation."*
    - history = `[ system: standing-guidance + workspace-block + agent.Body ]`
      then `[ user: task ]`;
    - `WorkingDir` = parent's (so scoped servers route to the same folder);
-   - `model` = `agent.Model ?? parentModel`;
+   - `model` = `ResolveModel` (A18): `model` arg → `effort` arg → `agent.Model` →
+     `agent.Effort` → `parentModel` (effort tiers mapped via settings);
    - **exposed tools restricted** via `AgentToolResolver` (A11) — for a *small*
      declared allowlist the child skips progressive disclosure and is handed those
      defs directly (no `reveal_tools` dance); for `tools: [*]` it gets the normal

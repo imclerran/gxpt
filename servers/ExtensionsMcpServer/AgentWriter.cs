@@ -14,7 +14,7 @@ namespace ExtensionsMcpServer
     /// <summary>
     /// The agent authoring file operations - the SkillWriter analogue for sub-agents (design A4/phase 10).
     /// An agent is a single flat &lt;slug&gt;.md whose frontmatter (name/description/tools/max_tier/model/
-    /// max_turns) is the security contract and whose body is the system prompt. The server assembles the
+    /// effort/max_turns) is the security contract and whose body is the system prompt. The server assembles the
     /// frontmatter from fields so the model never produces an unloadable agent. Targets the WRITABLE roots
     /// only (project &lt;workdir&gt;/.gxpt/agents, user-global %AppData%/GxPT/agents); the bundled install dir
     /// is never a write target. Atomic writes, UTF-8 (no BOM). Agents have no bundled assets or scripts, so
@@ -37,7 +37,7 @@ namespace ExtensionsMcpServer
 
         // create_agent: a NEW agent (refuses if it exists); assembles a guaranteed-loadable <slug>.md.
         public string CreateAgent(string scope, string slugIn, string name, string description,
-            string[] tools, string maxTier, string model, int maxTurns, string body)
+            string[] tools, string maxTier, string model, string effort, int maxTurns, string body)
         {
             string root = RootFor(scope);
             string slug = RequireSlug(slugIn);
@@ -51,13 +51,14 @@ namespace ExtensionsMcpServer
             string toolsValue = FormatTools(tools);            // null => omit the key
             string tierValue = NormalizeTier(maxTier);          // null => omit (host defaults to write)
             string modelValue = NormalizeModel(model);          // null => omit
+            string effortValue = NormalizeEffort(effort);       // null => omit
             string turnsValue = NormalizeTurns(maxTurns);       // null => omit
 
             string file = Path.Combine(root, slug + ".md");
             if (File.Exists(file))
                 throw new AgentWriteException("agent '" + slug + "' already exists; use update_agent to change it");
 
-            AtomicWrite(file, BuildAgentMd(name, description, toolsValue, tierValue, modelValue, turnsValue, body));
+            AtomicWrite(file, BuildAgentMd(name, description, toolsValue, tierValue, modelValue, effortValue, turnsValue, body));
             return "Created agent '" + slug + "'. It will be available on your next message.";
         }
 
@@ -65,7 +66,7 @@ namespace ExtensionsMcpServer
         // leaves that field unchanged; pass tools: [] to explicitly clear it. max_turns <= 0 leaves it
         // unchanged (clearing it isn't supported - it's a rare need).
         public string UpdateAgent(string scope, string slugIn, string name, string description,
-            string[] tools, string maxTier, string model, int maxTurns, string body)
+            string[] tools, string maxTier, string model, string effort, int maxTurns, string body)
         {
             string root = RootFor(scope);
             string slug = RequireSlug(slugIn);
@@ -86,7 +87,7 @@ namespace ExtensionsMcpServer
 
             AgentFrontmatter fm = AgentFrontmatter.Parse(existing);
             // A present-but-blank scalar means "keep" (same as omitting it): only a non-blank value changes
-            // a field, so passing "" never silently wipes an existing name/description/model/max_tier/body.
+            // a field, so passing "" never silently wipes an existing name/description/model/effort/max_tier/body.
             // Clearing tools is the one explicit clear (pass []); clearing a scalar isn't supported.
             string newName = !IsBlank(name) ? name : fm.Name;     // may stay null -> name line omitted
             string newDesc = !IsBlank(description) ? description : fm.Description;
@@ -95,10 +96,11 @@ namespace ExtensionsMcpServer
             string toolsValue = tools != null ? FormatTools(tools) : fm.ToolsRaw;
             string tierValue = !IsBlank(maxTier) ? NormalizeTier(maxTier) : fm.MaxTierRaw;
             string modelValue = !IsBlank(model) ? NormalizeModel(model) : fm.ModelRaw;
+            string effortValue = !IsBlank(effort) ? NormalizeEffort(effort) : fm.EffortRaw;
             string turnsValue = maxTurns > 0 ? NormalizeTurns(maxTurns) : fm.MaxTurnsRaw;
             string newBody = !IsBlank(body) ? body : fm.Body;
 
-            AtomicWrite(file, BuildAgentMd(newName, newDesc, toolsValue, tierValue, modelValue, turnsValue, newBody));
+            AtomicWrite(file, BuildAgentMd(newName, newDesc, toolsValue, tierValue, modelValue, effortValue, turnsValue, newBody));
             return "Updated agent '" + slug + "'. Changes apply on your next message.";
         }
 
@@ -139,7 +141,7 @@ namespace ExtensionsMcpServer
 
             string updatedBody = replaceAll ? bodyText.Replace(oldB, newB) : ReplaceFirst(bodyText, oldB, newB);
             AtomicWrite(file, BuildAgentMd(fm.Name, fm.Description, fm.ToolsRaw, fm.MaxTierRaw,
-                fm.ModelRaw, fm.MaxTurnsRaw, updatedBody));
+                fm.ModelRaw, fm.EffortRaw, fm.MaxTurnsRaw, updatedBody));
             return "Edited agent '" + slug + "''s body ("
                 + (replaceAll ? count + " replacement" + (count == 1 ? "" : "s") : "1 replacement") + ").";
         }
@@ -185,7 +187,7 @@ namespace ExtensionsMcpServer
             // Write the new file first, then remove the old one. The collision guard above means the new path
             // never overwrites another agent, and the content is preserved (this is a move, not a rewrite).
             AtomicWrite(newFile, BuildAgentMd(resolvedName, fm.Description, fm.ToolsRaw, fm.MaxTierRaw,
-                fm.ModelRaw, fm.MaxTurnsRaw, fm.Body));
+                fm.ModelRaw, fm.EffortRaw, fm.MaxTurnsRaw, fm.Body));
             try { File.Delete(oldFile); }
             catch (Exception ex)
             {
@@ -253,8 +255,8 @@ namespace ExtensionsMcpServer
         }
 
         // validate_agent (ReadOnly): would this agent load, and is its contract well-formed? (mirrors host
-        // discovery: a non-empty description is what makes it dispatchable.) Also checks the max_tier enum
-        // and that the tools list parses; reports the parsed contract or what is wrong.
+        // discovery: a non-empty description is what makes it dispatchable.) Also checks the max_tier and
+        // effort enums and that the tools list parses; reports the parsed contract or what is wrong.
         public string ValidateAgent(string slugIn)
         {
             string slug = RequireSlug(slugIn);
@@ -279,17 +281,26 @@ namespace ExtensionsMcpServer
                 tierNote = "; WARNING: max_tier '" + fm.MaxTierRaw.Trim()
                     + "' is not recognized (use readonly | write | destructive) - it will fall back to the default";
 
+            // effort, like max_tier, silently falls back to "no hint" at load if it's an unknown value - so
+            // flag a bad value as a warning here rather than failing the agent.
+            string effortNote = "";
+            if (!IsBlank(fm.EffortRaw) && !IsKnownEffort(fm.EffortRaw))
+                effortNote = "; WARNING: effort '" + fm.EffortRaw.Trim()
+                    + "' is not recognized (use low | medium | high) - it will be ignored";
+
             string name = !IsBlank(fm.Name) ? fm.Name : slug;
             string tier = !IsBlank(fm.MaxTierRaw) ? fm.MaxTierRaw.Trim() : "write (default)";
             string tools = fm.ToolsRaw != null ? fm.ToolsRaw : "(none specified)";
+            string effort = !IsBlank(fm.EffortRaw) ? fm.EffortRaw.Trim() : "(unset)";
             return "OK: agent '" + slug + "' loads (" + source + "). name: " + name + "; description: "
-                + fm.Description + "; max_tier: " + tier + "; tools: " + tools + tierNote;
+                + fm.Description + "; max_tier: " + tier + "; effort: " + effort + "; tools: " + tools
+                + tierNote + effortNote;
         }
 
         // ---- frontmatter assembly + field validation ----
 
         private static string BuildAgentMd(string name, string description, string toolsValue,
-            string tierValue, string modelValue, string turnsValue, string body)
+            string tierValue, string modelValue, string effortValue, string turnsValue, string body)
         {
             StringBuilder sb = new StringBuilder();
             sb.Append("---\n");
@@ -300,6 +311,7 @@ namespace ExtensionsMcpServer
             if (toolsValue != null) sb.Append("tools: ").Append(toolsValue).Append('\n');
             if (!IsBlank(tierValue)) sb.Append("max_tier: ").Append(tierValue.Trim()).Append('\n');
             if (!IsBlank(modelValue)) sb.Append("model: ").Append(modelValue.Trim()).Append('\n');
+            if (!IsBlank(effortValue)) sb.Append("effort: ").Append(effortValue.Trim()).Append('\n');
             if (!IsBlank(turnsValue)) sb.Append("max_turns: ").Append(turnsValue.Trim()).Append('\n');
             sb.Append("---\n\n");
             string b = body != null ? body : string.Empty;
@@ -381,6 +393,43 @@ namespace ExtensionsMcpServer
             if (v.Length == 0) return null;
             RequireSingleLine(v, "model");
             return v;
+        }
+
+        // low | medium | high. Returns the canonical lower form, null for a blank/absent value (the field is
+        // optional), or throws on an unrecognized value so the author fixes it at write time.
+        private static string NormalizeEffort(string effort)
+        {
+            if (effort == null || effort.Trim().Length == 0) return null;
+            string canonical;
+            if (TryNormalizeEffort(effort, out canonical)) return canonical;
+            throw new AgentWriteException("effort must be one of: low, medium, high (got '"
+                + effort.Trim() + "')");
+        }
+
+        // The single source of accepted effort spellings: canonical lower form + true, or false for a blank/
+        // unrecognized value. NormalizeEffort (throws) and IsKnownEffort (returns the bool) both build on it.
+        private static bool TryNormalizeEffort(string effort, out string canonical)
+        {
+            canonical = null;
+            if (effort == null) return false;
+            switch (effort.Trim().ToLowerInvariant())
+            {
+                case "low":
+                    canonical = "low"; return true;
+                case "medium":
+                case "med":
+                    canonical = "medium"; return true;
+                case "high":
+                    canonical = "high"; return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsKnownEffort(string raw)
+        {
+            string canonical;
+            return TryNormalizeEffort(raw, out canonical);
         }
 
         private static string NormalizeTurns(int maxTurns)

@@ -41,7 +41,7 @@ namespace ExtensionsMcpServer.Tests
         public void CreateAgent_WritesValidAgentMd()
         {
             _writer.CreateAgent(null, "explorer", "Explorer", "Use this agent to explore code.",
-                new[] { "files__read", "git__status" }, "readonly", "deepseek/x", 25, "You are an explorer.");
+                new[] { "files__read", "git__status" }, "readonly", "deepseek/x", null, 25, "You are an explorer.");
 
             string text = File.ReadAllText(AgentFile("explorer"));
             Assert.Contains("name: Explorer", text);
@@ -65,7 +65,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void CreateAgent_NormalizesSlug()
         {
-            _writer.CreateAgent(null, "Code Reviewer", "Code Reviewer", "Reviews code.", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "Code Reviewer", "Code Reviewer", "Reviews code.", null, null, null, null, 0, "body");
             Assert.True(File.Exists(AgentFile("code-reviewer")));
         }
 
@@ -74,7 +74,7 @@ namespace ExtensionsMcpServer.Tests
         {
             // slug 'code-review' but name 'Code Reviewer' -> they describe different handles.
             AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
-                _writer.CreateAgent(null, "code-review", "Code Reviewer", "Reviews code.", null, null, null, 0, "body"));
+                _writer.CreateAgent(null, "code-review", "Code Reviewer", "Reviews code.", null, null, null, null, 0, "body"));
             Assert.Contains("don't match", ex.Message);
             Assert.False(File.Exists(AgentFile("code-review")));  // nothing written on rejection
         }
@@ -85,7 +85,7 @@ namespace ExtensionsMcpServer.Tests
             // A name with no letters/digits can't form a handle - the error should say so, not give the
             // circular "set slug to <slug>" guidance.
             AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
-                _writer.CreateAgent(null, "my-agent", "!!!", "desc", null, null, null, 0, "body"));
+                _writer.CreateAgent(null, "my-agent", "!!!", "desc", null, null, null, null, 0, "body"));
             Assert.Contains("no letters or digits", ex.Message);
             Assert.False(File.Exists(AgentFile("my-agent")));
         }
@@ -95,7 +95,7 @@ namespace ExtensionsMcpServer.Tests
         {
             // 'GitHub Researcher' kebab-splits oddly, but ignoring word boundaries it matches the slug.
             _writer.CreateAgent(null, "github-researcher", "GitHub Researcher", "Researches a repo.",
-                null, null, null, 0, "body");
+                null, null, null, null, 0, "body");
             Assert.True(File.Exists(AgentFile("github-researcher")));
             Assert.Contains("name: GitHub Researcher", File.ReadAllText(AgentFile("github-researcher")));
         }
@@ -103,9 +103,9 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void UpdateAgent_RejectsNameThatDivergesFromSlug()
         {
-            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, null, 0, "body");
             AgentWriteException ex = Assert.Throws<AgentWriteException>(() =>
-                _writer.UpdateAgent(null, "code-explore", "Code Reviewer", null, null, null, null, 0, null));
+                _writer.UpdateAgent(null, "code-explore", "Code Reviewer", null, null, null, null, null, 0, null));
             Assert.Contains("rename", ex.Message);
             // The original name is left intact - the rejected update wrote nothing.
             Assert.Contains("name: Code Explore", File.ReadAllText(AgentFile("code-explore")));
@@ -114,8 +114,8 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void UpdateAgent_AllowsNameReCasingThatPreservesSlug()
         {
-            _writer.CreateAgent(null, "release-notes", "Release Notes", "Drafts notes.", null, null, null, 0, "body");
-            _writer.UpdateAgent(null, "release-notes", "RELEASE notes", null, null, null, null, 0, null);
+            _writer.CreateAgent(null, "release-notes", "Release Notes", "Drafts notes.", null, null, null, null, 0, "body");
+            _writer.UpdateAgent(null, "release-notes", "RELEASE notes", null, null, null, null, null, 0, null);
             Assert.Contains("name: RELEASE notes", File.ReadAllText(AgentFile("release-notes")));
         }
 
@@ -123,7 +123,7 @@ namespace ExtensionsMcpServer.Tests
         public void RenameAgent_MovesFileDerivesNameAndPreservesContract()
         {
             _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.",
-                new[] { "files__read" }, "readonly", "deepseek/x", 20, "You are an explorer.");
+                new[] { "files__read" }, "readonly", "deepseek/x", null, 20, "You are an explorer.");
 
             _writer.RenameAgent(null, "code-explore", "code-search", null);   // no new_name -> derived
 
@@ -141,7 +141,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void RenameAgent_KeepsExplicitNameWhenAligned()
         {
-            _writer.CreateAgent(null, "github-sync", "GitHub Sync", "Syncs a repo.", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "github-sync", "GitHub Sync", "Syncs a repo.", null, null, null, null, 0, "body");
             _writer.RenameAgent(null, "github-sync", "github-mirror", "GitHub Mirror");  // acronym casing preserved
             Assert.Contains("name: GitHub Mirror", File.ReadAllText(AgentFile("github-mirror")));
         }
@@ -149,8 +149,8 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void RenameAgent_RefusesExistingTarget()
         {
-            _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, 0, "b");
-            _writer.CreateAgent(null, "beta", "Beta", "d", null, null, null, 0, "b");
+            _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, null, 0, "b");
+            _writer.CreateAgent(null, "beta", "Beta", "d", null, null, null, null, 0, "b");
             Assert.Throws<AgentWriteException>(() => _writer.RenameAgent(null, "alpha", "beta", null));
             Assert.True(File.Exists(AgentFile("alpha")));   // source untouched on refusal
             Assert.True(File.Exists(AgentFile("beta")));
@@ -159,7 +159,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void RenameAgent_RejectsNameNotMatchingNewSlug()
         {
-            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "code-explore", "Code Explore", "Explores code.", null, null, null, null, 0, "body");
             Assert.Throws<AgentWriteException>(() =>
                 _writer.RenameAgent(null, "code-explore", "code-search", "Totally Different"));
             Assert.True(File.Exists(AgentFile("code-explore")));      // nothing moved
@@ -180,7 +180,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void CreateAgent_OmitsOptionalFieldsWhenAbsent()
         {
-            _writer.CreateAgent(null, "minimal", "Minimal", "A minimal agent.", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "minimal", "Minimal", "A minimal agent.", null, null, null, null, 0, "body");
             string text = File.ReadAllText(AgentFile("minimal"));
             Assert.DoesNotContain("tools:", text);
             Assert.DoesNotContain("max_tier:", text);
@@ -192,37 +192,37 @@ namespace ExtensionsMcpServer.Tests
         public void CreateAgent_EmptyToolsArray_WritesExplicitEmptyList()
         {
             _writer.CreateAgent(null, "notools", "No Tools", "An agent with no tools.",
-                new string[0], null, null, 0, "body");
+                new string[0], null, null, null, 0, "body");
             Assert.Contains("tools: []", File.ReadAllText(AgentFile("notools")));
         }
 
         [Fact]
         public void CreateAgent_RefusesExisting()
         {
-            _writer.CreateAgent(null, "dup", "Dup", "desc", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "dup", "Dup", "desc", null, null, null, null, 0, "body");
             Assert.Throws<AgentWriteException>(() =>
-                _writer.CreateAgent(null, "dup", "Dup", "desc", null, null, null, 0, "body"));
+                _writer.CreateAgent(null, "dup", "Dup", "desc", null, null, null, null, 0, "body"));
         }
 
         [Fact]
         public void CreateAgent_RejectsUnknownMaxTier()
         {
             Assert.Throws<AgentWriteException>(() =>
-                _writer.CreateAgent(null, "bad", "Bad", "desc", null, "sometimes", null, 0, "body"));
+                _writer.CreateAgent(null, "bad", "Bad", "desc", null, "sometimes", null, null, 0, "body"));
         }
 
         [Fact]
         public void CreateAgent_RejectsToolWithComma()
         {
             Assert.Throws<AgentWriteException>(() =>
-                _writer.CreateAgent(null, "bad", "Bad", "desc", new[] { "files__read, git__log" }, null, null, 0, "body"));
+                _writer.CreateAgent(null, "bad", "Bad", "desc", new[] { "files__read, git__log" }, null, null, null, 0, "body"));
         }
 
         [Fact]
         public void UpdateAgent_PartialFields_KeepOthers()
         {
-            _writer.CreateAgent(null, "a", "A", "old desc", new[] { "files__read" }, "readonly", "m", 10, "old body");
-            _writer.UpdateAgent(null, "a", null, "new desc", null, null, null, 0, null);
+            _writer.CreateAgent(null, "a", "A", "old desc", new[] { "files__read" }, "readonly", "m", null, 10, "old body");
+            _writer.UpdateAgent(null, "a", null, "new desc", null, null, null, null, 0, null);
 
             string text = File.ReadAllText(AgentFile("a"));
             Assert.Contains("description: new desc", text);
@@ -236,8 +236,8 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void UpdateAgent_EmptyToolsArray_ClearsTools()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", new[] { "files__read" }, null, null, 0, "body");
-            _writer.UpdateAgent(null, "a", null, null, new string[0], null, null, 0, null);
+            _writer.CreateAgent(null, "a", "A", "desc", new[] { "files__read" }, null, null, null, 0, "body");
+            _writer.UpdateAgent(null, "a", null, null, new string[0], null, null, null, 0, null);
             Assert.Contains("tools: []", File.ReadAllText(AgentFile("a")));
         }
 
@@ -245,13 +245,13 @@ namespace ExtensionsMcpServer.Tests
         public void UpdateAgent_MissingAgent_Throws()
         {
             Assert.Throws<AgentWriteException>(() =>
-                _writer.UpdateAgent(null, "ghost", "G", "desc", null, null, null, 0, null));
+                _writer.UpdateAgent(null, "ghost", "G", "desc", null, null, null, null, 0, null));
         }
 
         [Fact]
         public void EditAgent_ReplacesInBodyOnly()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", null, "write", null, 0, "Step one. Step two.");
+            _writer.CreateAgent(null, "a", "A", "desc", null, "write", null, null, 0, "Step one. Step two.");
             _writer.EditAgent(null, "a", "Step two.", "Step three.", false);
 
             string text = File.ReadAllText(AgentFile("a"));
@@ -264,14 +264,14 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void EditAgent_NonUniqueWithoutReplaceAll_Throws()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "x and x and x");
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, null, 0, "x and x and x");
             Assert.Throws<AgentWriteException>(() => _writer.EditAgent(null, "a", "x", "y", false));
         }
 
         [Fact]
         public void ReadAgent_ReturnsFullText()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "the body");
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, null, 0, "the body");
             string text = _writer.ReadAgent("a");
             Assert.Contains("name: A", text);
             Assert.Contains("the body", text);
@@ -308,7 +308,7 @@ namespace ExtensionsMcpServer.Tests
         public void ReadAgent_ProjectShadowsBundled()
         {
             MakeBundled("explore", "bundled body");
-            _writer.CreateAgent(null, "explore", "Explore", "desc", null, null, null, 0, "project body");
+            _writer.CreateAgent(null, "explore", "Explore", "desc", null, null, null, null, 0, "project body");
             Assert.Contains("project body", _writer.ReadAgent("explore"));
         }
 
@@ -316,7 +316,7 @@ namespace ExtensionsMcpServer.Tests
         public void ListAgents_SpansScopesWithSource()
         {
             MakeBundled("explore", "b");
-            _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, 0, "b");
+            _writer.CreateAgent(null, "alpha", "Alpha", "d", null, null, null, null, 0, "b");
             string listing = _writer.ListAgents();
             Assert.Contains("- alpha (project)", listing);
             Assert.Contains("- explore (bundled)", listing);
@@ -327,7 +327,7 @@ namespace ExtensionsMcpServer.Tests
         {
             MakeBundled("explore", "bundled body");
             AgentWriteException ex = Assert.Throws<AgentWriteException>(
-                () => _writer.UpdateAgent(null, "explore", null, "new desc", null, null, null, 0, null));
+                () => _writer.UpdateAgent(null, "explore", null, "new desc", null, null, null, null, 0, null));
             Assert.Contains("bundled", ex.Message);
             Assert.Contains("create_agent", ex.Message); // points at the override path
         }
@@ -345,7 +345,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void DeleteAgent_RemovesFile()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "body");
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, null, 0, "body");
             _writer.DeleteAgent(null, "a");
             Assert.False(File.Exists(AgentFile("a")));
         }
@@ -353,7 +353,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void ValidateAgent_OkForLoadableAgent()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", new[] { "files__read" }, "readonly", null, 0, "body");
+            _writer.CreateAgent(null, "a", "A", "desc", new[] { "files__read" }, "readonly", null, null, 0, "body");
             Assert.StartsWith("OK:", _writer.ValidateAgent("a"));
         }
 
@@ -372,8 +372,8 @@ namespace ExtensionsMcpServer.Tests
         public void UpdateAgent_BlankScalarKeepsExisting()
         {
             // A present-but-empty model/name means "keep", not "clear" (only a non-blank value changes it).
-            _writer.CreateAgent(null, "a", "A", "desc", null, "readonly", "deepseek/x", 0, "body");
-            _writer.UpdateAgent(null, "a", "", "new desc", null, null, "", 0, null); // name="" and model="" => keep
+            _writer.CreateAgent(null, "a", "A", "desc", null, "readonly", "deepseek/x", null, 0, "body");
+            _writer.UpdateAgent(null, "a", "", "new desc", null, null, "", null, 0, null); // name="" and model="" => keep
             string text = File.ReadAllText(AgentFile("a"));
             Assert.Contains("name: A", text);            // kept (not wiped)
             Assert.Contains("model: deepseek/x", text);  // kept (not wiped)
@@ -386,10 +386,10 @@ namespace ExtensionsMcpServer.Tests
             string user = Path.Combine(_root, "user");
             Directory.CreateDirectory(user);
             AgentWriter w = new AgentWriter(_project, user, _bundled, "project");
-            w.CreateAgent("user", "reviewer", "Reviewer", "desc", null, null, null, 0, "body");
+            w.CreateAgent("user", "reviewer", "Reviewer", "desc", null, null, null, null, 0, "body");
 
             AgentWriteException ex = Assert.Throws<AgentWriteException>(
-                () => w.UpdateAgent("project", "reviewer", null, "new", null, null, null, 0, null));
+                () => w.UpdateAgent("project", "reviewer", null, "new", null, null, null, null, 0, null));
             Assert.Contains("'user' scope", ex.Message);
             Assert.Contains("scope:\"user\"", ex.Message);
         }
@@ -416,7 +416,7 @@ namespace ExtensionsMcpServer.Tests
         [Fact]
         public void EditAgent_MatchesExactly_PaddedOldStringFailsCleanly()
         {
-            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, 0, "You are X.");
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, null, 0, "You are X.");
             // edit_agent matches the body exactly: a whitespace-padded copy does NOT fuzzy-match (it throws
             // rather than silently editing the wrong span).
             Assert.Throws<AgentWriteException>(
@@ -426,6 +426,62 @@ namespace ExtensionsMcpServer.Tests
             string text = File.ReadAllText(AgentFile("a"));
             Assert.Contains("You are Y.", text);
             Assert.DoesNotContain("You are X.", text);
+        }
+
+        [Fact]
+        public void CreateAgent_WritesEffort_RoundTrips()
+        {
+            _writer.CreateAgent(null, "fast", "Fast", "A quick agent.", null, null, null, "low", 0, "body");
+            string text = File.ReadAllText(AgentFile("fast"));
+            Assert.Contains("effort: low", text);
+            Assert.Equal("low", AgentFrontmatter.Parse(text).EffortRaw);
+        }
+
+        [Fact]
+        public void CreateAgent_NormalizesEffortCasingAndAlias()
+        {
+            _writer.CreateAgent(null, "mid", "Mid", "A balanced agent.", null, null, null, "MED", 0, "body");
+            Assert.Contains("effort: medium", File.ReadAllText(AgentFile("mid")));
+        }
+
+        [Fact]
+        public void CreateAgent_RejectsUnknownEffort()
+        {
+            Assert.Throws<AgentWriteException>(() =>
+                _writer.CreateAgent(null, "bad", "Bad", "desc", null, null, null, "turbo", 0, "body"));
+        }
+
+        [Fact]
+        public void UpdateAgent_PreservesEffortWhenOmitted_AndCanChangeIt()
+        {
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, "low", 0, "body");
+            // Omitting effort keeps the existing value.
+            _writer.UpdateAgent(null, "a", null, "new desc", null, null, null, null, 0, null);
+            Assert.Contains("effort: low", File.ReadAllText(AgentFile("a")));
+            // Passing a new effort changes it.
+            _writer.UpdateAgent(null, "a", null, null, null, null, null, "high", 0, null);
+            Assert.Contains("effort: high", File.ReadAllText(AgentFile("a")));
+        }
+
+        [Fact]
+        public void EditAgent_PreservesEffort()
+        {
+            _writer.CreateAgent(null, "a", "A", "desc", null, null, null, "high", 0, "Step one.");
+            _writer.EditAgent(null, "a", "Step one.", "Step two.", false);
+            Assert.Contains("effort: high", File.ReadAllText(AgentFile("a")));
+        }
+
+        [Fact]
+        public void ValidateAgent_ReportsEffort_AndWarnsOnUnknown()
+        {
+            _writer.CreateAgent(null, "good", "Good", "desc", null, null, null, "high", 0, "body");
+            Assert.Contains("effort: high", _writer.ValidateAgent("good"));
+
+            // A bad effort value (written directly, bypassing create's validation) is a warning, not a failure.
+            File.WriteAllText(AgentFile("bad"), "---\nname: Bad\ndescription: d\neffort: bogus\n---\nbody\n");
+            string result = _writer.ValidateAgent("bad");
+            Assert.StartsWith("OK:", result);
+            Assert.Contains("WARNING", result);
         }
     }
 }

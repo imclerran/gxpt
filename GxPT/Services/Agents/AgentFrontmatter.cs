@@ -7,8 +7,9 @@ namespace GxPT
     // Hand-rolled reader for an agent <slug>.md's leading "--- ... ---" frontmatter block (design A5:
     // net35 has no YAML parser and the repo keeps one JSON lib, so we parse the handful of "key: value"
     // lines ourselves). It is the SkillFrontmatter reader extended for the agent contract: besides
-    // `name`/`description` it reads `tools` (an inline list), `max_tier` (an enum, with a default), and
-    // `model`. Unknown keys are ignored (forward-compatible) and each known key is
+    // `name`/`description` it reads `tools` (an inline list), `max_tier` (an enum, with a default),
+    // `model`, and `effort` (low|medium|high, a capability tier mapped to a model in settings). Unknown
+    // keys are ignored (forward-compatible) and each known key is
     // first-wins. Everything after the closing delimiter is the body (the agent's system prompt).
     // Lenient: a missing or unterminated block yields no frontmatter and treats the whole text as body;
     // an unrecognized enum value falls back to the default rather than rejecting the agent.
@@ -25,6 +26,9 @@ namespace GxPT
         public AgentMaxTier MaxTier { get; private set; }
         public string Model { get; private set; }
 
+        // `effort` (low|medium|high); Unset when absent or unrecognized. See Agent.Effort.
+        public AgentEffort Effort { get; private set; }
+
         // Per-agent iteration budget (design A17); 0 => unset (host default). Negative/non-numeric ignored.
         public int MaxTurns { get; private set; }
 
@@ -36,6 +40,7 @@ namespace GxPT
             Body = string.Empty;
             Tools = null;
             MaxTier = AgentMaxTier.Write;     // default ceiling (design A5/sec.3)
+            Effort = AgentEffort.Unset;       // no effort hint unless declared
             MaxTurns = 0;                     // unset
         }
 
@@ -72,7 +77,7 @@ namespace GxPT
             }
 
             fm.HasFrontmatter = true;
-            bool toolsSet = false, tierSet = false;
+            bool toolsSet = false, tierSet = false, effortSet = false;
             for (int j = start; j < close; j++)
             {
                 string line = lines[j];
@@ -95,6 +100,11 @@ namespace GxPT
                 {
                     AgentMaxTier tier;
                     if (!tierSet && TryParseMaxTier(value, out tier)) { fm.MaxTier = tier; tierSet = true; }
+                }
+                else if (key == "effort")
+                {
+                    AgentEffort effort;
+                    if (!effortSet && TryParseEffort(value, out effort)) { fm.Effort = effort; effortSet = true; }
                 }
                 else if (key == "max_turns")
                 {
@@ -157,6 +167,26 @@ namespace GxPT
                     tier = AgentMaxTier.Write; return true;
                 case "destructive":
                     tier = AgentMaxTier.Destructive; return true;
+                default:
+                    return false;
+            }
+        }
+
+        // low | medium | high. Returns false for a blank/unrecognized value, so the caller keeps Unset
+        // (no effort hint) rather than rejecting the agent.
+        internal static bool TryParseEffort(string value, out AgentEffort effort)
+        {
+            effort = AgentEffort.Unset;
+            if (value == null) return false;
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "low":
+                    effort = AgentEffort.Low; return true;
+                case "medium":
+                case "med":
+                    effort = AgentEffort.Medium; return true;
+                case "high":
+                    effort = AgentEffort.High; return true;
                 default:
                     return false;
             }

@@ -55,6 +55,22 @@ namespace GxPT.Tests
         }
 
         [Fact]
+        public void EffortTierDefaults_SeededFromCatalog()
+        {
+            var d = SettingsSchema.BuildDefaults();
+            // Each agent effort tier seeds a concrete, in-catalog model so a fresh install resolves cleanly.
+            Assert.Equal(ModelDefaults.DefaultEffortLow, SettingsSchema.StringDefault("model_effort_low"));
+            Assert.Equal(ModelDefaults.DefaultEffortMedium, SettingsSchema.StringDefault("model_effort_medium"));
+            Assert.Equal(ModelDefaults.DefaultEffortHigh, SettingsSchema.StringDefault("model_effort_high"));
+            // Medium mirrors the overall default model.
+            Assert.Equal(ModelDefaults.DefaultModel, SettingsSchema.StringDefault("model_effort_medium"));
+            // The seeded tier models are part of the shipped catalog.
+            var models = new System.Collections.Generic.List<string>((string[])d["models"]);
+            Assert.Contains(ModelDefaults.DefaultEffortLow, models);
+            Assert.Contains(ModelDefaults.DefaultEffortHigh, models);
+        }
+
+        [Fact]
         public void NumericDefaults_AreSane()
         {
             Assert.Equal(40, SettingsSchema.DoubleDefault("mcp_memory_max_lines"));
