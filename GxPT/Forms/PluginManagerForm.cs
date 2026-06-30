@@ -99,6 +99,11 @@ namespace GxPT
             // docked to fill, so the area around the list takes the palette's panel
             // color (Sparkle blue-grey in dark mode) and blends with the chrome.
             KryptonPanel root = new KryptonPanel();
+            // Size the panel to the client area BEFORE adding the anchored children
+            // so their Anchor math is computed against the final size. Otherwise the
+            // bottom-anchored buttons land off-screen and the grid is mis-sized,
+            // because a freshly-created panel starts at its small default size.
+            root.Size = this.ClientSize;
             root.Dock = DockStyle.Fill;
             root.Controls.Add(_list);
             root.Controls.Add(install);
