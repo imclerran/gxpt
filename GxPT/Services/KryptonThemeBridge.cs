@@ -82,6 +82,24 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
         }
 
+        // Background for the StatusStrip. Krypton does not fill the StatusStrip's
+        // background itself (its BackColor shows through), so match it to the MENU
+        // bar's color - not the StatusStrip-specific palette color, which Sparkle
+        // renders near-black - so the top and bottom bars look alike.
+        public static Color StatusStripBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.ColorTable.MenuStripGradientBegin;
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
