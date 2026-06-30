@@ -13,11 +13,10 @@ namespace GxPT
     internal sealed class PluginManagerForm : KryptonForm
     {
         private readonly string _workingDir;
-        // A plain ListView: KryptonListView throws NotSupportedException for the
-        // Details (columned) view - Krypton only styles icon/list views and
-        // points columned lists at KryptonDataGridView. Rather than rewrite this
-        // to a grid, keep the ListView and theme its colors to match the palette.
-        private readonly ListView _list;
+        // KryptonDataGridView is Krypton's columned data control (KryptonListView
+        // can't do a Details/columns view). It themes fully - cells AND column
+        // headers - from the active palette. Used read-only, one row per plugin.
+        private readonly KryptonDataGridView _list;
         private readonly KryptonButton _toggle;
         private readonly KryptonButton _export;
         private readonly KryptonButton _uninstall;
@@ -41,31 +40,29 @@ namespace GxPT
             ClientSize = new Size(660, 360);
             MinimumSize = new Size(620, 300);
 
-            _list = new ListView();
+            _list = new KryptonDataGridView();
             _list.SetBounds(12, 12, 636, 302);
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
-            _list.MultiSelect = false;
-            _list.HideSelection = false;
-            _list.BorderStyle = BorderStyle.FixedSingle;
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            // KryptonListView can't do Details view, so colour the plain ListView
-            // to match the active Krypton palette (Sparkle blue-grey in dark mode),
-            // pulling the resolved chrome colors so it blends with the rest of the
-            // window rather than standing out as a black or white block.
-            try
-            {
-                _list.BackColor = KryptonThemeBridge.ResolvedControlBackColor();
-                _list.ForeColor = KryptonThemeBridge.ResolvedControlForeColor();
-            }
-            catch { }
-            _list.Columns.Add("Plugin", 200);
-            _list.Columns.Add("Version", 80);
-            _list.Columns.Add("State", 90);
-            _list.Columns.Add("Skills", 70);
-            _list.Columns.Add("Agents", 70);
-            _list.SelectedIndexChanged += new EventHandler(OnSelectionChanged);
-            _list.MouseDown += new MouseEventHandler(OnListMouseDown);
+            // Read-only, full-row single selection, no row-header gutter, and no
+            // user editing/adding - it's a display list, not an editable grid.
+            _list.ReadOnly = true;
+            _list.EditMode = DataGridViewEditMode.EditProgrammatically;
+            _list.AllowUserToAddRows = false;
+            _list.AllowUserToDeleteRows = false;
+            _list.AllowUserToResizeRows = false;
+            _list.AllowUserToOrderColumns = false;
+            _list.RowHeadersVisible = false;
+            _list.MultiSelect = false;
+            _list.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            _list.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            _list.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            AddColumn("Plugin", 200);
+            AddColumn("Version", 80);
+            AddColumn("State", 90);
+            AddColumn("Skills", 70);
+            AddColumn("Agents", 70);
+            _list.SelectionChanged += new EventHandler(OnSelectionChanged);
+            _list.CellMouseDown += new DataGridViewCellMouseEventHandler(OnGridCellMouseDown);
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
@@ -144,6 +141,18 @@ namespace GxPT
             return mi;
         }
 
+        // A fixed-width, read-only, non-sortable text column.
+        private void AddColumn(string header, int width)
+        {
+            KryptonDataGridViewTextBoxColumn col = new KryptonDataGridViewTextBoxColumn();
+            col.HeaderText = header;
+            col.Width = width;
+            col.ReadOnly = true;
+            col.SortMode = DataGridViewColumnSortMode.NotSortable;
+            col.Resizable = DataGridViewTriState.True;
+            _list.Columns.Add(col);
+        }
+
         // Reads the registry fresh and repopulates the list, preserving no transient UI state but the
         // current selection's plugin name where possible.
         private void Reload()
@@ -152,10 +161,10 @@ namespace GxPT
             PluginManifest sel = Selected();
             if (sel != null) keep = sel.Name;
 
-            _list.BeginUpdate();
+            _list.SuspendLayout();
             try
             {
-                _list.Items.Clear();
+                _list.Rows.Clear();
                 System.Collections.Generic.IList<PluginManifest> plugins =
                     new PluginRegistry(PluginRoots.UserRoot()).ListInstalled();
                 for (int i = 0; i < plugins.Count; i++)
@@ -163,29 +172,47 @@ namespace GxPT
                     PluginManifest m = plugins[i];
                     // Show the plugin's original name (e.g. "TPRM"); the slug is its on-disk identity, not
                     // its label.
-                    ListViewItem lvi = new ListViewItem(m.Name);
-                    lvi.SubItems.Add(m.Version ?? string.Empty);
-                    lvi.SubItems.Add(m.Enabled ? "Enabled" : "Disabled");
-                    lvi.SubItems.Add(m.Skills.Count.ToString());
-                    lvi.SubItems.Add(m.Agents.Count.ToString());
-                    lvi.Tag = m;
-                    if (keep != null && string.Equals(m.Name, keep, StringComparison.OrdinalIgnoreCase))
-                        lvi.Selected = true;
-                    _list.Items.Add(lvi);
+                    int idx = _list.Rows.Add(
+                        m.Name,
+                        m.Version ?? string.Empty,
+                        m.Enabled ? "Enabled" : "Disabled",
+                        m.Skills.Count.ToString(),
+                        m.Agents.Count.ToString());
+                    _list.Rows[idx].Tag = m;
                 }
             }
-            finally { _list.EndUpdate(); }
+            finally { _list.ResumeLayout(); }
+
+            // DataGridView auto-selects the first row; clear that, then restore the
+            // prior selection by plugin name if it still exists (matching the old
+            // ListView's "no selection unless restored" behavior).
+            _list.ClearSelection();
+            if (keep != null)
+            {
+                for (int i = 0; i < _list.Rows.Count; i++)
+                {
+                    PluginManifest m = _list.Rows[i].Tag as PluginManifest;
+                    if (m != null && string.Equals(m.Name, keep, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _list.Rows[i].Selected = true;
+                        break;
+                    }
+                }
+            }
             UpdateButtons();
         }
 
         private PluginManifest Selected()
         {
-            if (_list == null || _list.SelectedItems.Count == 0) return null;
-            return _list.SelectedItems[0].Tag as PluginManifest;
+            if (_list == null || _list.SelectedRows.Count == 0) return null;
+            return _list.SelectedRows[0].Tag as PluginManifest;
         }
 
         private void UpdateButtons()
         {
+            // DataGridView can raise SelectionChanged during construction, before
+            // the action buttons exist; ignore until they're wired up.
+            if (_toggle == null) return;
             PluginManifest m = Selected();
             bool has = m != null;
             // The toggle reads the action it will perform on the selection: "Disable" an enabled plugin,
@@ -199,12 +226,16 @@ namespace GxPT
 
         private void OnSelectionChanged(object sender, EventArgs e) { UpdateButtons(); }
 
-        // Right-clicking selects the row under the cursor so the context menu acts on it.
-        private void OnListMouseDown(object sender, MouseEventArgs e)
+        // Right-clicking a row selects it so the context menu acts on it. (The grid
+        // selects on left-click already, but not on right-click.)
+        private void OnGridCellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right) return;
-            ListViewItem hit = _list.GetItemAt(e.X, e.Y);
-            if (hit != null) hit.Selected = true;
+            if (e.RowIndex < 0 || e.RowIndex >= _list.Rows.Count) return;
+            _list.ClearSelection();
+            _list.Rows[e.RowIndex].Selected = true;
+            try { _list.CurrentCell = _list.Rows[e.RowIndex].Cells[0]; }
+            catch { }
         }
 
         private void OnMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
