@@ -46,6 +46,10 @@ namespace GxPT
             // Read-only, full-row single selection, no row-header gutter, and no
             // user editing/adding - it's a display list, not an editable grid.
             _list.ReadOnly = true;
+            // Let Krypton paint the column headers from the palette (Sparkle
+            // blue-grey) instead of the OS visual style, which otherwise leaves a
+            // light-grey header strip that ignores the theme.
+            _list.EnableHeadersVisualStyles = false;
             _list.EditMode = DataGridViewEditMode.EditProgrammatically;
             _list.AllowUserToAddRows = false;
             _list.AllowUserToDeleteRows = false;
