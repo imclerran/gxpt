@@ -59,6 +59,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>lib\itextsharp.dll</HintPath>
     </Reference>
+    <Reference Include="Krypton.Toolkit">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Krypton.Toolkit.dll</HintPath>
+    </Reference>
     <Reference Include="Newtonsoft.Json">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\src\Mcp35.Core\lib\Newtonsoft.Json.dll</HintPath>
@@ -303,6 +307,7 @@
     <Compile Include="Managers\ThemeManager.cs" />
     <Compile Include="Services\TextFileAttachmentExtractor.cs" />
     <Compile Include="Services\ThemeService.cs" />
+    <Compile Include="Services\KryptonThemeBridge.cs" />
     <Compile Include="Utilities\FileSafe.cs" />
     <Compile Include="Utilities\ZipSafe.cs" />
   </ItemGroup>

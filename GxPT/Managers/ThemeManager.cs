@@ -132,6 +132,13 @@ namespace GxPT
 
         public void ApplyThemeToAllTranscripts()
         {
+            // Swap the Krypton global palette so all window chrome (forms,
+            // buttons, inputs, headers, menu/status strips) re-themes in lockstep
+            // with the transcript. Safe and self-contained: failures here never
+            // affect the transcript theming below.
+            try { KryptonThemeBridge.Apply(); }
+            catch { }
+
             try
             {
                 if (_primaryTranscript != null)

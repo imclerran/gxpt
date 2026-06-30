@@ -1,6 +1,7 @@
 # Krypton Chrome Theming — Design
 
-**Status:** Proposed (design only; no code yet).
+**Status:** In progress — DLL referenced; `KryptonThemeBridge` wired into the
+theme-apply path. Form/control migration to `Krypton*` is the remaining work.
 **Last updated:** 2026-06-30
 
 This note describes adopting the **Krypton Toolkit** as the engine for *window
@@ -183,20 +184,30 @@ Catppuccin   = (mode == Dark) ? Macchiato : Latte     # already keyed on dark
 
 The transcript intake and syntax path **do not change**. Work concentrates in:
 
-1. **`Services/ThemeService.cs`** — extend the theme model with an accent seed +
-   per-mode base-palette id; add `BuildKryptonPalette(accent, mode)`. Keep the
-   existing `ThemeColors`/`Get(dark)` as-is.
-2. **New `Services/KryptonThemeBridge.cs`** — on theme/dark change, set
-   `KryptonManager.GlobalPalette` + `GlobalPaletteMode = Custom`.
-3. **`Managers/ThemeManager.cs`** — fold the Krypton global swap into the
-   existing `ApplyThemeToAllTranscripts` path so one call updates chrome +
-   transcript together. **Unify the two settings keys** (`theme` + `color_theme`)
-   into the single `(accent, mode)` switch.
-4. **Forms** — migrate `Form` → `KryptonForm` and stock controls → `Krypton*`
+1. ✅ **New `Services/KryptonThemeBridge.cs`** — generates a `KryptonPalette` for
+   `(accent, mode)` and applies it via `KryptonManager.GlobalPalette` +
+   `GlobalPaletteMode = Custom` + `GlobalApplyToolstrips = true`. The dark-mode
+   neutral backdrop is pulled straight from `ThemeService.GetColors(true)` so
+   chrome and transcript share the exact same background — no new color
+   authoring. Accent seeds (blue/red/orange) are injected into button + header
+   style groups. Base mode: `VisualStudioDark` (dark) / `Office2007Blue` (light).
+2. ✅ **`Managers/ThemeManager.cs`** — `ApplyThemeToAllTranscripts` now calls
+   `KryptonThemeBridge.Apply()` first, so the one existing apply path (startup +
+   every theme change) updates chrome + transcript together. The bridge reads the
+   existing `theme` + `color_theme` settings directly, so **no settings-schema
+   change** was needed yet; unifying the two keys into a single `(accent, mode)`
+   switch can follow when the picker UI is reworked.
+3. ⏳ **Forms** — migrate `Form` → `KryptonForm` and stock controls → `Krypton*`
    incrementally, leaf dialog first (About or FileViewer), MainForm chrome last.
-   `KryptonStatusStrip`'s renderer can retire `SafeToolStripRenderer` /
-   `StatusStripTooltipFix`. Custom `ToolStripItem`s (`ContextMeterItem`,
-   `StopGenerationItem`) keep working; point their paint at the active palette.
+   Until this happens, only the stock `MenuStrip`/`StatusStrip` re-theme (via
+   `GlobalApplyToolstrips`); other stock controls stay system-drawn. Once forms
+   migrate, `SafeToolStripRenderer` / `StatusStripTooltipFix` can retire. Custom
+   `ToolStripItem`s (`ContextMeterItem`, `StopGenerationItem`) keep working; point
+   their paint at the active palette.
+
+> **`ThemeService` extension not needed for v1.** The generator lives entirely in
+> `KryptonThemeBridge` and reuses `ThemeService.GetColors(dark)` for neutrals, so
+> `ThemeService` itself is untouched. A future richer accent model can move there.
 
 Unchanged: `ChatTranscriptControl.ApplyThemeFromSettings`, the derived
 error/diff colors, `SyntaxHighlighter`.
