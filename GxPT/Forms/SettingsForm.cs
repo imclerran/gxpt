@@ -519,12 +519,19 @@ namespace GxPT
         {
             if (_isSyncing) return;
 
+            // A tab switch runs a sync (regenerate the JSON view, realize the page's controls) that
+            // isn't a user edit. If nothing was edited before the switch, fold the resulting derived /
+            // realize-time values into the baseline once the new page settles so Apply stays disabled;
+            // if edits were already pending, leave the dirty state untouched.
+            bool wasDirty = _isDirty;
+
             // The MCP tab edits mcp.json + its own settings; it is independent of the settings.json
             // visual/JSON sync. Just (re)highlight its editor on entry.
             if (this.tabControl1.SelectedPage == this.tabMcp)
             {
                 try { BeginInvoke(new Action(HighlightMcpJsonNow)); }
                 catch { /* ignore */ }
+                RebaselineIfClean(wasDirty);
                 return;
             }
 
@@ -606,6 +613,20 @@ namespace GxPT
                 try { BeginInvoke(new Action(HighlightJsonNow)); }
                 catch { /* ignore */ }
             }
+
+            RebaselineIfClean(wasDirty);
+        }
+
+        // After a tab switch that wasn't preceded by edits, the values the sync produced (regenerated
+        // JSON text, RichTextBox handle-creation reformatting, Krypton controls realized for the first
+        // time) are not user edits - so recapture the baseline once the new page has settled, leaving
+        // Apply disabled. If edits were already pending, keep the dirty state as-is. Deferred via
+        // BeginInvoke so it runs after the realize/highlight events for the new page have flushed.
+        private void RebaselineIfClean(bool wasDirty)
+        {
+            if (wasDirty) return;
+            try { BeginInvoke((MethodInvoker)delegate { ResetDirtyBaseline(); }); }
+            catch { }
         }
 
         // --- Serialization helpers (JavaScriptSerializer for .NET 3.5) ---
