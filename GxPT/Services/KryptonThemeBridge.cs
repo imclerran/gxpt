@@ -154,6 +154,25 @@ namespace GxPT
                 Color disabledText = Color.FromArgb(0x80, 0x88, 0x92);
                 SetTripleFace(palette.ButtonStyles.ButtonStandalone.StateDisabled, disabledBack, disabledBack, disabledText);
             }
+            else
+            {
+                // In stock Office 2007 the form caption/border renders a touch darker
+                // than the MenuStrip, so the title bar doesn't match the menu bar.
+                // Align the form chrome to the menu color so the two read as one bar
+                // (the Krypton sample apps don't show this split).
+                try
+                {
+                    Color chrome = palette.ColorTable.MenuStripGradientBegin;
+                    if (!chrome.IsEmpty && chrome.A != 0)
+                    {
+                        try { palette.FormStyles.FormMain.StateActive.Back.Color1 = chrome; } catch { }
+                        try { palette.FormStyles.FormMain.StateActive.Back.Color2 = chrome; } catch { }
+                        try { palette.FormStyles.FormMain.StateInactive.Back.Color1 = chrome; } catch { }
+                        try { palette.FormStyles.FormMain.StateInactive.Back.Color2 = chrome; } catch { }
+                    }
+                }
+                catch { }
+            }
         }
 
         // The Sparkle palette variant for the chosen accent color. Sparkle ships
