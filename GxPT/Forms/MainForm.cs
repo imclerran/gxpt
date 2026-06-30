@@ -6202,6 +6202,9 @@ namespace GxPT
                 // read on the strip; the Saved label keeps its own red/green/default.
                 this.ssMain.BackColor = KryptonThemeBridge.StatusStripBackColor();
                 this.ssMain.ForeColor = KryptonThemeBridge.StatusStripTextColor();
+                // The owner-drawn context meter resolves its colors per-paint, so
+                // force it to repaint when the theme changes.
+                if (this.tspContextMeter != null) this.tspContextMeter.Invalidate();
                 SyncUsageStatusFromActiveTab();
             }
             catch { }
@@ -6382,10 +6385,14 @@ namespace GxPT
             if (this.tslSavedValue != null)
             {
                 this.tslSavedValue.Text = FormatMoney(s.TotalCacheDiscount);
-                // Green = savings, Firebrick = surcharge, otherwise the themed status
-                // text color (not ControlText, which is unreadable on the dark strip).
-                this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? Color.Green
-                    : (s.TotalCacheDiscount < 0 ? Color.Firebrick : KryptonThemeBridge.StatusStripTextColor());
+                // Green = savings, red = surcharge, otherwise the themed status text
+                // color. In dark mode use brighter green/red so they stand out on the
+                // dark strip (the standard Green/Firebrick are too low-contrast there).
+                bool darkStrip = KryptonThemeBridge.IsDarkMode();
+                Color savePos = darkStrip ? Color.FromArgb(0x5C, 0xD6, 0x79) : Color.Green;
+                Color saveNeg = darkStrip ? Color.FromArgb(0xFF, 0x6B, 0x6B) : Color.Firebrick;
+                this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? savePos
+                    : (s.TotalCacheDiscount < 0 ? saveNeg : KryptonThemeBridge.StatusStripTextColor());
             }
 
             string breakdown = BuildUsageTooltip(s, haveMax ? maxContext : 0);
