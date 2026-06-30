@@ -256,8 +256,8 @@ namespace GxPT
         // (CaptionOverlap = 0.5): half the text sits on the group panel, half on
         // whatever is behind the group box. That is fine when both surfaces share a
         // color, but here the group panel is dark while the navigator page behind it
-        // is light, so the half that spills above the border is unreadable. Pushing
-        // the overlap to 1.0 seats the caption entirely within the group area, on the
+        // is light, so the half that spills above the border is unreadable. Dropping
+        // the overlap to 0.0 seats the caption entirely within the group area, on the
         // (dark) panel, so it reads cleanly. Krypton still picks the caption text
         // color from the palette, so this works in light mode too.
         public static void SeatGroupBoxCaptions(Control root)
@@ -268,7 +268,7 @@ namespace GxPT
                 try
                 {
                     KryptonGroupBox gb = c as KryptonGroupBox;
-                    if (gb != null) gb.CaptionOverlap = 1.0;
+                    if (gb != null) gb.CaptionOverlap = 0.0;
                 }
                 catch { }
                 if (c.Controls.Count > 0) SeatGroupBoxCaptions(c);

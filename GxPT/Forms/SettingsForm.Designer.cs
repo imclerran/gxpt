@@ -972,7 +972,7 @@
             // chkAgents
             //
             this.chkAgents.AutoSize = true;
-            this.chkAgents.Location = new System.Drawing.Point(9, 20);
+            this.chkAgents.Location = new System.Drawing.Point(6, 4);
             this.chkAgents.Name = "chkAgents";
             this.chkAgents.Size = new System.Drawing.Size(320, 17);
             this.chkAgents.TabIndex = 0;
