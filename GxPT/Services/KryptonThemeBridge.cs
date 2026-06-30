@@ -122,8 +122,12 @@ namespace GxPT
             }
 
             // --- Accent ---------------------------------------------------------
-            // Standalone buttons take the accent face across their states.
-            ApplyButtonAccent(palette.ButtonStyles.ButtonStandalone, accent);
+            // Standalone buttons stay neutral (inherit the base palette). The
+            // accent lives on a dedicated "primary" button style - Custom1 -
+            // that a button opts into via ButtonStyle = ButtonStyle.Custom1.
+            // This keeps button-dense dialogs calm while still letting key
+            // affordances carry the theme color.
+            ApplyButtonAccent(palette.ButtonStyles.ButtonCustom1, accent);
 
             // Headers (group/header captions) get a muted accent fill.
             ApplyHeaderAccent(palette.HeaderStyles.HeaderPrimary, accent);

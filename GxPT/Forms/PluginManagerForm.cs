@@ -54,7 +54,10 @@ namespace GxPT
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
+            // Install is the dialog's primary affordance, so it carries the accent (Custom1); the rest
+            // stay neutral.
             KryptonButton install = MakeButton("&Install...", 12, OnInstall);
+            install.ButtonStyle = ButtonStyle.Custom1;
             KryptonButton newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
             // Per-row actions, set off from the global group by a wider gap. The toggle reads "Enable" or
