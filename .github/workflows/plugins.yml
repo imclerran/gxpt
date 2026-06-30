@@ -1,0 +1,47 @@
+name: Build plugins
+
+# Rebuilds the .gxpl archives + docs/plugins/index.json whenever a plugin source
+# changes, and commits the regenerated artifacts back to the branch as a single
+# VERIFIED commit (via the GitHub API - see plugins/ci-commit-signed.sh).
+#
+# Note: this commits to the default branch. If that branch has protection rules
+# that block the Actions token from pushing, either allow the github-actions bot
+# or route this through a PR instead.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - '.github/workflows/plugins.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-plugins
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin archives + index
+        run: bash plugins/build-plugins.sh
+
+      - name: Commit regenerated artifacts (signed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          changed="$(git status --porcelain -- docs/plugins | awk '{print $2}')"
+          if [ -z "$changed" ]; then
+            echo "No plugin artifact changes."
+            exit 0
+          fi
+          echo "Changed: $changed"
+          bash plugins/ci-commit-signed.sh "${GITHUB_REF_NAME}" \
+            "Rebuild plugin archives [skip ci]" $changed
