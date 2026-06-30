@@ -13,7 +13,11 @@ namespace GxPT
     internal sealed class PluginManagerForm : KryptonForm
     {
         private readonly string _workingDir;
-        private readonly KryptonListView _list;
+        // A plain ListView: KryptonListView throws NotSupportedException for the
+        // Details (columned) view - Krypton only styles icon/list views and
+        // points columned lists at KryptonDataGridView. Rather than rewrite this
+        // to a grid, keep the ListView and theme its colors to match the palette.
+        private readonly ListView _list;
         private readonly KryptonButton _toggle;
         private readonly KryptonButton _export;
         private readonly KryptonButton _uninstall;
@@ -37,13 +41,26 @@ namespace GxPT
             ClientSize = new Size(660, 360);
             MinimumSize = new Size(620, 300);
 
-            _list = new KryptonListView();
+            _list = new ListView();
             _list.SetBounds(12, 12, 636, 302);
             _list.View = View.Details;
             _list.FullRowSelect = true;
             _list.MultiSelect = false;
             _list.HideSelection = false;
+            _list.BorderStyle = BorderStyle.FixedSingle;
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            // KryptonListView can't do Details view, so colour the plain ListView
+            // to match the active palette (dark backdrop in dark mode).
+            try
+            {
+                string theme = AppSettings.GetString("theme");
+                bool dark = !string.IsNullOrEmpty(theme) &&
+                            theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+                ThemeColors tc = ThemeService.GetColors(dark);
+                _list.BackColor = tc.UiBackground;
+                _list.ForeColor = tc.UiForeground;
+            }
+            catch { }
             _list.Columns.Add("Plugin", 200);
             _list.Columns.Add("Version", 80);
             _list.Columns.Add("State", 90);

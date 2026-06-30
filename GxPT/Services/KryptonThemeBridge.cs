@@ -67,6 +67,11 @@ namespace GxPT
                 _manager.GlobalPaletteMode = PaletteModeManager.Custom;
                 // Let Krypton color the stock MenuStrip / StatusStrip / ToolStrip
                 // too, so we don't have to replace them with Krypton equivalents.
+                // Toggle off->on to force the shared ToolStripManager renderer to
+                // rebuild from the new palette: simply swapping GlobalPalette does
+                // not always refresh it, which left the strips stuck on the first
+                // palette's colors (blue) when toggling dark mode.
+                _manager.GlobalApplyToolstrips = false;
                 _manager.GlobalApplyToolstrips = true;
 
                 // Dispose the previously-installed palette only after the new one
@@ -87,15 +92,10 @@ namespace GxPT
 
             var palette = new KryptonPalette();
             palette.BasePaletteMode = dark ? PaletteMode.VisualStudioDark : PaletteMode.Office2007Blue;
-
-            // Bake the base palette's concrete values (crucially, the MenuStrip/
-            // StatusStrip ColorTable) into this palette. Setting BasePaletteMode
-            // alone leaves the toolstrip color table at its blue default, so the
-            // strips look the same in light and dark; populating from the base
-            // gives them the real dark (VisualStudio) or light (Office) colors.
-            // silent: true suppresses any progress UI.
-            try { palette.PopulateFromBase(true); }
-            catch { }
+            // Unset slots inherit from the base mode at runtime; we only override
+            // the slots we care about below. (PopulateFromBase was tried here but
+            // did not yield dark toolstrips - the strips are handled explicitly
+            // via ApplyDarkToolStrips instead.)
 
             // --- Neutrals -------------------------------------------------------
             // In dark mode we override the base neutrals to exactly match the
@@ -119,6 +119,11 @@ namespace GxPT
                 // Input controls (text boxes, combos): raised field over the bg.
                 ApplyInputBack(palette.InputControlStyles.InputControlCommon, field, fg, fieldBorder);
                 ApplyInputBack(palette.InputControlStyles.InputControlStandalone, field, fg, fieldBorder);
+
+                // Stock MenuStrip / StatusStrip / ToolStrip + dropdown menus. The
+                // base palette's toolstrip colors don't go dark on their own, so
+                // set them explicitly here.
+                ApplyDarkToolStrips(palette, tc, accent);
             }
 
             // --- Accent ---------------------------------------------------------
@@ -178,6 +183,50 @@ namespace GxPT
             SetTripleFace(button.StateNormal, a.Normal, a.Normal, a.OnAccent);
             SetTripleFace(button.StateTracking, a.Track, a.Track, a.OnAccent);
             SetTripleFace(button.StatePressed, a.Pressed, a.Pressed, a.OnAccent);
+        }
+
+        // Explicit dark colors for the stock toolstrips and dropdown menus.
+        // The base palette doesn't supply dark toolstrip colors, so set the
+        // ProfessionalColorTable-style gradients/text directly.
+        private static void ApplyDarkToolStrips(KryptonPalette palette, ThemeColors tc, AccentSeed accent)
+        {
+            if (palette == null) return;
+            Color bg = tc.UiBackground;          // strip backdrop (#242424 family)
+            Color raised = tc.InlineCodeBack;    // menu image-margin column
+            Color text = tc.UiForeground;        // strip / item text
+            Color border = tc.CodeBorder;        // strip + menu border
+
+            KryptonPaletteTMS tms = palette.ToolMenuStatus;
+            if (tms == null) return;
+
+            // Top menu bar.
+            try { tms.MenuStrip.MenuStripGradientBegin = bg; } catch { }
+            try { tms.MenuStrip.MenuStripGradientEnd = bg; } catch { }
+            try { tms.MenuStrip.MenuStripText = text; } catch { }
+
+            // Status bar.
+            try { tms.StatusStrip.StatusStripGradientBegin = bg; } catch { }
+            try { tms.StatusStrip.StatusStripGradientEnd = bg; } catch { }
+            try { tms.StatusStrip.StatusStripText = text; } catch { }
+
+            // Tool strips + the body of drop-down menus.
+            try { tms.ToolStrip.ToolStripGradientBegin = bg; } catch { }
+            try { tms.ToolStrip.ToolStripGradientMiddle = bg; } catch { }
+            try { tms.ToolStrip.ToolStripGradientEnd = bg; } catch { }
+            try { tms.ToolStrip.ToolStripText = text; } catch { }
+            try { tms.ToolStrip.ToolStripBorder = border; } catch { }
+            try { tms.ToolStrip.ToolStripDropDownBackground = bg; } catch { }
+
+            // Drop-down menu items: margin column, text, border, and the
+            // accent-colored selection highlight.
+            try { tms.Menu.ImageMarginGradientBegin = raised; } catch { }
+            try { tms.Menu.ImageMarginGradientMiddle = raised; } catch { }
+            try { tms.Menu.ImageMarginGradientEnd = raised; } catch { }
+            try { tms.Menu.MenuItemText = text; } catch { }
+            try { tms.Menu.MenuBorder = border; } catch { }
+            try { tms.Menu.MenuItemSelected = accent.Normal; } catch { }
+            try { tms.Menu.MenuItemSelectedGradientBegin = accent.Normal; } catch { }
+            try { tms.Menu.MenuItemSelectedGradientEnd = accent.Pressed; } catch { }
         }
 
         private static void ApplyHeaderAccent(KryptonPaletteHeader header, AccentSeed a)
