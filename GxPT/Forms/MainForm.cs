@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using GxPT;
+using Krypton.Toolkit;
 using System.IO;
 using Ionic.Zip;
 using System.Reflection;
@@ -15,7 +16,7 @@ using Parser = iTextSharp.text.pdf.parser;
 
 namespace GxPT
 {
-    public partial class MainForm : Form
+    public partial class MainForm : KryptonForm
     {
         private OpenRouterClient _client;
         private McpHost _mcpHost;
@@ -6194,10 +6195,15 @@ namespace GxPT
             try
             {
                 if (this.ssMain == null) return;
-                this.ssMain.BackColor = SystemColors.Control;
-                this.ssMain.ForeColor = SystemColors.ControlText;
+                // Match the strip + its labels to Krypton's themed status strip
+                // (Sparkle blue-grey in dark mode) instead of forcing system colors,
+                // which used to override the theme and leave a light bar.
+                Color back = KryptonThemeBridge.StatusStripBackColor();
+                Color text = KryptonThemeBridge.StatusStripTextColor();
+                this.ssMain.BackColor = back;
+                this.ssMain.ForeColor = text;
                 foreach (ToolStripItem it in this.ssMain.Items)
-                    it.ForeColor = SystemColors.ControlText;
+                    it.ForeColor = text;
                 SyncUsageStatusFromActiveTab();
             }
             catch { }

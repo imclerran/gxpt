@@ -66,6 +66,38 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50);
         }
 
+        // The color Krypton uses to draw StatusStrip text, for status-bar labels
+        // and custom owner-drawn status items so they read on the themed strip.
+        public static Color StatusStripTextColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.ColorTable.StatusStripText;
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
+        }
+
+        // The StatusStrip background color from the palette (so the strip's BackColor
+        // matches Krypton's rendered gradient rather than a forced system color).
+        public static Color StatusStripBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.ColorTable.StatusStripGradientEnd;
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0x4A, 0x55, 0x62) : SystemColors.Control;
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
