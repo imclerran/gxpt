@@ -52,50 +52,47 @@ namespace GxPT
 
         public static void Apply(string accentId, bool dark)
         {
-            KryptonPalette palette = Build(accentId, dark);
-            if (palette == null) return;
-
             lock (_lock)
             {
-                KryptonPalette old = _palette;
-                _palette = palette;
-
-                // KryptonManager's Global* members are instance properties that
-                // drive shared global state; a single shared instance suffices.
+                // Reuse one persistent palette + manager for the whole app life.
+                // Re-theming mutates this same instance rather than swapping in a
+                // new one: swapping (and disposing the old) left the stock
+                // toolstrips stuck on the first palette's colors after a toggle.
                 if (_manager == null) _manager = new KryptonManager();
-                _manager.GlobalPalette = palette;
-                _manager.GlobalPaletteMode = PaletteModeManager.Custom;
-                // Let Krypton color the stock MenuStrip / StatusStrip / ToolStrip
-                // too, so we don't have to replace them with Krypton equivalents.
-                // Toggle off->on to force the shared ToolStripManager renderer to
-                // rebuild from the new palette: simply swapping GlobalPalette does
-                // not always refresh it, which left the strips stuck on the first
-                // palette's colors (blue) when toggling dark mode.
+                bool first = (_palette == null);
+                if (_palette == null) _palette = new KryptonPalette();
+
+                Configure(_palette, accentId, dark);
+
+                if (first)
+                {
+                    _manager.GlobalPalette = _palette;
+                    _manager.GlobalPaletteMode = PaletteModeManager.Custom;
+                }
+
+                // Krypton controls repaint from the palette's own change events,
+                // but the shared stock-toolstrip renderer only rebuilds when
+                // GlobalApplyToolstrips transitions - an in-place palette mutation
+                // raises no GlobalPaletteChanged. Toggle off->on to force the
+                // MenuStrip / StatusStrip / ToolStrip renderer to rebuild from the
+                // freshly reconfigured palette every time.
                 _manager.GlobalApplyToolstrips = false;
                 _manager.GlobalApplyToolstrips = true;
-
-                // Dispose the previously-installed palette only after the new one
-                // is live, so controls never observe a null/disposed palette.
-                if (old != null && !ReferenceEquals(old, palette))
-                {
-                    try { old.Dispose(); }
-                    catch { }
-                }
             }
         }
 
-        // Build a custom KryptonPalette for the given (accent, mode).
-        private static KryptonPalette Build(string accentId, bool dark)
+        // Reconfigure the persistent palette in place for the given (accent, mode).
+        private static void Configure(KryptonPalette palette, string accentId, bool dark)
         {
             ThemeColors tc = ThemeService.GetColors(dark);
             AccentSeed accent = GetAccent(accentId);
 
-            var palette = new KryptonPalette();
-            palette.BasePaletteMode = dark ? PaletteMode.VisualStudioDark : PaletteMode.Office2007Blue;
-            // Unset slots inherit from the base mode at runtime; we only override
-            // the slots we care about below. (PopulateFromBase was tried here but
-            // did not yield dark toolstrips - the strips are handled explicitly
-            // via ApplyDarkToolStrips instead.)
+            // Clear any prior-mode overrides so light/dark don't bleed together,
+            // then re-base. Dark uses the Sparkle renderer (recolors uniformly,
+            // the better dark base); light keeps the period Office 2007 look.
+            try { palette.ResetToDefaults(true); }
+            catch { }
+            palette.BasePaletteMode = dark ? PaletteMode.SparkleBlue : PaletteMode.Office2007Blue;
 
             // --- Neutrals -------------------------------------------------------
             // In dark mode we override the base neutrals to exactly match the
@@ -136,8 +133,6 @@ namespace GxPT
 
             // Headers (group/header captions) get a muted accent fill.
             ApplyHeaderAccent(palette.HeaderStyles.HeaderPrimary, accent);
-
-            return palette;
         }
 
         // --- Style-group helpers (all paths verified against Krypton.Toolkit.xml) ---
