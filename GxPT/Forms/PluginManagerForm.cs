@@ -69,6 +69,9 @@ namespace GxPT
             AddColumn("State", 90);
             AddColumn("Skills", 70);
             AddColumn("Agents", 70);
+            // Let the name column absorb any leftover width so the columns fill the
+            // grid horizontally without the user having to drag them.
+            _list.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
             _list.SelectionChanged += new EventHandler(OnSelectionChanged);
             _list.CellMouseDown += new DataGridViewCellMouseEventHandler(OnGridCellMouseDown);
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
