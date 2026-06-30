@@ -131,6 +131,9 @@
     <Compile Include="..\src\Mcp35.Client\**\*.cs"
              Exclude="..\src\Mcp35.Client\Properties\**\*.cs;..\src\Mcp35.Client\obj\**\*.cs;..\src\Mcp35.Client\bin\**\*.cs"
              Link="Linked\Mcp35.Client\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Just the GxPT-specific _meta key the orchestrator injects (BuildCallMeta). CwdScope is NOT
+         linked here: it depends on Mcp35.Server (ToolCallContext), which the host side never references. -->
+    <Compile Include="..\src\Gxpt.Mcp.Conventions\GxptMeta.cs" Link="Linked\Conventions\GxptMeta.cs" />
   </ItemGroup>
 
   <!-- The vendored DotNetZip the app ships with, plus the framework assembly that

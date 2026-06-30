@@ -1,4 +1,5 @@
 using System;
+using Gxpt.Mcp.Conventions;
 using Mcp35.Core.Protocol;
 using Mcp35.Server;
 using Mcp35.Server.Process;
@@ -41,6 +42,15 @@ namespace CommandMcpServer
 
             int timeout = CommandToolHelpers.IntArg(ctx.Arguments, "timeout_ms", DefaultTimeoutMs, 1, MaxTimeoutMs);
 
+            // The child runs in the conversation's CURRENT directory (host `cd`, carried out-of-band in
+            // params._meta), re-validated against the launch workspace. Command has no path sandbox by
+            // design (the "sharpest edge," contained by the approval gate) — `cd` only moves where the
+            // child runs, it does not sandbox it. Absent a current dir => the workspace root, as before.
+            string workDir;
+            string cwdErr;
+            if (!CwdScope.TryResolveWorkingDir(ctx, config.WorkDir, "workspace root", out workDir, out cwdErr))
+                return ToolResults.Error(cwdErr);
+
             ProcessRequest req = new ProcessRequest();
             req.FileName = config.Shell;
             // Hand the command to the shell as written; the shell (not this server) parses it.
@@ -54,7 +64,7 @@ namespace CommandMcpServer
             // corrupting it (the "quote stripping" failure on commands like
             // `"C:\Program Files\...\ssh-keygen.exe" -f "C:\path" -N ""`).
             req.Arguments = "/s /c \"" + command + "\"";
-            req.WorkingDirectory = config.WorkDir;
+            req.WorkingDirectory = workDir;
             req.TimeoutMs = timeout;
 
             ProcessResult result;

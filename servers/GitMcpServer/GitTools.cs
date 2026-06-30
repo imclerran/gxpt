@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Gxpt.Mcp.Conventions;
 using Mcp35.Core.Protocol;
 using Mcp35.Core.Security;
 using Mcp35.Server;
@@ -23,7 +24,8 @@ namespace GitMcpServer
     ///   - merge/cherry-pick pass --no-edit so git never blocks on an editor.
     ///
     /// Worktrees: the <c>worktree</c> tool creates linked working trees as subdirectories of the
-    /// workspace root (confined by PathSandbox), and every tool accepts an optional <c>cwd</c>
+    /// workspace root (confined by PathSandbox), conventionally under <c>.worktrees/</c>, and every
+    /// tool accepts an optional <c>cwd</c>
     /// argument naming the subdirectory git should run in. Together these let the model carve out a
     /// worktree and then drive its whole git workflow inside it — still inside the sandbox, since a
     /// <c>cwd</c> that resolved outside GXPT_WORKDIR is rejected (servers-spec §2).
@@ -141,10 +143,10 @@ namespace GitMcpServer
                 ToolAnnotations.Write(),
                 delegate(ToolCallContext ctx) { return Branch(config, runner, sandbox, ctx); });
 
-            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees live in a subdirectory of the workspace root.",
+            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees live in a subdirectory of the workspace root; by convention place them under .worktrees/ (e.g. .worktrees/feat).",
                 SchemaBuilder.Object()
                     .Str("action", false, "list | add | remove | prune (default: list)")
-                    .Str("path", false, "Worktree directory, relative to the workspace root (required for add/remove)")
+                    .Str("path", false, "Worktree directory, relative to the workspace root (required for add/remove). Prefer .worktrees/<name> (e.g. .worktrees/feat) to keep worktrees in one tidy, dotfile-hidden location.")
                     .Str("ref", false, "Commit/branch to check out in the new worktree (action=add)")
                     .Str("branch", false, "Create a new branch with this name in the new worktree (action=add, git worktree add -b)")
                     .Bool("force", false, "Force the operation (action=add/remove)")
@@ -413,6 +415,15 @@ namespace GitMcpServer
         {
             string action = StrArg(ctx, "action", "list").ToLowerInvariant();
 
+            // Worktree paths resolve against the conversation's CURRENT directory (host `cd`), the same
+            // root git runs in for this call — so the typical flow is `cd` to the anchor, then add. The
+            // current dir is re-validated against the launch anchor; outside/removed => rejected.
+            string currentRoot;
+            PathSandbox currentSandbox;
+            string cwdErr;
+            if (!CwdScope.TryResolve(ctx, config.WorkDir, "workspace root", out currentRoot, out currentSandbox, out cwdErr))
+                return ToolResults.Error(cwdErr);
+
             List<string> args = new List<string>();
             args.Add("worktree");
             switch (action)
@@ -424,7 +435,7 @@ namespace GitMcpServer
                 case "add":
                 {
                     string addPath;
-                    CallToolResult err = ResolveWorktreePath(sandbox, ctx, out addPath);
+                    CallToolResult err = ResolveWorktreePath(currentSandbox, ctx, out addPath);
                     if (err != null) return err;
                     args.Add("add");
                     if (BoolArg(ctx, "force", false)) args.Add("--force");
@@ -438,8 +449,14 @@ namespace GitMcpServer
                 case "remove":
                 {
                     string rmPath;
-                    CallToolResult err = ResolveWorktreePath(sandbox, ctx, out rmPath);
+                    CallToolResult err = ResolveWorktreePath(currentSandbox, ctx, out rmPath);
                     if (err != null) return err;
+                    // Refuse to remove the current directory (or an ancestor of it): the next call's
+                    // current dir would vanish. Require a deliberate `cd` to the workspace root first,
+                    // rather than coupling the git server to host current-dir state by auto-moving it.
+                    if (new PathSandbox(rmPath).IsWithin(currentRoot))
+                        return ToolResults.Error("cannot remove the current directory (or an ancestor of it); "
+                            + "cd to the workspace root first");
                     args.Add("remove");
                     if (BoolArg(ctx, "force", false)) args.Add("--force");
                     args.Add(rmPath);
@@ -622,7 +639,7 @@ namespace GitMcpServer
         public static CallToolResult RunGit(GitConfig config, ProcessRunner runner, PathSandbox sandbox, ToolCallContext ctx, IList<string> args, string stdin)
         {
             string workDir;
-            CallToolResult cwdErr = ResolveCwd(sandbox, ctx, out workDir);
+            CallToolResult cwdErr = ResolveCwd(config, ctx, out workDir);
             if (cwdErr != null) return cwdErr;
 
             ProcessRequest req = new ProcessRequest();
@@ -665,17 +682,30 @@ namespace GitMcpServer
             return ToolResults.Json(outp);
         }
 
-        // Resolve the optional `cwd` argument to an absolute directory git should run in. Absent or
-        // empty selects the workspace root itself; anything else is confined to the root by the
-        // sandbox (so a worktree subdir resolves, but "../escape" or an absolute path is rejected).
-        private static CallToolResult ResolveCwd(PathSandbox sandbox, ToolCallContext ctx, out string workDir)
+        // Resolve the directory git should run in for this call. Two layers compose, host-authoritative
+        // first: the host-injected current directory (the conversation's `cd` target, carried out-of-band
+        // in params._meta and re-validated against GXPT_WORKDIR by CwdScope) is the root for the call; the
+        // optional model-facing `cwd` argument then selects a deeper subpath BENEATH it (never above it,
+        // since it is confined by a sandbox rooted at the current dir). Absent current dir => the workspace
+        // root (today's floor); absent `cwd` => the current dir itself. A current dir outside the anchor
+        // or one that no longer exists (removed worktree) is rejected, never silently widened.
+        private static CallToolResult ResolveCwd(GitConfig config, ToolCallContext ctx, out string workDir)
         {
-            workDir = sandbox.Root;
+            string currentRoot;
+            PathSandbox currentSandbox;
+            string err;
+            if (!CwdScope.TryResolve(ctx, config.WorkDir, "workspace root", out currentRoot, out currentSandbox, out err))
+            {
+                workDir = null;
+                return ToolResults.Error(err);
+            }
+            workDir = currentRoot;
+
             string rel = ctx.Arguments.Value<string>("cwd");
             if (string.IsNullOrEmpty(rel)) return null;
 
             string full;
-            try { full = sandbox.Resolve(rel); }
+            try { full = currentSandbox.Resolve(rel); }
             catch (SandboxException ex) { return ToolResults.Error(ex.Message); }
             if (!Directory.Exists(full)) return ToolResults.Error("cwd not found: " + rel);
             workDir = full;

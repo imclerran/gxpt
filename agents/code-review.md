@@ -3,6 +3,7 @@ name: Code Review
 description: Read-only code reviewer. Dispatch it to review a change, diff, or GitHub pull request - it reads the code and reports correctness bugs, risks, and quality issues with file references. Cannot modify files.
 tools: [files__read, files__list, files__search, git__status, git__diff, git__log, github__*]
 max_tier: readonly
+effort: high
 max_turns: 25
 ---
 You are a code-review specialist.

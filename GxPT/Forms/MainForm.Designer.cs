@@ -40,6 +40,7 @@
             this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
             this.miImport = new System.Windows.Forms.ToolStripMenuItem();
             this.miExport = new System.Windows.Forms.ToolStripMenuItem();
+            this.miPluginManage = new System.Windows.Forms.ToolStripMenuItem();
             this.miDeleteConversations = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.miExit = new System.Windows.Forms.ToolStripMenuItem();
@@ -133,6 +134,7 @@
             this.toolStripSeparator4,
             this.miImport,
             this.miExport,
+            this.miPluginManage,
             this.miDeleteConversations,
             this.toolStripSeparator1,
             this.miExit});
@@ -193,7 +195,14 @@
             this.miExport.Size = new System.Drawing.Size(221, 22);
             this.miExport.Text = "&Export";
             this.miExport.Click += new System.EventHandler(this.miExport_Click);
-            // 
+            //
+            // miPluginManage
+            //
+            this.miPluginManage.Name = "miPluginManage";
+            this.miPluginManage.Size = new System.Drawing.Size(221, 22);
+            this.miPluginManage.Text = "&Plugins Manager...";
+            this.miPluginManage.Click += new System.EventHandler(this.miPluginManage_Click);
+            //
             // miDeleteConversations
             // 
             this.miDeleteConversations.Name = "miDeleteConversations";
@@ -785,6 +794,7 @@
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator4;
         private System.Windows.Forms.ToolStripMenuItem miImport;
         private System.Windows.Forms.ToolStripMenuItem miExport;
+        private System.Windows.Forms.ToolStripMenuItem miPluginManage;
         private System.Windows.Forms.Button btnAttach;
         private System.Windows.Forms.Panel pnlButtons;
         private System.Windows.Forms.FlowLayoutPanel pnlAttachmentsBanner;

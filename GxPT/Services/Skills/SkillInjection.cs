@@ -36,7 +36,9 @@ namespace GxPT
             + "open_skill is directly callable - you do NOT need to reveal it first - and you may open "
             + "several at once. The <scope> is where the skill lives (user or project; bundled skills are "
             + "read-only); pass it as the `scope` argument when editing a skill so the edit targets the "
-            + "right one. Do not mention skills unless they are relevant to the request.";
+            + "right one. Do not mention skills unless they are relevant to the request. Do not narrate "
+            + "or announce calling open_skill (no \"let me open the skill\" or \"using open_skill\"); just "
+            + "call it and follow the instructions.";
 
         // The DYNAMIC inventory: the slug/scope/description list, for the ephemeral tail. Returns null
         // when the enabled set is empty, so a skill-less or all-disabled conversation injects nothing.

@@ -42,6 +42,11 @@ namespace GxPT
         public Action<ResponseUsage> UsageReported { get; set; }
         public RequestCancellation Cancellation { get; set; }
 
+        // Maps a model effort (low/medium/high) to the model id the user configured for it in settings, or
+        // null/empty when that tier is unset. Set by the host from AppSettings; null here (e.g. in tests)
+        // means effort never resolves and the model/parent fallbacks apply. See ResolveModel.
+        public Func<AgentEffort, string> EffortModel { get; set; }
+
         // The parent turn's privacy settings, propagated to every child request (set by the host). A
         // sub-agent runs in a fresh orchestrator that would otherwise default to no ZDR / provider
         // default - so without this, a child would send the conversation's data to a non-ZDR endpoint
@@ -112,14 +117,29 @@ namespace GxPT
 
         public bool IsDispatchAgent(string functionName) { return functionName == DispatchAgentName; }
 
-        // The OpenAI-style function definition: dispatch_agent({ agents: [{ name, task }] }).
+        // The OpenAI-style function definition: dispatch_agent({ agents: [{ name, task, effort?, model? }] }).
         public JObject DispatchAgentDef()
         {
             JObject nameP = new JObject(); nameP["type"] = "string";
             JObject taskP = new JObject(); taskP["type"] = "string";
+            JObject effortP = new JObject();
+            effortP["type"] = "string";
+            effortP["enum"] = new JArray("low", "medium", "high");
+            effortP["description"] = "Optional override for the effort level (low | medium | high) this "
+                + "agent runs at. Each agent already has a tuned default, so normally omit this and let it "
+                + "run at its configured effort. Set it only when the user or a skill explicitly asks for a "
+                + "different level.";
+            JObject modelP = new JObject();
+            modelP["type"] = "string";
+            modelP["description"] = "Optional explicit model id, in OpenRouter format "
+                + "\"model-author/model-name\" (e.g. \"z-ai/glm-5.2\"). Prefer \"effort\" unless you need a "
+                + "specific model. Takes precedence over \"effort\" and the agent's frontmatter for this "
+                + "dispatch only. Omit to use effort or the agent's own model.";
             JObject entryProps = new JObject();
             entryProps["name"] = nameP;
             entryProps["task"] = taskP;
+            entryProps["effort"] = effortP;
+            entryProps["model"] = modelP;
             JObject entrySchema = new JObject();
             entrySchema["type"] = "object";
             entrySchema["properties"] = entryProps;
@@ -155,7 +175,7 @@ namespace GxPT
         // batch still returns the rest (the open_skill tolerance). Never throws to the caller.
         public string Dispatch(string argumentsJson)
         {
-            List<string[]> entries = ParseEntries(argumentsJson);   // each = { name, task }
+            List<string[]> entries = ParseEntries(argumentsJson);   // each = { name, task, model, effort }
             if (entries.Count == 0) return "No agents specified to dispatch.";
 
             int n = entries.Count;
@@ -167,6 +187,10 @@ namespace GxPT
             string[] names = new string[n];
             Agent[] agents = new Agent[n];
             string[] tasks = new string[n];
+            // Optional per-call overrides (the dispatch_agent `model` / `effort` args). Null => fall back to
+            // the agent's own frontmatter (model, then effort), then the parent model. See ResolveModel.
+            string[] modelOverrides = new string[n];
+            string[] effortOverrides = new string[n];
             string[] results = new string[n];
             // Per-slot child transcripts (tier 3): slot i is null until/unless that agent runs a child.
             // Exposed via LastTranscripts so the host can cache them under the dispatch record's key and
@@ -177,6 +201,8 @@ namespace GxPT
             {
                 names[i] = entries[i][0];
                 tasks[i] = entries[i][1];
+                modelOverrides[i] = entries[i][2];
+                effortOverrides[i] = entries[i][3];
                 Agent agent;
                 if (names[i] == null || !_bySlug.TryGetValue(names[i], out agent))
                     results[i] = "Unknown agent: " + (names[i] != null ? names[i] : "(null)");
@@ -195,10 +221,11 @@ namespace GxPT
                 List<string> modelList = new List<string>(runnable.Count);
                 for (int k = 0; k < runnable.Count; k++)
                 {
-                    Agent a = agents[runnable[k]];
+                    int slot = runnable[k];
+                    Agent a = agents[slot];
                     slugs.Add(a.Slug);
-                    taskList.Add(tasks[runnable[k]]);
-                    modelList.Add(!string.IsNullOrEmpty(a.Model) ? a.Model : _parentModel);
+                    taskList.Add(tasks[slot]);
+                    modelList.Add(ResolveModel(modelOverrides[slot], effortOverrides[slot], a));
                 }
                 ui.OnFanOutStart(slugs, taskList, modelList);
             }
@@ -212,12 +239,13 @@ namespace GxPT
                 // rule). Concurrent children safely share the MCP connections (the transport is multiplexed:
                 // atomic request ids + serialized writes) and the streamer (per-call), so no extra locking.
                 if (RunsInParallel(agents, runnable))
-                    RunParallel(agents, tasks, runnable, results, transcripts);
+                    RunParallel(agents, tasks, modelOverrides, effortOverrides, runnable, results, transcripts);
                 else
                     for (int k = 0; k < runnable.Count; k++)
                     {
                         int i = runnable[k];
-                        results[i] = RunChildReported(k, i, agents[i], tasks[i], transcripts);
+                        results[i] = RunChildReported(k, i, agents[i], tasks[i], modelOverrides[i],
+                                                      effortOverrides[i], transcripts);
                     }
             }
             finally
@@ -275,8 +303,9 @@ namespace GxPT
         // its own result slot. WaitHandle.WaitAll runs on the parent turn's ThreadPool (MTA) worker, so it
         // is valid here; no lock is held across the join, so the fan-out cannot deadlock. At most
         // MaxParallelAgents worker handles are joined, well under WaitAll's 64-handle limit.
-        private void RunParallel(Agent[] agents, string[] tasks, List<int> runnable, string[] results,
-                                 AgentTranscript[] transcripts)
+        private void RunParallel(Agent[] agents, string[] tasks, string[] modelOverrides,
+                                 string[] effortOverrides, List<int> runnable,
+                                 string[] results, AgentTranscript[] transcripts)
         {
             int count = runnable.Count;
             int workerCount = Math.Min(MaxParallelAgents, count);
@@ -300,7 +329,9 @@ namespace GxPT
                                 int slot = runnable[row];   // entry slot (position in the agents/tasks arrays)
                                 Agent agent = agents[slot];
                                 string task = tasks[slot];
-                                try { results[slot] = RunChildReported(row, slot, agent, task, transcripts); }
+                                string modelOverride = modelOverrides[slot];
+                                string effortOverride = effortOverrides[slot];
+                                try { results[slot] = RunChildReported(row, slot, agent, task, modelOverride, effortOverride, transcripts); }
                                 catch (Exception ex) { results[slot] = "[agent error: " + ex.Message + "]"; }
                             }
                         }
@@ -321,8 +352,8 @@ namespace GxPT
         // entry index (used for the result/transcript arrays). A per-child forwarding UI reports the
         // child's tool calls as the row's live activity line (tier 2); the run's full message list is
         // captured into transcripts[slot] for the tier-3 viewer (even on error - the partial history).
-        private string RunChildReported(int row, int slot, Agent agent, string task,
-                                        AgentTranscript[] transcripts)
+        private string RunChildReported(int row, int slot, Agent agent, string task, string modelOverride,
+                                        string effortOverride, AgentTranscript[] transcripts)
         {
             IAgentActivityUi ui = ActivityUi;
             if (ui != null) ui.OnAgentStart(row, agent.Slug, task);
@@ -342,7 +373,7 @@ namespace GxPT
             try
             {
                 IList<ChatMessage> history;
-                string answer = RunChild(agent, task, childUi, out history);
+                string answer = RunChild(agent, task, modelOverride, effortOverride, childUi, out history);
                 if (transcripts != null) transcripts[slot] = new AgentTranscript(agent.Slug, task, history);
                 return answer;
             }
@@ -356,9 +387,10 @@ namespace GxPT
         // Builds and runs one child orchestrator to completion, returning its final answer. `history` is set
         // (before the run) to the child's message list so the caller gets the full transcript even if the
         // turn throws. `childUi` receives the child's tool activity (forwarded to the row's activity line).
-        private string RunChild(Agent agent, string task, IToolLoopUi childUi, out IList<ChatMessage> history)
+        private string RunChild(Agent agent, string task, string modelOverride, string effortOverride,
+                                IToolLoopUi childUi, out IList<ChatMessage> history)
         {
-            string model = !string.IsNullOrEmpty(agent.Model) ? agent.Model : _parentModel;
+            string model = ResolveModel(modelOverride, effortOverride, agent);
             int maxIter = agent.MaxTurns > 0 ? agent.MaxTurns : _defaultMaxIterations;
 
             McpChatOrchestrator child = new McpChatOrchestrator(_streamer, _registry, _approval, model,
@@ -414,6 +446,53 @@ namespace GxPT
             return ExtractFinalAnswer(msgs);
         }
 
+        // Resolves the model a child runs under, in decreasing precedence (design A18). Dispatch-level args
+        // beat the agent's own frontmatter, and an explicit model beats an effort tier within each level:
+        //   1. dispatch `model` arg            (caller named an exact id for this call)
+        //   2. dispatch `effort` arg           (caller asked for a tier; mapped via settings)
+        //   3. frontmatter `model`             (the agent's own pinned model)
+        //   4. frontmatter `effort`            (the agent's own tier; mapped via settings)
+        //   5. the parent turn's model         (the default)
+        // An effort rung is skipped when it maps to nothing (no EffortModel host hook, or that tier is blank
+        // in settings), so the chain always lands on a concrete model.
+        private string ResolveModel(string modelOverride, string effortOverride, Agent agent)
+        {
+            if (!string.IsNullOrEmpty(modelOverride)) return modelOverride;
+
+            AgentEffort overrideEffort;
+            if (AgentFrontmatter.TryParseEffort(effortOverride, out overrideEffort))
+            {
+                string m = ModelForEffort(overrideEffort);
+                if (!string.IsNullOrEmpty(m)) return m;
+            }
+
+            if (agent != null && !string.IsNullOrEmpty(agent.Model)) return agent.Model;
+
+            if (agent != null)
+            {
+                string m = ModelForEffort(agent.Effort);
+                if (!string.IsNullOrEmpty(m)) return m;
+            }
+
+            return _parentModel;
+        }
+
+        // The model the user configured for an effort tier, or null when there is no hint (Unset), no host
+        // hook, or that tier is blank in settings. Never throws - a bad hook just falls through to the next
+        // resolution rung.
+        private string ModelForEffort(AgentEffort effort)
+        {
+            if (effort == AgentEffort.Unset) return null;
+            Func<AgentEffort, string> f = EffortModel;
+            if (f == null) return null;
+            try
+            {
+                string s = f(effort);
+                return string.IsNullOrEmpty(s) ? null : s;
+            }
+            catch { return null; }
+        }
+
         // The child's final answer is the last assistant message its turn appended to history. Only the
         // final answer crosses back to the parent (context firewall, A3/A7); intermediate tool chatter
         // stays in the child's own message list.
@@ -445,8 +524,9 @@ namespace GxPT
             }
         }
 
-        // Parses { agents: [ { name, task }, ... ] } into a list of {name, task} pairs. Malformed input
-        // yields an empty list (the tool then reports "no agents"), never an exception.
+        // Parses { agents: [ { name, task, model?, effort? }, ... ] } into a list of {name, task, model,
+        // effort} tuples (model/effort null when omitted). Malformed input yields an empty list (the tool
+        // then reports "no agents"), never an exception.
         private static List<string[]> ParseEntries(string argumentsJson)
         {
             List<string[]> list = new List<string[]>();
@@ -461,7 +541,8 @@ namespace GxPT
                     {
                         if (t == null || t.Type != JTokenType.Object) continue;
                         JObject e = (JObject)t;
-                        list.Add(new string[] { AsString(e["name"]), AsString(e["task"]) });
+                        list.Add(new string[] { AsString(e["name"]), AsString(e["task"]),
+                                                AsString(e["model"]), AsString(e["effort"]) });
                     }
                 }
             }

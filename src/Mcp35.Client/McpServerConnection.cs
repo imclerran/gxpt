@@ -155,6 +155,14 @@ namespace Mcp35.Client
 
         public CallToolResult CallTool(string name, JObject args, int timeoutMs)
         {
+            return CallTool(name, args, null, timeoutMs);
+        }
+
+        // Overload carrying out-of-band request metadata (params._meta) — host-authoritative call data.
+        // meta rides alongside `arguments` and is never part of a tool's input schema, so the model can
+        // neither see nor spoof it. The client is agnostic to which keys it holds (the caller defines them).
+        public CallToolResult CallTool(string name, JObject args, JObject meta, int timeoutMs)
+        {
             if (State != ConnectionState.Ready)
                 throw new InvalidOperationException("Connection '" + _name + "' is not Ready (state=" + State + ").");
             if (!_supportsTools)
@@ -163,6 +171,7 @@ namespace Mcp35.Client
             CallToolParams cp = new CallToolParams();
             cp.Name = name;
             cp.Arguments = args;
+            cp.Meta = (meta != null && meta.Count > 0) ? meta : null;
 
             JsonRpcResponse resp = _transport.SendRequest(
                 McpMethods.ToolsCall, JObject.FromObject(cp, Serializer()), timeoutMs);

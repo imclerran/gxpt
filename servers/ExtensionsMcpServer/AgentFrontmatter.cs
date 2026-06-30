@@ -17,6 +17,7 @@ namespace ExtensionsMcpServer
         public string ToolsRaw;     // raw value after "tools:", or null when the key was absent
         public string MaxTierRaw;   // raw value after "max_tier:", or null
         public string ModelRaw;     // raw value after "model:", or null
+        public string EffortRaw;    // raw value after "effort:", or null
         public string MaxTurnsRaw;  // raw value after "max_turns:", or null
         public string Body;
 
@@ -60,6 +61,7 @@ namespace ExtensionsMcpServer
                 else if (key == "tools" && fm.ToolsRaw == null) fm.ToolsRaw = value;
                 else if (key == "max_tier" && fm.MaxTierRaw == null) fm.MaxTierRaw = value;
                 else if (key == "model" && fm.ModelRaw == null) fm.ModelRaw = value;
+                else if (key == "effort" && fm.EffortRaw == null) fm.EffortRaw = value;
                 else if (key == "max_turns" && fm.MaxTurnsRaw == null) fm.MaxTurnsRaw = value;
             }
 

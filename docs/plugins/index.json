@@ -1,0 +1,86 @@
+{
+  "plugins": [
+    {
+      "name": "Vendor Review",
+      "slug": "vendor-review",
+      "version": "0.1.0",
+      "description": "Perform a consumer-oriented Third Party Risk Management review of a vendor for personal data privacy and security concerns.",
+      "download": "vendor-review.gxpl",
+      "size": 10653,
+      "sha256": "ad52460fd248d621c4e8dcc41d3baf6eca49f023004a9c02a3649d17437b4491",
+      "members": [
+        {
+          "kind": "skill",
+          "slug": "vendor-review",
+          "name": "Third-Party Vendor Review",
+          "description": "Use this when the user wants to draft a third-party vendor or product privacy and security review document for consumer use."
+        }
+      ]
+    },
+    {
+      "name": "Xtra Powers",
+      "slug": "xtra-powers",
+      "version": "0.1.0",
+      "description": "A disciplined ideation-to-implementation workflow for GxPT: brainstorm a design, write a bite-sized plan, then execute it task-by-task with sub-agents, git worktrees, and review gates. Adapted for GxPT from the Superpowers skill collection (github.com/obra/superpowers).",
+      "download": "xtra-powers.gxpl",
+      "size": 20742,
+      "sha256": "0316e3a447531466a9ef37a52c55f73f3cca3ea24fece5f46563e46e18e4ed42",
+      "members": [
+        {
+          "kind": "skill",
+          "slug": "brainstorming",
+          "name": "Brainstorming",
+          "description": "Use this before any creative or building work - new features, components, behavior changes, or non-trivial fixes. Explores intent, requirements, and design through dialogue, then writes an agreed spec before any implementation begins."
+        },
+        {
+          "kind": "skill",
+          "slug": "executing-plans",
+          "name": "Executing Plans",
+          "description": "Use to execute an implementation plan yourself, inline in this conversation, with review checkpoints. The simpler alternative to subagent-driven-development - use it for small plans or when the agents feature is off. Works in an isolated git worktree."
+        },
+        {
+          "kind": "skill",
+          "slug": "finishing-a-development-branch",
+          "name": "Finishing a Development Branch",
+          "description": "Use when implementation is complete and tests pass, to integrate the work. Verifies the build/tests, then presents clear options - merge locally, open a pull request, keep as-is, or discard - and carries out the choice, including cleaning up the git worktree."
+        },
+        {
+          "kind": "skill",
+          "slug": "subagent-driven-development",
+          "name": "Subagent-Driven Development",
+          "description": "Use to execute an implementation plan task-by-task by dispatching a fresh sub-agent per task with a review gate after each. Preferred when the agents feature is on - it keeps the main conversation's context lean and cheap. Works in an isolated git worktree."
+        },
+        {
+          "kind": "skill",
+          "slug": "using-git-worktrees",
+          "name": "Using Git Worktrees",
+          "description": "Use before implementing a plan, to set up an isolated git worktree to work in. Creates a linked worktree under .worktrees/ and changes into it, so the feature's work never touches the main checkout - and a second conversation can work a different feature in parallel."
+        },
+        {
+          "kind": "skill",
+          "slug": "writing-plans",
+          "name": "Writing Plans",
+          "description": "Use when you have an agreed spec or requirements for a multi-step task, before touching code. Turns the spec into a bite-sized, test-driven implementation plan with exact files, code, and commands - then hands off to execution."
+        },
+        {
+          "kind": "agent",
+          "slug": "doc-reviewer",
+          "name": "Doc Reviewer",
+          "description": "Read-only reviewer for design specs and implementation plans. Dispatch it to check a spec or plan document for gaps, contradictions, placeholders, and weak task decomposition before work starts; it reports issues with section references and a clear verdict. Cannot modify files."
+        },
+        {
+          "kind": "agent",
+          "slug": "plan-implementer",
+          "name": "Plan Implementer",
+          "description": "Implements ONE task from an implementation plan inside an isolated git worktree, test-first. Dispatch it with a single task's brief and the worktree path; it writes the failing test, the code, builds and runs the tests, commits, and reports a status. Use one at a time (it changes files)."
+        },
+        {
+          "kind": "agent",
+          "slug": "task-reviewer",
+          "name": "Task Reviewer",
+          "description": "Read-only reviewer for a completed plan task's diff (and for the final whole-branch review). Dispatch it with the task brief, the diff or commit range, and the plan's global constraints; it reports a spec-compliance verdict and a code-quality verdict with file references. Cannot modify files."
+        }
+      ]
+    }
+  ]
+}

@@ -70,7 +70,6 @@ namespace GxPT
             HookEvents();
             InitializeDragAndDrop();
             InitializeClient();
-            BuildPluginsMenu();
 
             // Setup initial tab context for the designer-created tab
             SetupInitialConversationTab();
@@ -844,6 +843,7 @@ namespace GxPT
                 strip.ChangeRequested += delegate { SetWorkingFolderForContext(ctxRef); };
                 strip.ClearRequested += delegate { ClearWorkingFolderForContext(ctxRef); };
                 strip.DismissRequested += delegate { DismissWorkspaceStripForContext(ctxRef); };
+                strip.ReturnToAnchorRequested += delegate { ReturnToAnchorForContext(ctxRef); };
                 // Dock order: the strip is Top, the approval panel is Bottom, and the transcript is
                 // Fill. WinForms lays out docked controls by REVERSE z-order, so the Fill transcript
                 // must be the frontmost child for it to fill the area *between* the Top strip and the
@@ -1308,6 +1308,7 @@ namespace GxPT
                     out selectedDir))
                 return;
             ctx.WorkingDir = selectedDir;
+            ctx.CurrentDir = null; // a new anchor resets the conversation's current directory
             RecentWorkDirs.Add(ctx.WorkingDir);
             // Setting a folder re-shows the strip, so a prior dismissal no longer applies.
             if (ctx.Conversation != null) ctx.Conversation.WorkspaceStripDismissed = false;
@@ -1324,9 +1325,39 @@ namespace GxPT
         {
             if (ctx == null) return;
             ctx.WorkingDir = null;
+            ctx.CurrentDir = null; // no anchor => no current dir to scope within
             PersistWorkingDir(ctx);
             if (ctx.WorkspaceStrip != null) ctx.WorkspaceStrip.SetWorkingDir(null);
             SyncMcpWorkingDirFromActiveTab();
+        }
+
+        // "Return to root": bring the conversation's current directory back to the workspace anchor. The
+        // model may have scoped into a subdir via `cd`; this is the user's one-click way out. Transient
+        // (CurrentDir is never persisted), so it just clears the field and refreshes the strip — the next
+        // turn seeds the orchestrator from this cleared value.
+        private void ReturnToAnchorForContext(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null) return;
+            ctx.CurrentDir = null;
+            UpdateCurrentDirStrip(ctx);
+        }
+
+        // Refresh a tab's workspace strip to reflect its current directory (host `cd`), shown relative to
+        // the anchor. Safe to call from the UI thread; the model-driven path marshals through BeginInvoke.
+        private void UpdateCurrentDirStrip(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null || ctx.WorkspaceStrip == null) return;
+            string rel = null;
+            if (!string.IsNullOrEmpty(ctx.WorkingDir) && !string.IsNullOrEmpty(ctx.CurrentDir))
+            {
+                try
+                {
+                    var sb = new Mcp35.Core.Security.PathSandbox(ctx.WorkingDir, "workspace root");
+                    rel = sb.ToRelative(System.IO.Path.GetFullPath(ctx.CurrentDir));
+                }
+                catch { rel = null; }
+            }
+            ctx.WorkspaceStrip.SetCurrentDir(rel);
         }
 
         // Reset the per-tab workspace + ZDR *views* to a blank-slate state when the last tab is closed
@@ -1341,6 +1372,7 @@ namespace GxPT
             // Working folder: drop the tab's folder and return the strip to its "no folder" state, shown
             // like a brand-new tab (the fresh conversation isn't dismissed).
             ctx.WorkingDir = null;
+            ctx.CurrentDir = null; // transient; never carries into the recycled conversation
             if (ctx.WorkspaceStrip != null)
             {
                 ctx.WorkspaceStrip.SetWorkingDir(null);
@@ -2227,25 +2259,8 @@ namespace GxPT
             SlashRefreshSkillsServer();
         }
 
-        // Adds a single "Plugins Manager..." item to the File menu (after Export) in code rather than the
-        // Designer, to avoid hand-editing generated menu plumbing. Install/uninstall/export/author all live
-        // in the dialog, so one entry suffices; /plugin still offers the same actions from the command bar.
-        private void BuildPluginsMenu()
-        {
-            try
-            {
-                if (miFile == null) return;
-
-                var manage = new ToolStripMenuItem("&Plugins Manager...");
-                manage.Click += new EventHandler(miPluginManage_Click);
-
-                int idx = miExport != null ? miFile.DropDownItems.IndexOf(miExport) : -1;
-                if (idx >= 0) miFile.DropDownItems.Insert(idx + 1, manage);
-                else miFile.DropDownItems.Add(manage);
-            }
-            catch { }
-        }
-
+        // File > Plugins Manager... lives in the Designer; install/uninstall/export/author all live in the
+        // dialog, so one entry suffices; /plugin still offers the same actions from the command bar.
         private void miPluginManage_Click(object sender, EventArgs e) { SlashManagePlugins(); }
 
         // /plugin enable|disable <name>: move the plugin's skills/agents into or out of the active roots.
@@ -3249,10 +3264,18 @@ namespace GxPT
         // value stays the full "author/model" id.
         private void cmbModel_DrawItem(object sender, DrawItemEventArgs e)
         {
+            DrawModelComboItem(e, this.cmbModel);
+        }
+
+        // Shared owner-draw for any model-list combo: render only the short model name (ShortModelName)
+        // while the item value stays the full "author/model" id. Used by the main window's model selector
+        // and the settings effort-tier pickers so the two render identically.
+        internal static void DrawModelComboItem(DrawItemEventArgs e, ComboBox combo)
+        {
             e.DrawBackground();
-            if (e.Index >= 0 && this.cmbModel != null && e.Index < this.cmbModel.Items.Count)
+            if (combo != null && e.Index >= 0 && e.Index < combo.Items.Count)
             {
-                string full = Convert.ToString(this.cmbModel.Items[e.Index]);
+                string full = Convert.ToString(combo.Items[e.Index]);
                 // Clip the name at the edge like a native combo (no ellipsis).
                 TextRenderer.DrawText(e.Graphics, ShortModelName(full), e.Font, e.Bounds, e.ForeColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
@@ -3416,6 +3439,24 @@ namespace GxPT
                     // Route scoped-tool resolution at the scratch dir when folderless (null otherwise);
                     // the prompt's workspace block stays absent and a scratch-sandbox note is used instead.
                     orch.ScratchWorkingDir = string.IsNullOrEmpty(ctx.WorkingDir) ? scratchDir : null;
+                    // Seed the conversation's current directory (host `cd`), carried across the turn's
+                    // calls and subsequent turns. Transient: ctx.CurrentDir starts null (reset to the
+                    // anchor on conversation load). When `cd` moves it, persist back to the context and
+                    // refresh the workspace strip on the UI thread.
+                    orch.CurrentDir = ctx.CurrentDir;
+                    {
+                        TabManager.ChatTabContext cdCtx = ctx;
+                        orch.CurrentDirChanged = delegate(string newCurrent)
+                        {
+                            cdCtx.CurrentDir = newCurrent;
+                            try
+                            {
+                                if (!IsDisposed)
+                                    BeginInvoke((MethodInvoker)delegate { UpdateCurrentDirStrip(cdCtx); });
+                            }
+                            catch { }
+                        };
+                    }
                     orch.Zdr = zdr ? true : (bool?)null;
                     // Reveal state is per-conversation (recency-ordered; persisted with the
                     // conversation) so concurrent tabs don't churn each other's tools array - the
@@ -3570,6 +3611,20 @@ namespace GxPT
                                 // the parent orchestrator was configured with above.
                                 dispatcher.Zdr = orch.Zdr;
                                 dispatcher.ProviderDataCollectionAllowed = orch.ProviderDataCollectionAllowed;
+                                // Map agent effort tiers to the models the user configured in Settings, so a
+                                // frontmatter `effort:` or a dispatch `effort` arg resolves to a real id.
+                                // Read live from AppSettings (EnsureSeeded guarantees a value); a blank tier
+                                // simply falls through to the model/parent fallbacks in ResolveModel.
+                                dispatcher.EffortModel = delegate(AgentEffort eff)
+                                {
+                                    switch (eff)
+                                    {
+                                        case AgentEffort.Low: return AppSettings.GetString("model_effort_low");
+                                        case AgentEffort.Medium: return AppSettings.GetString("model_effort_medium");
+                                        case AgentEffort.High: return AppSettings.GetString("model_effort_high");
+                                        default: return null;
+                                    }
+                                };
                                 // Child usage adds to cost/token totals but must NOT move the parent's context
                                 // gauge (the child has its own isolated context) - so it routes through the
                                 // updateContextGauge=false overload, not orch.UsageReported.
@@ -5114,7 +5169,42 @@ namespace GxPT
                     }
                     return true;
                 }
+                case "git__worktree":
+                {
+                    string action = Str(args, "action"); if (action.Length == 0) action = "list";
+                    string path = Str(args, "path");
+                    switch (action.ToLowerInvariant())
+                    {
+                        case "add":
+                        {
+                            // The new branch (if any) is the most useful detail; otherwise name the dir.
+                            string branch = Str(args, "branch");
+                            string at = path.Length > 0 ? " at " + path : "";
+                            header = branch.Length > 0
+                                ? ("Added worktree" + at + " on new branch " + branch)
+                                : ("Added worktree" + at);
+                            break;
+                        }
+                        case "remove": header = path.Length > 0 ? ("Removed worktree " + path) : "Removed worktree"; break;
+                        case "prune": header = "Pruned worktrees"; break;
+                        default: header = "Listed worktrees"; break;
+                    }
+                    return true;
+                }
                 case "reveal_tools": header = "Checked available tools"; return true;
+                case "cd":
+                {
+                    // Host meta-tool: a one-line label naming where the conversation moved. The model's
+                    // `path` arg is the relative path it changed to; an absent/empty arg is the no-arg
+                    // "return to the workspace root" case.
+                    string rel = Str(args, "path");
+                    rel = (rel == null ? string.Empty : rel.Trim()).Replace('\\', '/');
+                    while (rel.Length > 1 && rel[rel.Length - 1] == '/') rel = rel.Substring(0, rel.Length - 1);
+                    header = rel.Length == 0
+                        ? "Changed directory to the workspace root"
+                        : "Changed directory to " + rel;
+                    return true;
+                }
                 case "open_skill":
                 {
                     // Post-flight (completed) record label, so past tense like the other records.

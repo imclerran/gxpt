@@ -37,6 +37,9 @@ namespace GxPT.Tests.Mcp
         public bool ThrowTransportOnCall;             // simulate a transport fault mid-call
         public bool ErrorOnCall;                      // simulate a JSON-RPC error (e.g. unknown tool)
         public readonly List<string> CalledTools = new List<string>();
+        // The full params object of each tools/call (includes any out-of-band `_meta`), so a test can
+        // assert what the host injected (e.g. the host current directory under params._meta["gxpt.cwd"]).
+        public readonly List<JObject> CallParams = new List<JObject>();
 
         public event EventHandler<JsonRpcInboundEventArgs> Inbound;
 
@@ -63,6 +66,7 @@ namespace GxPT.Tests.Mcp
                 string toolName = p != null && p["name"] != null ? (string)p["name"] : null;
                 JObject args = p != null ? p["arguments"] as JObject : null;
                 CalledTools.Add(toolName);
+                if (p != null) CallParams.Add(p);
 
                 if (ErrorOnCall) return Error(-32602, "unknown tool: " + toolName);
                 JObject result = OnCall != null ? OnCall(toolName, args) : TextResult("ok:" + toolName);

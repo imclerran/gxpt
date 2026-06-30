@@ -15,6 +15,7 @@ namespace GxPT.Tests
                 "tools: [files__read, files__list, files__search]\n" +
                 "max_tier: readonly\n" +
                 "model: anthropic/claude-sonnet-4-6\n" +
+                "effort: high\n" +
                 "---\n" +
                 "\n" +
                 "You are a code-exploration specialist.\n";
@@ -27,7 +28,23 @@ namespace GxPT.Tests
             Assert.Equal(new string[] { "files__read", "files__list", "files__search" }, fm.Tools);
             Assert.Equal(AgentMaxTier.ReadOnly, fm.MaxTier);
             Assert.Equal("anthropic/claude-sonnet-4-6", fm.Model);
+            Assert.Equal(AgentEffort.High, fm.Effort);
             Assert.Equal("You are a code-exploration specialist.", fm.Body);
+        }
+
+        // expectedName is the AgentEffort member name (compared via ToString) so the public test signature
+        // doesn't expose the internal AgentEffort enum (which would be CS0051: inconsistent accessibility).
+        [Theory]
+        [InlineData("low", "Low")]
+        [InlineData("medium", "Medium")]
+        [InlineData("MED", "Medium")]      // alias + case-insensitive
+        [InlineData("high", "High")]
+        [InlineData("turbo", "Unset")]     // unrecognized => Unset (lenient, not rejected)
+        public void Parse_ReadsEffort(string value, string expectedName)
+        {
+            AgentFrontmatter fm = AgentFrontmatter.Parse(
+                "---\ndescription: d\neffort: " + value + "\n---\nbody\n");
+            Assert.Equal(expectedName, fm.Effort.ToString());
         }
 
         [Fact]
@@ -45,6 +62,7 @@ namespace GxPT.Tests
             Assert.Null(fm.Tools);                          // absent => null (resolved to ReadOnly default later)
             Assert.Equal(AgentMaxTier.Write, fm.MaxTier);   // default ceiling
             Assert.Null(fm.Model);
+            Assert.Equal(AgentEffort.Unset, fm.Effort);     // absent => no effort hint
         }
 
         [Fact]

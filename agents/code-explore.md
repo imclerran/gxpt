@@ -3,7 +3,7 @@ name: Code Explore
 description: Read-only code explorer. Dispatch it to locate and summarize how something works in the codebase before you change anything - it returns a tight written brief with file paths. Cannot modify files.
 tools: [files__read, files__list, files__search, git__status, git__diff, git__log, web__search, web__extract]
 max_tier: readonly
-model: deepseek/deepseek-v4-flash
+effort: low
 max_turns: 25
 ---
 You are a code-exploration specialist working inside the user's workspace.

@@ -263,7 +263,10 @@ namespace ExtensionsMcpServer
                         + "pass [] for an agent with no tools.")
                     .Str("max_tier", false, "Capability ceiling: 'readonly', 'write' (default), or 'destructive'. "
                         + "Caps the allowlist regardless of what tools names.")
-                    .Str("model", false, "Optional model id override; omit to use the parent turn's model.")
+                    .Str("model", false, "Optional explicit model id override; prefer 'effort' unless a "
+                        + "specific model is needed. Omit to use effort or the parent turn's model.")
+                    .Str("effort", false, "Optional capability tier: 'low', 'medium', or 'high'. The user "
+                        + "maps each to a model in settings, so the agent can ask for a tier without a slug.")
                     .Int("max_turns", false, "Optional per-agent iteration budget; omit for the host default.")
                     .Str("scope", false, scopeDesc)
                     .Build(),
@@ -275,7 +278,7 @@ namespace ExtensionsMcpServer
                         return ToolResults.Text(agents.CreateAgent(
                             Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "name"), Str(ctx, "description"),
                             StrArrayOrNull(ctx, "tools"), Str(ctx, "max_tier"), Str(ctx, "model"),
-                            IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
+                            Str(ctx, "effort"), IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
                     }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
@@ -292,7 +295,8 @@ namespace ExtensionsMcpServer
                     .Str("body", false, "New system prompt, or omit to keep. (For a focused change use edit_agent.)")
                     .Arr("tools", "string", false, "New tool allowlist, or omit to keep. Pass [] to clear it.")
                     .Str("max_tier", false, "New ceiling (readonly | write | destructive), or omit to keep.")
-                    .Str("model", false, "New model id override, or omit to keep.")
+                    .Str("model", false, "New explicit model id override, or omit to keep.")
+                    .Str("effort", false, "New capability tier (low | medium | high), or omit to keep.")
                     .Int("max_turns", false, "New iteration budget (> 0), or omit to keep.")
                     .Str("scope", false, scopeDesc)
                     .Build(),
@@ -304,7 +308,7 @@ namespace ExtensionsMcpServer
                         return ToolResults.Text(agents.UpdateAgent(
                             Str(ctx, "scope"), Str(ctx, "slug"), Str(ctx, "name"), Str(ctx, "description"),
                             StrArrayOrNull(ctx, "tools"), Str(ctx, "max_tier"), Str(ctx, "model"),
-                            IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
+                            Str(ctx, "effort"), IntArg(ctx, "max_turns", 0, 0, 100000), Str(ctx, "body")));
                     }
                     catch (AgentWriteException ex) { return ToolResults.Error(ex.Message); }
                 });
@@ -399,7 +403,7 @@ namespace ExtensionsMcpServer
 
             server.AddTool("validate_agent",
                 "Check whether an agent's <slug>.md would load (its frontmatter must declare a non-empty "
-                + "description) and that its contract is well-formed (max_tier enum, tools list). Finds the "
+                + "description) and that its contract is well-formed (max_tier and effort enums, tools list). Finds the "
                 + "agent in any scope (project, user, or bundled); reports the parsed contract and which scope "
                 + "it came from, or what is wrong. Read-only.",
                 SchemaBuilder.Object()
@@ -428,7 +432,7 @@ namespace ExtensionsMcpServer
             catch (SkillScriptException ex) { return ToolResults.Error(ex.Message); }
 
             ProcessResult result;
-            try { result = scripts.RunResolved(target, args, timeout); }
+            try { result = scripts.RunResolved(target, args, timeout, ctx); }
             catch (SkillScriptException ex) { return ToolResults.Error(ex.Message); } // bad argument token
             catch (Exception ex) { return ToolResults.Error("failed to run script: " + ex.Message); }
 

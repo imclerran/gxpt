@@ -27,6 +27,9 @@
     <Compile Include="..\..\src\Mcp35.Server\**\*.cs"
              Exclude="..\..\src\Mcp35.Server\Properties\**\*.cs;..\..\src\Mcp35.Server\obj\**\*.cs;..\..\src\Mcp35.Server\bin\**\*.cs"
              Link="Linked\Server\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Gxpt.Mcp.Conventions\**\*.cs"
+             Exclude="..\..\src\Gxpt.Mcp.Conventions\Properties\**\*.cs;..\..\src\Gxpt.Mcp.Conventions\obj\**\*.cs;..\..\src\Gxpt.Mcp.Conventions\bin\**\*.cs"
+             Link="Linked\Conventions\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\servers\FilesMcpServer\**\*.cs"
              Exclude="..\..\servers\FilesMcpServer\Program.cs;..\..\servers\FilesMcpServer\Properties\**\*.cs;..\..\servers\FilesMcpServer\obj\**\*.cs;..\..\servers\FilesMcpServer\bin\**\*.cs"
              Link="Linked\Files\%(RecursiveDir)%(Filename)%(Extension)" />

@@ -47,6 +47,13 @@ namespace Mcp35.Core.Protocol
 
         [JsonProperty("arguments", NullValueHandling = NullValueHandling.Ignore)]
         public JObject Arguments;
+
+        // Out-of-band request metadata (MCP-reserved `_meta`): a sibling of `arguments`, NOT part of
+        // any tool's input schema, so a host can carry per-call data the model can neither see nor spoof.
+        // The protocol is agnostic to its contents — consumers define their own keys (e.g. GxPT's
+        // host-current-directory convention lives in the Gxpt.Mcp.Conventions assembly, not here).
+        [JsonProperty("_meta", NullValueHandling = NullValueHandling.Ignore)]
+        public JObject Meta;
     }
 
     public sealed class CallToolResult

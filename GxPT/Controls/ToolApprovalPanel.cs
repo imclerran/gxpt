@@ -1241,6 +1241,22 @@ namespace GxPT
                 }
                 case "git__rm":
                     sb.Append("rm"); if (Bv(a, "cached")) sb.Append(" --cached"); if (Bv(a, "recursive")) sb.Append(" -r"); Append(sb, PathsOf(a, "paths")); break;
+                case "git__worktree":
+                {
+                    string act = Sv(a, "action"); if (act.Length == 0) act = "list";
+                    sb.Append("worktree ").Append(act.ToLowerInvariant());
+                    switch (act.ToLowerInvariant())
+                    {
+                        case "add":
+                            if (Bv(a, "force")) sb.Append(" --force");
+                            if (Sv(a, "branch").Length > 0) sb.Append(" -b ").Append(Sv(a, "branch"));
+                            Append(sb, Sv(a, "path")); Append(sb, Sv(a, "ref")); break;
+                        case "remove":
+                            if (Bv(a, "force")) sb.Append(" --force");
+                            Append(sb, Sv(a, "path")); break;
+                    }
+                    break;
+                }
                 case "git__stash":
                 {
                     string act = Sv(a, "action"); if (act.Length == 0) act = "push";

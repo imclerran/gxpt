@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Gxpt.Mcp.Conventions;
 using Mcp35.Core.Protocol;
 using Mcp35.Server;
 using Mcp35.Server.Process;
@@ -123,10 +124,18 @@ namespace MSBuildMcpServer
 
             List<string> args = BuildArgs(a, projectFull);
 
+            // The build runs in the conversation's CURRENT directory (host `cd`); the project-path floor
+            // stays the workspace anchor (resolved above against config.WorkDir). Current dir is
+            // re-validated against the anchor — outside/removed => rejected, not silently widened.
+            string workDir;
+            string cwdErr;
+            if (!CwdScope.TryResolveWorkingDir(ctx, config.WorkDir, "workspace root", out workDir, out cwdErr))
+                return ToolResults.Error(cwdErr);
+
             ProcessRequest req = new ProcessRequest();
             req.FileName = exe;
             req.Arguments = ArgvQuoter.Join(args);   // discrete tokens, quoted once (servers-spec §4)
-            req.WorkingDirectory = config.WorkDir;
+            req.WorkingDirectory = workDir;
             req.TimeoutMs = timeout;
 
             ProcessResult result;
@@ -228,10 +237,17 @@ namespace MSBuildMcpServer
             int timeout = IntArg(a, "timeout_ms", DefaultTimeoutMs, 1000, MaxTimeoutMs);
             List<string> args = BuildDevenvArgs(a, solutionFull);
 
+            // The build runs in the conversation's CURRENT directory (host `cd`); the solution-path floor
+            // stays the workspace anchor (resolved above against config.WorkDir).
+            string workDir;
+            string cwdErr;
+            if (!CwdScope.TryResolveWorkingDir(ctx, config.WorkDir, "workspace root", out workDir, out cwdErr))
+                return ToolResults.Error(cwdErr);
+
             ProcessRequest req = new ProcessRequest();
             req.FileName = vs.Path;
             req.Arguments = ArgvQuoter.Join(args);
-            req.WorkingDirectory = config.WorkDir;
+            req.WorkingDirectory = workDir;
             req.TimeoutMs = timeout;
 
             ProcessResult result;

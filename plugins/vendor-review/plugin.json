@@ -1,0 +1,10 @@
+{
+    "name": "Vendor Review",
+    "version": "0.1.0",
+    "description": "Perform a consumer-oriented Third Party Risk Management review of a vendor for personal data privacy and security concerns.",
+    "enabled": true,
+    "skills": [
+        "vendor-review"
+    ],
+    "agents": []
+}

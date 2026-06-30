@@ -61,6 +61,12 @@ namespace GxPT
             // Per-conversation working directory for MCP files/git/command servers (GXPT_WORKDIR);
             // null = no workspace (those tools won't connect for this tab).
             public string WorkingDir;
+            // The conversation's CURRENT directory (host `cd`): a subdirectory at or below WorkingDir the
+            // model has scoped into, or null to mean the anchor itself. Transient (in memory only) and
+            // reset to the anchor on conversation load, by design — you reopen at the consented boundary,
+            // never at some subdir the model wandered into. The MCP server set is still pooled per
+            // WorkingDir (the anchor); this rides each call as out-of-band metadata.
+            public string CurrentDir;
             // The per-tab workspace strip docked above this tab's transcript (set by MainForm).
             public WorkspaceContextStrip WorkspaceStrip;
             // The per-tab tool-approval panel docked at the bottom of this tab's transcript (set by

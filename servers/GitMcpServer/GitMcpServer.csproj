@@ -46,6 +46,10 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Gxpt.Mcp.Conventions\Gxpt.Mcp.Conventions.csproj">
+      <Project>{A1B2C3D4-0001-4E5F-8A6B-7C8D9E0F1A2B}</Project>
+      <Name>Gxpt.Mcp.Conventions</Name>
+    </ProjectReference>
     <ProjectReference Include="..\..\src\Mcp35.Server\Mcp35.Server.csproj">
       <Project>{DCA697A6-1B4C-430C-BC45-134CB5F90072}</Project>
       <Name>Mcp35.Server</Name>
