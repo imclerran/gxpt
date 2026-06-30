@@ -88,6 +88,15 @@ namespace GxPT
             var palette = new KryptonPalette();
             palette.BasePaletteMode = dark ? PaletteMode.VisualStudioDark : PaletteMode.Office2007Blue;
 
+            // Bake the base palette's concrete values (crucially, the MenuStrip/
+            // StatusStrip ColorTable) into this palette. Setting BasePaletteMode
+            // alone leaves the toolstrip color table at its blue default, so the
+            // strips look the same in light and dark; populating from the base
+            // gives them the real dark (VisualStudio) or light (Office) colors.
+            // silent: true suppresses any progress UI.
+            try { palette.PopulateFromBase(true); }
+            catch { }
+
             // --- Neutrals -------------------------------------------------------
             // In dark mode we override the base neutrals to exactly match the
             // transcript backdrop; in light mode we mostly inherit the familiar
