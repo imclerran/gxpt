@@ -35,15 +35,15 @@
             this.btnApply = new Krypton.Toolkit.KryptonButton();
             this.rtbJson = new System.Windows.Forms.RichTextBox();
             this.tblSettings = new System.Windows.Forms.TableLayoutPanel();
-            this.grpAccount = new System.Windows.Forms.GroupBox();
+            this.grpAccount = new Krypton.Toolkit.KryptonGroupBox();
             this.tblAccount = new System.Windows.Forms.TableLayoutPanel();
-            this.grpModels = new System.Windows.Forms.GroupBox();
+            this.grpModels = new Krypton.Toolkit.KryptonGroupBox();
             this.tblModels = new System.Windows.Forms.TableLayoutPanel();
-            this.grpAppearance = new System.Windows.Forms.GroupBox();
+            this.grpAppearance = new Krypton.Toolkit.KryptonGroupBox();
             this.tblAppearance = new System.Windows.Forms.TableLayoutPanel();
-            this.grpMemory = new System.Windows.Forms.GroupBox();
+            this.grpMemory = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMemory = new System.Windows.Forms.TableLayoutPanel();
-            this.grpPrivacy = new System.Windows.Forms.GroupBox();
+            this.grpPrivacy = new Krypton.Toolkit.KryptonGroupBox();
             this.tblPrivacy = new System.Windows.Forms.TableLayoutPanel();
             this.lblApiKey = new System.Windows.Forms.Label();
             this.lblModels = new System.Windows.Forms.Label();
@@ -57,7 +57,7 @@
             this.pnlModelsRow = new System.Windows.Forms.Panel();
             this.txtModels = new System.Windows.Forms.TextBox();
             this.pnlModelsRight = new System.Windows.Forms.Panel();
-            this.grpRecommended = new System.Windows.Forms.GroupBox();
+            this.grpRecommended = new Krypton.Toolkit.KryptonGroupBox();
             this.btnAddRecommended = new Krypton.Toolkit.KryptonButton();
             this.btnReplaceRecommended = new Krypton.Toolkit.KryptonButton();
             this.btnUpdateModelInfo = new Krypton.Toolkit.KryptonButton();
@@ -80,13 +80,13 @@
             this.tabJson = new Krypton.Navigator.KryptonPage();
             this.tabMcp = new Krypton.Navigator.KryptonPage();
             this.tblMcp = new System.Windows.Forms.TableLayoutPanel();
-            this.grpMcpWeb = new System.Windows.Forms.GroupBox();
+            this.grpMcpWeb = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMcpWeb = new System.Windows.Forms.TableLayoutPanel();
             this.chkMcpWeb = new Krypton.Toolkit.KryptonCheckBox();
             this.txtWebSearchKey = new System.Windows.Forms.TextBox();
             this.chkMcpGithub = new Krypton.Toolkit.KryptonCheckBox();
             this.txtGithubPat = new System.Windows.Forms.TextBox();
-            this.grpMcpWorkspace = new System.Windows.Forms.GroupBox();
+            this.grpMcpWorkspace = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMcpWorkspace = new System.Windows.Forms.TableLayoutPanel();
             this.tblMcpKeyless = new System.Windows.Forms.TableLayoutPanel();
             this.chkMcpFiles = new Krypton.Toolkit.KryptonCheckBox();
@@ -94,8 +94,8 @@
             this.chkMcpGit = new Krypton.Toolkit.KryptonCheckBox();
             this.chkMcpMsBuild = new Krypton.Toolkit.KryptonCheckBox();
             this.chkMcpCommandScratch = new Krypton.Toolkit.KryptonCheckBox();
-            this.grpMcpCustom = new System.Windows.Forms.GroupBox();
-            this.grpAgents = new System.Windows.Forms.GroupBox();
+            this.grpMcpCustom = new Krypton.Toolkit.KryptonGroupBox();
+            this.grpAgents = new Krypton.Toolkit.KryptonGroupBox();
             this.chkAgents = new Krypton.Toolkit.KryptonCheckBox();
             this.tblMcpCustom = new System.Windows.Forms.TableLayoutPanel();
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
@@ -217,7 +217,7 @@
             //
             // grpAccount
             //
-            this.grpAccount.Controls.Add(this.tblAccount);
+            this.grpAccount.Panel.Controls.Add(this.tblAccount);
             this.grpAccount.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAccount.Location = new System.Drawing.Point(3, 3);
             this.grpAccount.Name = "grpAccount";
@@ -244,7 +244,7 @@
             //
             // grpModels
             //
-            this.grpModels.Controls.Add(this.tblModels);
+            this.grpModels.Panel.Controls.Add(this.tblModels);
             this.grpModels.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpModels.Location = new System.Drawing.Point(3, 57);
             this.grpModels.Name = "grpModels";
@@ -274,7 +274,7 @@
             //
             // grpAppearance
             //
-            this.grpAppearance.Controls.Add(this.tblAppearance);
+            this.grpAppearance.Panel.Controls.Add(this.tblAppearance);
             this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAppearance.Location = new System.Drawing.Point(3, 236);
             this.grpAppearance.Name = "grpAppearance";
@@ -313,7 +313,7 @@
             //
             // grpMemory
             //
-            this.grpMemory.Controls.Add(this.tblMemory);
+            this.grpMemory.Panel.Controls.Add(this.tblMemory);
             this.grpMemory.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMemory.Location = new System.Drawing.Point(3, 406);
             this.grpMemory.Name = "grpMemory";
@@ -343,7 +343,7 @@
             //
             // grpPrivacy
             //
-            this.grpPrivacy.Controls.Add(this.tblPrivacy);
+            this.grpPrivacy.Panel.Controls.Add(this.tblPrivacy);
             this.grpPrivacy.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpPrivacy.Location = new System.Drawing.Point(3, 488);
             this.grpPrivacy.Name = "grpPrivacy";
@@ -502,8 +502,8 @@
             // 
             // grpRecommended
             // 
-            this.grpRecommended.Controls.Add(this.btnAddRecommended);
-            this.grpRecommended.Controls.Add(this.btnReplaceRecommended);
+            this.grpRecommended.Panel.Controls.Add(this.btnAddRecommended);
+            this.grpRecommended.Panel.Controls.Add(this.btnReplaceRecommended);
             this.grpRecommended.Dock = System.Windows.Forms.DockStyle.Top;
             this.grpRecommended.Location = new System.Drawing.Point(4, 0);
             this.grpRecommended.Name = "grpRecommended";
@@ -785,7 +785,7 @@
             //
             // grpMcpWeb
             //
-            this.grpMcpWeb.Controls.Add(this.tblMcpWeb);
+            this.grpMcpWeb.Panel.Controls.Add(this.tblMcpWeb);
             this.grpMcpWeb.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpWeb.Location = new System.Drawing.Point(3, 3);
             this.grpMcpWeb.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -816,7 +816,7 @@
             //
             // grpMcpWorkspace
             //
-            this.grpMcpWorkspace.Controls.Add(this.tblMcpWorkspace);
+            this.grpMcpWorkspace.Panel.Controls.Add(this.tblMcpWorkspace);
             this.grpMcpWorkspace.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpWorkspace.Location = new System.Drawing.Point(3, 77);
             this.grpMcpWorkspace.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -957,7 +957,7 @@
             //
             // grpMcpCustom
             //
-            this.grpMcpCustom.Controls.Add(this.tblMcpCustom);
+            this.grpMcpCustom.Panel.Controls.Add(this.tblMcpCustom);
             this.grpMcpCustom.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpCustom.Location = new System.Drawing.Point(3, 167);
             this.grpMcpCustom.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -970,7 +970,7 @@
             //
             // grpAgents
             //
-            this.grpAgents.Controls.Add(this.chkAgents);
+            this.grpAgents.Panel.Controls.Add(this.chkAgents);
             this.grpAgents.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAgents.Location = new System.Drawing.Point(3, 173);
             this.grpAgents.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -1087,15 +1087,15 @@
         private Krypton.Toolkit.KryptonButton btnApply;
         private System.Windows.Forms.RichTextBox rtbJson;
         private System.Windows.Forms.TableLayoutPanel tblSettings;
-        private System.Windows.Forms.GroupBox grpAccount;
+        private Krypton.Toolkit.KryptonGroupBox grpAccount;
         private System.Windows.Forms.TableLayoutPanel tblAccount;
-        private System.Windows.Forms.GroupBox grpModels;
+        private Krypton.Toolkit.KryptonGroupBox grpModels;
         private System.Windows.Forms.TableLayoutPanel tblModels;
-        private System.Windows.Forms.GroupBox grpAppearance;
+        private Krypton.Toolkit.KryptonGroupBox grpAppearance;
         private System.Windows.Forms.TableLayoutPanel tblAppearance;
-        private System.Windows.Forms.GroupBox grpMemory;
+        private Krypton.Toolkit.KryptonGroupBox grpMemory;
         private System.Windows.Forms.TableLayoutPanel tblMemory;
-        private System.Windows.Forms.GroupBox grpPrivacy;
+        private Krypton.Toolkit.KryptonGroupBox grpPrivacy;
         private System.Windows.Forms.TableLayoutPanel tblPrivacy;
         private System.Windows.Forms.Label lblApiKey;
         private System.Windows.Forms.Label lblModels;
@@ -1106,7 +1106,7 @@
         private System.Windows.Forms.TextBox txtModels;
         private System.Windows.Forms.Panel pnlModelsRow;
         private System.Windows.Forms.Panel pnlModelsRight;
-        private System.Windows.Forms.GroupBox grpRecommended;
+        private Krypton.Toolkit.KryptonGroupBox grpRecommended;
         private Krypton.Toolkit.KryptonButton btnAddRecommended;
         private Krypton.Toolkit.KryptonButton btnReplaceRecommended;
         private Krypton.Toolkit.KryptonButton btnUpdateModelInfo;
@@ -1132,13 +1132,13 @@
         private System.Windows.Forms.ComboBox cmbColor;
         private Krypton.Navigator.KryptonPage tabMcp;
         private System.Windows.Forms.TableLayoutPanel tblMcp;
-        private System.Windows.Forms.GroupBox grpMcpWeb;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpWeb;
         private System.Windows.Forms.TableLayoutPanel tblMcpWeb;
-        private System.Windows.Forms.GroupBox grpMcpWorkspace;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpKeyless;
-        private System.Windows.Forms.GroupBox grpMcpCustom;
-        private System.Windows.Forms.GroupBox grpAgents;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpCustom;
+        private Krypton.Toolkit.KryptonGroupBox grpAgents;
         private Krypton.Toolkit.KryptonCheckBox chkAgents;
         private System.Windows.Forms.TableLayoutPanel tblMcpCustom;
         private Krypton.Toolkit.KryptonCheckBox chkMcpWeb;
