@@ -30,6 +30,12 @@ namespace GxPT
         // state; cleared on a successful Apply/OK save and reset to false after the initial load.
         private bool _isDirty = false;
 
+        // Snapshot of every tracked control's value, taken once the form has loaded/settled. Dirtiness
+        // is decided by comparing the current values to this baseline rather than by "an event fired",
+        // so spurious Changed events that don't actually alter a value (e.g. Krypton combos re-raising
+        // SelectedIndexChanged when first realized on screen) never light up Apply.
+        private string _dirtyBaseline;
+
         // Debounce timer for JSON syntax highlighting
         private Timer _jsonHighlightTimer;
 
@@ -257,22 +263,65 @@ namespace GxPT
         private void MarkDirty()
         {
             if (_isSyncing) return;
-            _isDirty = true;
+            // Compare actual control values to the loaded baseline instead of trusting that an
+            // event means a real edit. A spurious Changed event that leaves every value unchanged
+            // (e.g. a Krypton combo re-raising SelectedIndexChanged on first display) compares
+            // equal and keeps Apply disabled; a genuine edit differs and enables it.
+            _isDirty = _dirtyBaseline != null && CollectTrackedSnapshot() != _dirtyBaseline;
             UpdateDialogButtons();
+        }
+
+        // Capture the current baseline of all tracked control values and clear the dirty state.
+        // Called after load/show settle and after each successful save, so Apply greys out until
+        // the user makes a change that actually differs from the saved state.
+        private void ResetDirtyBaseline()
+        {
+            _dirtyBaseline = CollectTrackedSnapshot();
+            _isDirty = false;
+            UpdateDialogButtons();
+        }
+
+        // A stable string of every tracked input's value (same control set WireDirtyTracking hooks),
+        // used purely for equality comparison to detect real edits.
+        private string CollectTrackedSnapshot()
+        {
+            StringBuilder sb = new StringBuilder();
+            CollectTrackedSnapshot(this, sb);
+            return sb.ToString();
+        }
+
+        private void CollectTrackedSnapshot(Control root, StringBuilder sb)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is TextBox || c is RichTextBox || c is KryptonTextBox || c is KryptonRichTextBox)
+                    sb.Append(c.Name).Append('=').Append(c.Text).Append('\n');
+                else if (c is CheckBox)
+                    sb.Append(c.Name).Append('=').Append(((CheckBox)c).Checked).Append('\n');
+                else if (c is KryptonCheckBox)
+                    sb.Append(c.Name).Append('=').Append(((KryptonCheckBox)c).Checked).Append('\n');
+                else if (c is ComboBox)
+                    sb.Append(c.Name).Append('=').Append(((ComboBox)c).Text).Append('\n');
+                else if (c is KryptonComboBox)
+                    sb.Append(c.Name).Append('=').Append(((KryptonComboBox)c).Text).Append('\n');
+                else if (c is NumericUpDown)
+                    sb.Append(c.Name).Append('=').Append(((NumericUpDown)c).Value).Append('\n');
+                else if (c is KryptonNumericUpDown)
+                    sb.Append(c.Name).Append('=').Append(((KryptonNumericUpDown)c).Value).Append('\n');
+
+                if (c.Controls.Count > 0) CollectTrackedSnapshot(c, sb);
+            }
         }
 
         private void SettingsForm_Shown(object sender, EventArgs e)
         {
-            // Absorb any dirty marks left by Krypton inputs raising Changed events as they
-            // were first realized on screen. Deferred via BeginInvoke so it runs after the
-            // initial display (and those events) have settled; the form always opens clean.
+            // Re-establish the baseline after the form has finished showing, so any Changed events
+            // Krypton inputs raise as they're first realized on screen are folded into the baseline
+            // rather than treated as edits. Deferred via BeginInvoke so it runs once the initial
+            // display has settled; the form always opens clean.
             try
             {
-                BeginInvoke((MethodInvoker)delegate
-                {
-                    _isDirty = false;
-                    UpdateDialogButtons();
-                });
+                BeginInvoke((MethodInvoker)delegate { ResetDirtyBaseline(); });
             }
             catch { }
         }
@@ -316,10 +365,9 @@ namespace GxPT
                 // mcp.json lives in its own file beside settings.json.
                 LoadMcpJsonEditor();
 
-                // Nothing the user did yet: clear any dirty marks left by populating the controls
-                // (LoadMcpJsonEditor runs outside the _isSyncing block) so Apply starts disabled.
-                _isDirty = false;
-                UpdateDialogButtons();
+                // Nothing the user did yet: snapshot the populated controls as the baseline so
+                // Apply starts disabled (the Shown handler refreshes it once the display settles).
+                ResetDirtyBaseline();
             }
             catch (Exception ex)
             {
@@ -440,8 +488,8 @@ namespace GxPT
             bool ok = SaveSettingsOnly();
             if (ok)
             {
-                _isDirty = false;
-                UpdateDialogButtons();
+                // Saved state is the new baseline, so Apply greys out until the next real edit.
+                ResetDirtyBaseline();
             }
             return ok;
         }
