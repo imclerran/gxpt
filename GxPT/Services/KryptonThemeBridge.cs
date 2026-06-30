@@ -107,6 +107,18 @@ namespace GxPT
 
             // Headers (group/header captions) get a muted accent fill.
             ApplyHeaderAccent(palette.HeaderStyles.HeaderPrimary, accent);
+
+            // Sparkle's disabled-button treatment reads as a light/un-themed grey
+            // against the dark chrome, so give disabled buttons an explicit muted
+            // dark face + dimmed text in dark mode. (Light mode keeps Office's
+            // disabled look, which already fits.)
+            if (dark)
+            {
+                Color disabledBack = Color.FromArgb(0x3E, 0x47, 0x52);
+                Color disabledText = Color.FromArgb(0x80, 0x88, 0x92);
+                SetTripleFace(palette.ButtonStyles.ButtonStandalone.StateDisabled, disabledBack, disabledBack, disabledText);
+                SetTripleFace(palette.ButtonStyles.ButtonCustom1.StateDisabled, disabledBack, disabledBack, disabledText);
+            }
         }
 
         // Resolved background color the active palette uses for ordinary controls
