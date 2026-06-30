@@ -6195,15 +6195,12 @@ namespace GxPT
             try
             {
                 if (this.ssMain == null) return;
-                // Match the strip + its labels to Krypton's themed status strip
-                // (Sparkle blue-grey in dark mode) instead of forcing system colors,
-                // which used to override the theme and leave a light bar.
-                Color back = KryptonThemeBridge.StatusStripBackColor();
-                Color text = KryptonThemeBridge.StatusStripTextColor();
-                this.ssMain.BackColor = back;
-                this.ssMain.ForeColor = text;
-                foreach (ToolStripItem it in this.ssMain.Items)
-                    it.ForeColor = text;
+                // Krypton fully renders the status strip background; we don't touch
+                // BackColor (forcing it produced a black bar) or per-item colors. We
+                // only set the strip's ForeColor from the palette so the labels -
+                // which inherit it - read on the themed strip. The Saved label sets
+                // its own ForeColor (red/green/default), so it's left alone.
+                this.ssMain.ForeColor = KryptonThemeBridge.StatusStripTextColor();
                 SyncUsageStatusFromActiveTab();
             }
             catch { }
@@ -6384,8 +6381,10 @@ namespace GxPT
             if (this.tslSavedValue != null)
             {
                 this.tslSavedValue.Text = FormatMoney(s.TotalCacheDiscount);
+                // Green = savings, Firebrick = surcharge, otherwise the themed status
+                // text color (not ControlText, which is unreadable on the dark strip).
                 this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? Color.Green
-                    : (s.TotalCacheDiscount < 0 ? Color.Firebrick : SystemColors.ControlText);
+                    : (s.TotalCacheDiscount < 0 ? Color.Firebrick : KryptonThemeBridge.StatusStripTextColor());
             }
 
             string breakdown = BuildUsageTooltip(s, haveMax ? maxContext : 0);
