@@ -503,7 +503,7 @@
             // 
             // btnAddRecommended
             // 
-            this.btnAddRecommended.Location = new System.Drawing.Point(13, 26);
+            this.btnAddRecommended.Location = new System.Drawing.Point(13, 7);
             this.btnAddRecommended.Name = "btnAddRecommended";
             this.btnAddRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnAddRecommended.TabIndex = 0;
@@ -511,7 +511,7 @@
             // 
             // btnReplaceRecommended
             // 
-            this.btnReplaceRecommended.Location = new System.Drawing.Point(13, 60);
+            this.btnReplaceRecommended.Location = new System.Drawing.Point(13, 40);
             this.btnReplaceRecommended.Name = "btnReplaceRecommended";
             this.btnReplaceRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnReplaceRecommended.TabIndex = 1;
