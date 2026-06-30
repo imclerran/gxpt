@@ -78,6 +78,12 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
+            // The navigator fills the client area except the bottom OK/Cancel/Apply strip, which
+            // would otherwise show the unthemed form background. Paint it the themed chrome-bar color
+            // (the same one the main window's status strip uses) so it matches the window chrome.
+            try { if (this.flowLayoutPanel1 != null) this.flowLayoutPanel1.BackColor = KryptonThemeBridge.StatusStripBackColor(); }
+            catch { }
+
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
             _settingsFile = Path.Combine(_settingsDir, "settings.json");
