@@ -221,6 +221,9 @@ namespace GxPT
         // exact color here and assign it so they match the surrounding KryptonLabels.
         public static Color LabelTextColor()
         {
+            // Match what a KryptonLabel (LabelStyle.NormalControl) renders. The probe
+            // palette is synced to the same base mode, so its resolved LabelNormalControl
+            // color equals the live one. Fall back to a per-mode constant if unavailable.
             try
             {
                 if (_palette != null)
@@ -232,6 +235,27 @@ namespace GxPT
             }
             catch { }
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
+        }
+
+        // KryptonCheckBox defaults its caption to LabelStyle.NormalPanel, which the
+        // Sparkle dark palette renders as a muted grey - dimmer than the NormalControl
+        // style KryptonLabel (and the rest of the body text) uses, so checkbox captions
+        // look washed out. Switch every checkbox to NormalControl so its caption matches
+        // the labels in every theme. This is a style change, not a hard-coded color, so
+        // the palette still drives the actual color in both light and dark mode.
+        public static void MatchCheckBoxTextStyle(Control root)
+        {
+            if (root == null) return;
+            foreach (Control c in root.Controls)
+            {
+                try
+                {
+                    KryptonCheckBox cb = c as KryptonCheckBox;
+                    if (cb != null) cb.LabelStyle = LabelStyle.NormalControl;
+                }
+                catch { }
+                if (c.Controls.Count > 0) MatchCheckBoxTextStyle(c);
+            }
         }
 
         // Make stock WinForms layout containers (TableLayoutPanel / Panel /

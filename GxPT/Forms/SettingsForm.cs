@@ -72,6 +72,10 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
+            // KryptonCheckBox captions default to the (dimmer) NormalPanel label style;
+            // switch them to NormalControl so their text matches the KryptonLabels.
+            try { KryptonThemeBridge.MatchCheckBoxTextStyle(this); } catch { }
+
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
             _settingsFile = Path.Combine(_settingsDir, "settings.json");
