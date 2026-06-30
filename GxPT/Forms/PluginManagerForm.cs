@@ -42,11 +42,10 @@ namespace GxPT
 
             _list = new KryptonDataGridView();
             // KryptonDataGridView defaults AutoSize on, which shrinks the control to
-            // its content (header + rows). Turn it off so SetBounds + anchors make it
-            // fill the dialog like the old ListView did.
+            // its content (header + rows). Turn it off so it fills its container (the
+            // header group's panel) instead of collapsing to its rows.
             _list.AutoSize = false;
-            _list.SetBounds(12, 12, 636, 302);
-            _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            _list.Dock = DockStyle.Fill;
             // Read-only, full-row single selection, no row-header gutter, and no
             // user editing/adding - it's a display list, not an editable grid.
             _list.ReadOnly = true;
@@ -101,6 +100,18 @@ namespace GxPT
             _menu.Opening += new System.ComponentModel.CancelEventHandler(OnMenuOpening);
             _list.ContextMenuStrip = _menu;
 
+            // Wrap the grid in a captioned KryptonHeaderGroup ("Installed Plugins"),
+            // the same styled header bar the Krypton sample apps show above a grid.
+            // The grid (docked Fill) lives in the group's content panel.
+            KryptonHeaderGroup group = new KryptonHeaderGroup();
+            group.SetBounds(12, 12, 636, 302);
+            group.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            group.HeaderVisibleSecondary = false; // single caption bar only
+            group.ValuesPrimary.Heading = "Installed Plugins";
+            group.ValuesPrimary.Image = null;     // no default icon
+            group.ValuesPrimary.Description = string.Empty;
+            group.Panel.Controls.Add(_list);
+
             // A KryptonForm themes only its border/caption; its client area is a
             // plain Form surface (system grey). Host the controls on a KryptonPanel
             // docked to fill, so the area around the list takes the palette's panel
@@ -112,7 +123,7 @@ namespace GxPT
             // because a freshly-created panel starts at its small default size.
             root.Size = this.ClientSize;
             root.Dock = DockStyle.Fill;
-            root.Controls.Add(_list);
+            root.Controls.Add(group);
             root.Controls.Add(install);
             root.Controls.Add(newPlugin);
             root.Controls.Add(_toggle);
