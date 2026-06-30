@@ -738,6 +738,10 @@
             this.tabControl1.Pages.Add(this.tabVisual);
             this.tabControl1.Pages.Add(this.tabJson);
             this.tabControl1.Pages.Add(this.tabMcp);
+            // Hide the navigator's built-in context (drop-down) and close buttons in
+            // the tab bar's top-right corner - the settings tabs are fixed.
+            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
+            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
