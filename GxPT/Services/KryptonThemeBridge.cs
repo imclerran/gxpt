@@ -215,6 +215,67 @@ namespace GxPT
             catch { }
         }
 
+        // In Sparkle dark mode a KryptonCheckBox draws its caption noticeably dimmer
+        // than a KryptonLabel sitting right next to it: the two controls resolve to
+        // different label content styles and Sparkle colors them differently, and the
+        // checkbox's LabelStyle doesn't move the drawn color. Setting the caption color
+        // explicitly DOES work, so do that - using the brighter of the two normal label
+        // styles, which in dark mode is the light text a label uses. Light mode already
+        // matches, so leave it (and its dark navy text) untouched.
+        public static void FixDarkCheckBoxText(Control root)
+        {
+            if (root == null || !ReadDark()) return;
+            Color fg = DarkCheckBoxTextColor();
+            if (!Usable(fg)) return;
+            ApplyCheckBoxTextColor(root, fg);
+        }
+
+        private static void ApplyCheckBoxTextColor(Control root, Color fg)
+        {
+            foreach (Control c in root.Controls)
+            {
+                try
+                {
+                    KryptonCheckBox cb = c as KryptonCheckBox;
+                    if (cb != null) cb.StateCommon.ShortText.Color1 = fg;
+                }
+                catch { }
+                if (c.Controls.Count > 0) ApplyCheckBoxTextColor(c, fg);
+            }
+        }
+
+        // The light caption color a KryptonLabel uses in dark mode. Read the brighter
+        // of the two normal label content styles from the probe palette (whichever one
+        // the labels resolve to, it's the higher-luminance value in dark mode), with a
+        // near-white fallback if the palette can't be read.
+        private static Color DarkCheckBoxTextColor()
+        {
+            Color best = Color.Empty;
+            float bestLum = -1f;
+            if (_palette != null)
+            {
+                PaletteContentStyle[] styles =
+                {
+                    PaletteContentStyle.LabelNormalControl,
+                    PaletteContentStyle.LabelNormalPanel
+                };
+                foreach (PaletteContentStyle s in styles)
+                {
+                    try
+                    {
+                        Color c = _palette.GetContentShortTextColor1(s, PaletteState.Normal);
+                        if (Usable(c) && c.GetBrightness() > bestLum)
+                        {
+                            bestLum = c.GetBrightness();
+                            best = c;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            return Usable(best) ? best : Color.FromArgb(0xE6, 0xE8, 0xEB);
+        }
+
         // Make stock WinForms layout containers (TableLayoutPanel / Panel /
         // FlowLayoutPanel) transparent so the themed Krypton surface they sit on
         // (a KryptonPage, KryptonPanel, or KryptonGroupBox.Panel) shows through.

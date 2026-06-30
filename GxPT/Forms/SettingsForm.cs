@@ -200,6 +200,11 @@ namespace GxPT
             try { BuildEffortRow(); }
             catch { }
 
+            // In dark mode, KryptonCheckBox captions render dimmer than the labels next to them;
+            // brighten them to match. Done after BuildEffortRow so the re-hosted Sub-agents
+            // checkbox is included too.
+            try { KryptonThemeBridge.FixDarkCheckBoxText(this); } catch { }
+
             // Track edits across every input so the Apply button can light up only when there are
             // unsaved changes. Wired generically (by control type) so new controls are covered too.
             try { WireDirtyTracking(this); }
