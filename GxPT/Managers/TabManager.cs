@@ -877,11 +877,14 @@ namespace GxPT
         }
 
         // Custom ToolStripButton with copy-button-like hover/press visuals and +/x glyphs
+        // A right-aligned +/x button on the menu strip. It is a stock ToolStripButton
+        // so Krypton's toolstrip renderer draws its hover/pressed background to match
+        // the themed strip (we deliberately do NOT paint our own background, which is
+        // what used to clash). We only paint the glyph, in a color that reads against
+        // the strip - light in dark mode, dark in light mode.
         private sealed class GlyphToolStripButton : ToolStripButton
         {
             public enum GlyphType { Plus, Close }
-            private bool _hover;
-            private bool _pressed;
             private readonly GlyphType _glyph;
 
             public GlyphToolStripButton(GlyphType glyph)
@@ -893,51 +896,19 @@ namespace GxPT
                 Margin = new Padding(2);
             }
 
-            protected override void OnMouseEnter(EventArgs e)
-            {
-                _hover = true;
-                Invalidate();
-                base.OnMouseEnter(e);
-            }
-
-            protected override void OnMouseLeave(EventArgs e)
-            {
-                _hover = false;
-                _pressed = false;
-                Invalidate();
-                base.OnMouseLeave(e);
-            }
-
-            protected override void OnMouseDown(MouseEventArgs e)
-            {
-                if (e.Button == MouseButtons.Left)
-                {
-                    _pressed = true;
-                    Invalidate();
-                }
-                base.OnMouseDown(e);
-            }
-
-            protected override void OnMouseUp(MouseEventArgs e)
-            {
-                _pressed = false;
-                Invalidate();
-                base.OnMouseUp(e);
-            }
-
             protected override void OnPaint(PaintEventArgs e)
             {
+                // Let the (Krypton) renderer paint the themed button background and
+                // hover/pressed states first; ToolStripButton tracks those itself.
+                base.OnPaint(e);
+
                 var g = e.Graphics;
                 Rectangle r = new Rectangle(0, 0, (int)this.Width - 1, (int)this.Height - 1);
-                if (_hover || _pressed)
-                {
-                    int shade = _pressed ? 210 : 230;
-                    using (var sb = new SolidBrush(Color.FromArgb(shade, shade, shade)))
-                        g.FillRectangle(sb, r);
-                    using (var pen = new Pen(Color.FromArgb(210, 210, 210)))
-                        g.DrawRectangle(pen, r);
-                }
-                using (var pen = new Pen(Color.FromArgb(80, 80, 80), 2f))
+                Color glyphColor;
+                try { glyphColor = KryptonThemeBridge.IsDarkMode() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50); }
+                catch { glyphColor = Color.FromArgb(0x50, 0x50, 0x50); }
+
+                using (var pen = new Pen(glyphColor, 2f))
                 {
                     int cx = r.Left + r.Width / 2;
                     int cy = r.Top + r.Height / 2;

@@ -42,6 +42,14 @@ namespace GxPT
             }
         }
 
+        // True when the app is in dark mode. Exposed so custom owner-drawn strip
+        // items (e.g. the tab +/x glyph buttons) can pick a glyph color that reads
+        // against the themed strip while letting Krypton draw the button chrome.
+        public static bool IsDarkMode()
+        {
+            return ReadDark();
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
