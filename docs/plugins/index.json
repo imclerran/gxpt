@@ -1,6 +1,23 @@
 {
   "plugins": [
     {
+      "name": "Vendor Review",
+      "slug": "vendor-review",
+      "version": "0.1.0",
+      "description": "Perform a consumer-oriented Third Party Risk Management review of a vendor for personal data privacy and security concerns.",
+      "download": "vendor-review.gxpl",
+      "size": 10653,
+      "sha256": "ad52460fd248d621c4e8dcc41d3baf6eca49f023004a9c02a3649d17437b4491",
+      "members": [
+        {
+          "kind": "skill",
+          "slug": "vendor-review",
+          "name": "Third-Party Vendor Review",
+          "description": "Use this when the user wants to draft a third-party vendor or product privacy and security review document for consumer use."
+        }
+      ]
+    },
+    {
       "name": "Xtra Powers",
       "slug": "xtra-powers",
       "version": "0.1.0",
