@@ -83,12 +83,15 @@ namespace GxPT
         }
 
         // The exact color Krypton draws StatusStrip text with, so the status labels
-        // and custom owner-drawn status items (meter border, etc.) match.
+        // and custom owner-drawn status items (meter border, etc.) match. Several
+        // themes (e.g. Office 2010) leave StatusStripText unset and draw the labels
+        // in the general menu/chrome text color instead, so fall back to MenuTextColor
+        // rather than a black system color (which didn't match the blue labels).
         public static Color StatusStripTextColor()
         {
             try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.StatusStripText)) return ct.StatusStripText; } catch { }
             try { if (_palette != null && Usable(_palette.ColorTable.StatusStripText)) return _palette.ColorTable.StatusStripText; } catch { }
-            return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
+            return MenuTextColor();
         }
 
         // Background for the StatusStrip. Krypton does not fill the StatusStrip's

@@ -6389,8 +6389,8 @@ namespace GxPT
                 // color. In dark mode use brighter green/red so they stand out on the
                 // dark strip (the standard Green/Firebrick are too low-contrast there).
                 bool darkStrip = KryptonThemeBridge.IsDarkMode();
-                Color savePos = darkStrip ? Color.FromArgb(0x5C, 0xD6, 0x79) : Color.Green;
-                Color saveNeg = darkStrip ? Color.FromArgb(0xFF, 0x6B, 0x6B) : Color.Firebrick;
+                Color savePos = darkStrip ? Color.FromArgb(0x7B, 0xF7, 0x9A) : Color.Green;
+                Color saveNeg = darkStrip ? Color.FromArgb(0xFF, 0x92, 0x92) : Color.Firebrick;
                 this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? savePos
                     : (s.TotalCacheDiscount < 0 ? saveNeg : KryptonThemeBridge.StatusStripTextColor());
             }
