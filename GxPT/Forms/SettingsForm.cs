@@ -66,6 +66,12 @@ namespace GxPT
             // read correctly in both light and dark mode.
             try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); } catch { }
 
+            // The group boxes sit on the (light) navigator page but have dark panels.
+            // The default caption straddles the top border, so half the caption text
+            // lands on the light page behind it and is unreadable. Seat each caption
+            // fully inside its own group area so it reads against the dark panel.
+            try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
+
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
             _settingsFile = Path.Combine(_settingsDir, "settings.json");
