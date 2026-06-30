@@ -75,10 +75,10 @@
             this.chkMemoryEnabled = new System.Windows.Forms.CheckBox();
             this.lblMemoryMaxLines = new System.Windows.Forms.Label();
             this.nudMemoryMaxLines = new System.Windows.Forms.NumericUpDown();
-            this.tabControl1 = new System.Windows.Forms.TabControl();
-            this.tabVisual = new System.Windows.Forms.TabPage();
-            this.tabJson = new System.Windows.Forms.TabPage();
-            this.tabMcp = new System.Windows.Forms.TabPage();
+            this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
+            this.tabVisual = new Krypton.Navigator.KryptonPage();
+            this.tabJson = new Krypton.Navigator.KryptonPage();
+            this.tabMcp = new Krypton.Navigator.KryptonPage();
             this.tblMcp = new System.Windows.Forms.TableLayoutPanel();
             this.grpMcpWeb = new System.Windows.Forms.GroupBox();
             this.tblMcpWeb = new System.Windows.Forms.TableLayoutPanel();
@@ -735,48 +735,39 @@
             // 
             // tabControl1
             // 
-            this.tabControl1.Controls.Add(this.tabVisual);
-            this.tabControl1.Controls.Add(this.tabJson);
-            this.tabControl1.Controls.Add(this.tabMcp);
+            this.tabControl1.Pages.Add(this.tabVisual);
+            this.tabControl1.Pages.Add(this.tabJson);
+            this.tabControl1.Pages.Add(this.tabMcp);
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(604, 437);
             this.tabControl1.TabIndex = 3;
-            // 
+            //
             // tabVisual
-            // 
+            //
             this.tabVisual.Controls.Add(this.tblSettings);
-            this.tabVisual.Location = new System.Drawing.Point(4, 22);
             this.tabVisual.Name = "tabVisual";
             this.tabVisual.Padding = new System.Windows.Forms.Padding(3);
             this.tabVisual.Size = new System.Drawing.Size(596, 411);
-            this.tabVisual.TabIndex = 0;
             this.tabVisual.Text = "General";
-            this.tabVisual.UseVisualStyleBackColor = true;
-            // 
+            //
             // tabJson
-            // 
+            //
             this.tabJson.Controls.Add(this.rtbJson);
-            this.tabJson.Location = new System.Drawing.Point(4, 22);
             this.tabJson.Name = "tabJson";
             this.tabJson.Padding = new System.Windows.Forms.Padding(3);
             this.tabJson.Size = new System.Drawing.Size(596, 363);
-            this.tabJson.TabIndex = 1;
             this.tabJson.Text = "JSON";
-            this.tabJson.UseVisualStyleBackColor = true;
-            // 
+            //
             // tabMcp
-            // 
+            //
             this.tabMcp.Controls.Add(this.tblMcp);
-            this.tabMcp.Location = new System.Drawing.Point(4, 22);
             this.tabMcp.Name = "tabMcp";
             this.tabMcp.Padding = new System.Windows.Forms.Padding(3);
             this.tabMcp.Size = new System.Drawing.Size(596, 363);
-            this.tabMcp.TabIndex = 2;
             this.tabMcp.Text = "Tools";
-            this.tabMcp.UseVisualStyleBackColor = true;
             // 
             // tblMcp
             // 
@@ -1133,9 +1124,9 @@
         private System.Windows.Forms.Button btnReplaceRecommended;
         private System.Windows.Forms.Button btnUpdateModelInfo;
         private System.Windows.Forms.TextBox txtApiKey;
-        private System.Windows.Forms.TabControl tabControl1;
-        private System.Windows.Forms.TabPage tabVisual;
-        private System.Windows.Forms.TabPage tabJson;
+        private Krypton.Navigator.KryptonNavigator tabControl1;
+        private Krypton.Navigator.KryptonPage tabVisual;
+        private Krypton.Navigator.KryptonPage tabJson;
         private System.Windows.Forms.Label lblFontSize;
         private System.Windows.Forms.NumericUpDown nudFontSize;
         private System.Windows.Forms.Label lblTheme;
@@ -1152,7 +1143,7 @@
         private System.Windows.Forms.NumericUpDown nudMemoryMaxLines;
         private System.Windows.Forms.Label lblColor;
         private System.Windows.Forms.ComboBox cmbColor;
-        private System.Windows.Forms.TabPage tabMcp;
+        private Krypton.Navigator.KryptonPage tabMcp;
         private System.Windows.Forms.TableLayoutPanel tblMcp;
         private System.Windows.Forms.GroupBox grpMcpWeb;
         private System.Windows.Forms.TableLayoutPanel tblMcpWeb;

@@ -63,6 +63,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>lib\Krypton.Toolkit.dll</HintPath>
     </Reference>
+    <Reference Include="Krypton.Navigator">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Krypton.Navigator.dll</HintPath>
+    </Reference>
     <Reference Include="Newtonsoft.Json">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\src\Mcp35.Core\lib\Newtonsoft.Json.dll</HintPath>

@@ -9,10 +9,12 @@ using System.IO;
 using System.Windows.Forms;
 using System.Web.Script.Serialization; // .NET 3.5 JSON serializer
 using Newtonsoft.Json.Linq;            // mcp.json validation
+using Krypton.Toolkit;
+using Krypton.Navigator;
 
 namespace GxPT
 {
-    public partial class SettingsForm : Form
+    public partial class SettingsForm : KryptonForm
     {
         private readonly string _settingsDir;
         private readonly string _settingsFile;
@@ -104,7 +106,7 @@ namespace GxPT
             this.KeyDown += SettingsForm_KeyDown;
 
             // Keep tabs in sync
-            this.tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
+            this.tabControl1.SelectedPageChanged += TabControl1_SelectedIndexChanged;
 
             // Keep default model list updated as models are typed
             this.txtModels.TextChanged += TxtModels_TextChanged;
@@ -337,7 +339,7 @@ namespace GxPT
                 finally { _isSyncing = false; }
 
                 // If currently on the JSON tab, re-apply highlighting once post-save
-                if (this.tabControl1.SelectedTab == this.tabJson)
+                if (this.tabControl1.SelectedPage == this.tabJson)
                 {
                     try { BeginInvoke(new Action(HighlightJsonNow)); }
                     catch { /* ignore */ }
@@ -399,14 +401,14 @@ namespace GxPT
 
             // The MCP tab edits mcp.json + its own settings; it is independent of the settings.json
             // visual/JSON sync. Just (re)highlight its editor on entry.
-            if (this.tabControl1.SelectedTab == this.tabMcp)
+            if (this.tabControl1.SelectedPage == this.tabMcp)
             {
                 try { BeginInvoke(new Action(HighlightMcpJsonNow)); }
                 catch { /* ignore */ }
                 return;
             }
 
-            bool toJson = this.tabControl1.SelectedTab == this.tabJson;
+            bool toJson = this.tabControl1.SelectedPage == this.tabJson;
 
             _isSyncing = true;
             try
@@ -434,7 +436,7 @@ namespace GxPT
                         if (choice == JsonPromptChoice.Edit)
                         {
                             // Stay on JSON tab
-                            this.tabControl1.SelectedTab = this.tabJson;
+                            this.tabControl1.SelectedPage = this.tabJson;
                             return;
                         }
                         else
@@ -451,14 +453,14 @@ namespace GxPT
                                         "Reload Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                                     _isSyncing = true;
                                     // Stay on JSON tab to edit
-                                    this.tabControl1.SelectedTab = this.tabJson;
+                                    this.tabControl1.SelectedPage = this.tabJson;
                                     return;
                                 }
                                 _working = loaded;
                                 ApplySettingsToVisualControls(_working);
                                 UpdateJsonEditorFromSettings(_working);
                                 // Stay on JSON tab so the user can continue editing there
-                                this.tabControl1.SelectedTab = this.tabJson;
+                                this.tabControl1.SelectedPage = this.tabJson;
                                 return;
                             }
                             catch (Exception ex)
@@ -466,7 +468,7 @@ namespace GxPT
                                 _isSyncing = false;
                                 MessageBox.Show(this, "Failed to reload settings: " + ex.Message, "Reload Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 _isSyncing = true;
-                                this.tabControl1.SelectedTab = this.tabJson;
+                                this.tabControl1.SelectedPage = this.tabJson;
                                 return;
                             }
                         }
@@ -1310,7 +1312,7 @@ namespace GxPT
         // Ensure working copy is current before saving
         private bool SyncWorkingSettingsFromActiveTab(bool showErrors)
         {
-            bool jsonActive = this.tabControl1.SelectedTab == this.tabJson;
+            bool jsonActive = this.tabControl1.SelectedPage == this.tabJson;
             if (jsonActive)
             {
                 SettingsData parsed;
@@ -1341,7 +1343,7 @@ namespace GxPT
                                     }
                                     finally { _isSyncing = false; }
                                     // Keep user on JSON tab to continue editing
-                                    this.tabControl1.SelectedTab = this.tabJson;
+                                    this.tabControl1.SelectedPage = this.tabJson;
                                 }
                                 else
                                 {
@@ -1534,7 +1536,7 @@ namespace GxPT
             }
             catch (Exception ex)
             {
-                try { if (tabMcp != null) this.tabControl1.SelectedTab = tabMcp; }
+                try { if (tabMcp != null) this.tabControl1.SelectedPage = tabMcp; }
                 catch { }
                 MessageBox.Show(this, "mcp.json is not valid JSON:\r\n\r\n" + ex.Message,
                     "Invalid mcp.json", MessageBoxButtons.OK, MessageBoxIcon.Error);
