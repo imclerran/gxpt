@@ -54,35 +54,40 @@ namespace GxPT
             return ReadDark();
         }
 
+        // The KryptonColorTable that Krypton is ACTUALLY rendering the toolstrips
+        // with (via the global ToolStrip renderer). This is the authoritative source
+        // for menu/status colors - the non-rendered probe palette doesn't compute the
+        // Krypton-specific colors (MenuStripText / StatusStripText), so reading them
+        // off the probe yields empty and falls through to an approximate color that
+        // won't match the labels. The probe is only a last-resort fallback.
+        private static KryptonColorTable ActiveColorTable()
+        {
+            try
+            {
+                ToolStripProfessionalRenderer r = ToolStripManager.Renderer as ToolStripProfessionalRenderer;
+                if (r != null) return r.ColorTable as KryptonColorTable;
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool Usable(Color c) { return !c.IsEmpty && c.A != 0; }
+
         // The exact color Krypton uses to draw menu-bar text (File/View/Help), so a
         // custom strip glyph can match it. Falls back to a sensible per-mode color.
         public static Color MenuTextColor()
         {
-            try
-            {
-                if (_palette != null)
-                {
-                    Color c = _palette.ColorTable.MenuStripText;
-                    if (!c.IsEmpty && c.A != 0) return c;
-                }
-            }
-            catch { }
+            try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.MenuStripText)) return ct.MenuStripText; } catch { }
+            try { if (_palette != null && Usable(_palette.ColorTable.MenuStripText)) return _palette.ColorTable.MenuStripText; } catch { }
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50);
         }
 
-        // The color Krypton uses to draw StatusStrip text, for status-bar labels
-        // and custom owner-drawn status items so they read on the themed strip.
+        // The exact color Krypton draws StatusStrip text with, so the status labels
+        // and custom owner-drawn status items (meter border, etc.) match.
         public static Color StatusStripTextColor()
         {
-            try
-            {
-                if (_palette != null)
-                {
-                    Color c = _palette.ColorTable.StatusStripText;
-                    if (!c.IsEmpty && c.A != 0) return c;
-                }
-            }
-            catch { }
+            try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.StatusStripText)) return ct.StatusStripText; } catch { }
+            try { if (_palette != null && Usable(_palette.ColorTable.StatusStripText)) return _palette.ColorTable.StatusStripText; } catch { }
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
         }
 
@@ -92,15 +97,8 @@ namespace GxPT
         // renders near-black - so the top and bottom bars look alike.
         public static Color StatusStripBackColor()
         {
-            try
-            {
-                if (_palette != null)
-                {
-                    Color c = _palette.ColorTable.MenuStripGradientBegin;
-                    if (!c.IsEmpty && c.A != 0) return c;
-                }
-            }
-            catch { }
+            try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.MenuStripGradientBegin)) return ct.MenuStripGradientBegin; } catch { }
+            try { if (_palette != null && Usable(_palette.ColorTable.MenuStripGradientBegin)) return _palette.ColorTable.MenuStripGradientBegin; } catch { }
             return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
         }
 
