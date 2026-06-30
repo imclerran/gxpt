@@ -205,7 +205,7 @@
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 180F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 118F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 82F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 92F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 80F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblSettings.Size = new System.Drawing.Size(590, 405);
@@ -314,7 +314,7 @@
             this.grpMemory.Location = new System.Drawing.Point(3, 406);
             this.grpMemory.Name = "grpMemory";
             this.grpMemory.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
-            this.grpMemory.Size = new System.Drawing.Size(584, 76);
+            this.grpMemory.Size = new System.Drawing.Size(584, 86);
             this.grpMemory.TabIndex = 3;
             this.grpMemory.TabStop = false;
             this.grpMemory.Text = "Memory";
