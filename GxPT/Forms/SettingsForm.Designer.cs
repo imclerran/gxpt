@@ -45,14 +45,14 @@
             this.tblMemory = new System.Windows.Forms.TableLayoutPanel();
             this.grpPrivacy = new Krypton.Toolkit.KryptonGroupBox();
             this.tblPrivacy = new System.Windows.Forms.TableLayoutPanel();
-            this.lblApiKey = new System.Windows.Forms.Label();
-            this.lblModels = new System.Windows.Forms.Label();
-            this.lblDefaultModel = new System.Windows.Forms.Label();
-            this.lblTheme = new System.Windows.Forms.Label();
-            this.lblTranscriptMaxWidth = new System.Windows.Forms.Label();
-            this.lblMessageMaxWidth = new System.Windows.Forms.Label();
-            this.lblFontSize = new System.Windows.Forms.Label();
-            this.lblEnableLogging = new System.Windows.Forms.Label();
+            this.lblApiKey = new Krypton.Toolkit.KryptonLabel();
+            this.lblModels = new Krypton.Toolkit.KryptonLabel();
+            this.lblDefaultModel = new Krypton.Toolkit.KryptonLabel();
+            this.lblTheme = new Krypton.Toolkit.KryptonLabel();
+            this.lblTranscriptMaxWidth = new Krypton.Toolkit.KryptonLabel();
+            this.lblMessageMaxWidth = new Krypton.Toolkit.KryptonLabel();
+            this.lblFontSize = new Krypton.Toolkit.KryptonLabel();
+            this.lblEnableLogging = new Krypton.Toolkit.KryptonLabel();
             this.txtApiKey = new Krypton.Toolkit.KryptonTextBox();
             this.pnlModelsRow = new System.Windows.Forms.Panel();
             this.txtModels = new Krypton.Toolkit.KryptonTextBox();
@@ -67,13 +67,13 @@
             this.nudMessageMaxWidth = new Krypton.Toolkit.KryptonNumericUpDown();
             this.nudFontSize = new Krypton.Toolkit.KryptonNumericUpDown();
             this.chkEnableLogging = new Krypton.Toolkit.KryptonCheckBox();
-            this.lblProviderDataCollection = new System.Windows.Forms.Label();
+            this.lblProviderDataCollection = new Krypton.Toolkit.KryptonLabel();
             this.chkZdr = new Krypton.Toolkit.KryptonCheckBox();
-            this.lblColor = new System.Windows.Forms.Label();
+            this.lblColor = new Krypton.Toolkit.KryptonLabel();
             this.cmbColor = new Krypton.Toolkit.KryptonComboBox();
-            this.lblMemoryEnabled = new System.Windows.Forms.Label();
+            this.lblMemoryEnabled = new Krypton.Toolkit.KryptonLabel();
             this.chkMemoryEnabled = new Krypton.Toolkit.KryptonCheckBox();
-            this.lblMemoryMaxLines = new System.Windows.Forms.Label();
+            this.lblMemoryMaxLines = new Krypton.Toolkit.KryptonLabel();
             this.nudMemoryMaxLines = new Krypton.Toolkit.KryptonNumericUpDown();
             this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
             this.tabVisual = new Krypton.Navigator.KryptonPage();
@@ -376,7 +376,6 @@
             this.lblApiKey.Size = new System.Drawing.Size(121, 26);
             this.lblApiKey.TabIndex = 0;
             this.lblApiKey.Text = "OpenRouter API Key";
-            this.lblApiKey.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblModels
             // 
@@ -397,7 +396,6 @@
             this.lblDefaultModel.Size = new System.Drawing.Size(121, 27);
             this.lblDefaultModel.TabIndex = 2;
             this.lblDefaultModel.Text = "Default Model";
-            this.lblDefaultModel.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblTheme
             // 
@@ -408,7 +406,6 @@
             this.lblTheme.Size = new System.Drawing.Size(121, 27);
             this.lblTheme.TabIndex = 10;
             this.lblTheme.Text = "Theme";
-            this.lblTheme.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblTranscriptMaxWidth
             // 
@@ -419,7 +416,6 @@
             this.lblTranscriptMaxWidth.Size = new System.Drawing.Size(121, 26);
             this.lblTranscriptMaxWidth.TabIndex = 12;
             this.lblTranscriptMaxWidth.Text = "Transcript Max Width";
-            this.lblTranscriptMaxWidth.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblMessageMaxWidth
             // 
@@ -430,7 +426,6 @@
             this.lblMessageMaxWidth.Size = new System.Drawing.Size(121, 26);
             this.lblMessageMaxWidth.TabIndex = 14;
             this.lblMessageMaxWidth.Text = "Message Max Width (%)";
-            this.lblMessageMaxWidth.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblFontSize
             // 
@@ -441,7 +436,6 @@
             this.lblFontSize.Size = new System.Drawing.Size(121, 26);
             this.lblFontSize.TabIndex = 8;
             this.lblFontSize.Text = "Font Size";
-            this.lblFontSize.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblEnableLogging
             // 
@@ -451,7 +445,6 @@
             this.lblEnableLogging.Size = new System.Drawing.Size(121, 23);
             this.lblEnableLogging.TabIndex = 3;
             this.lblEnableLogging.Text = "Enable Logging";
-            this.lblEnableLogging.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // txtApiKey
             // 
@@ -618,7 +611,10 @@
             this.chkEnableLogging.Name = "chkEnableLogging";
             this.chkEnableLogging.Size = new System.Drawing.Size(457, 14);
             this.chkEnableLogging.TabIndex = 4;
-            // 
+            // The lblEnableLogging beside it is the caption; clear the KryptonCheckBox
+            // default "Label" text so only the box shows.
+            this.chkEnableLogging.Text = "";
+            //
             // lblProviderDataCollection
             // 
             this.lblProviderDataCollection.AutoSize = true;
@@ -628,7 +624,6 @@
             this.lblProviderDataCollection.Size = new System.Drawing.Size(121, 23);
             this.lblProviderDataCollection.TabIndex = 16;
             this.lblProviderDataCollection.Text = "Zero Data Retention";
-            this.lblProviderDataCollection.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // chkZdr
             // 
@@ -649,7 +644,6 @@
             this.lblColor.Size = new System.Drawing.Size(121, 27);
             this.lblColor.TabIndex = 18;
             this.lblColor.Text = "Chat Color";
-            this.lblColor.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // cmbColor
             // 
@@ -669,7 +663,6 @@
             this.lblMemoryEnabled.Size = new System.Drawing.Size(121, 26);
             this.lblMemoryEnabled.TabIndex = 20;
             this.lblMemoryEnabled.Text = "Enable Memory";
-            this.lblMemoryEnabled.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // chkMemoryEnabled
             // 
@@ -691,7 +684,6 @@
             this.lblMemoryMaxLines.Size = new System.Drawing.Size(121, 26);
             this.lblMemoryMaxLines.TabIndex = 22;
             this.lblMemoryMaxLines.Text = "Memory size limit";
-            this.lblMemoryMaxLines.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // nudMemoryMaxLines
             // 
@@ -1089,10 +1081,10 @@
         private System.Windows.Forms.TableLayoutPanel tblMemory;
         private Krypton.Toolkit.KryptonGroupBox grpPrivacy;
         private System.Windows.Forms.TableLayoutPanel tblPrivacy;
-        private System.Windows.Forms.Label lblApiKey;
-        private System.Windows.Forms.Label lblModels;
-        private System.Windows.Forms.Label lblDefaultModel;
-        private System.Windows.Forms.Label lblEnableLogging;
+        private Krypton.Toolkit.KryptonLabel lblApiKey;
+        private Krypton.Toolkit.KryptonLabel lblModels;
+        private Krypton.Toolkit.KryptonLabel lblDefaultModel;
+        private Krypton.Toolkit.KryptonLabel lblEnableLogging;
         private Krypton.Toolkit.KryptonCheckBox chkEnableLogging;
         private Krypton.Toolkit.KryptonComboBox cmbDefaultModel;
         private Krypton.Toolkit.KryptonTextBox txtModels;
@@ -1106,21 +1098,21 @@
         private Krypton.Navigator.KryptonNavigator tabControl1;
         private Krypton.Navigator.KryptonPage tabVisual;
         private Krypton.Navigator.KryptonPage tabJson;
-        private System.Windows.Forms.Label lblFontSize;
+        private Krypton.Toolkit.KryptonLabel lblFontSize;
         private Krypton.Toolkit.KryptonNumericUpDown nudFontSize;
-        private System.Windows.Forms.Label lblTheme;
+        private Krypton.Toolkit.KryptonLabel lblTheme;
         private Krypton.Toolkit.KryptonComboBox cmbTheme;
-        private System.Windows.Forms.Label lblTranscriptMaxWidth;
+        private Krypton.Toolkit.KryptonLabel lblTranscriptMaxWidth;
         private Krypton.Toolkit.KryptonNumericUpDown nudTranscriptMaxWidth;
-        private System.Windows.Forms.Label lblMessageMaxWidth;
+        private Krypton.Toolkit.KryptonLabel lblMessageMaxWidth;
         private Krypton.Toolkit.KryptonNumericUpDown nudMessageMaxWidth;
-        private System.Windows.Forms.Label lblProviderDataCollection;
+        private Krypton.Toolkit.KryptonLabel lblProviderDataCollection;
         private Krypton.Toolkit.KryptonCheckBox chkZdr;
-        private System.Windows.Forms.Label lblMemoryEnabled;
+        private Krypton.Toolkit.KryptonLabel lblMemoryEnabled;
         private Krypton.Toolkit.KryptonCheckBox chkMemoryEnabled;
-        private System.Windows.Forms.Label lblMemoryMaxLines;
+        private Krypton.Toolkit.KryptonLabel lblMemoryMaxLines;
         private Krypton.Toolkit.KryptonNumericUpDown nudMemoryMaxLines;
-        private System.Windows.Forms.Label lblColor;
+        private Krypton.Toolkit.KryptonLabel lblColor;
         private Krypton.Toolkit.KryptonComboBox cmbColor;
         private Krypton.Navigator.KryptonPage tabMcp;
         private System.Windows.Forms.TableLayoutPanel tblMcp;
