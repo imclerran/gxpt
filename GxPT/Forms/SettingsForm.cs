@@ -295,7 +295,7 @@ namespace GxPT
             foreach (Control c in root.Controls)
             {
                 if (c is TextBox || c is RichTextBox || c is KryptonTextBox || c is KryptonRichTextBox)
-                    sb.Append(c.Name).Append('=').Append(c.Text).Append('\n');
+                    sb.Append(c.Name).Append('=').Append(NormalizeText(c.Text)).Append('\n');
                 else if (c is CheckBox)
                     sb.Append(c.Name).Append('=').Append(((CheckBox)c).Checked).Append('\n');
                 else if (c is KryptonCheckBox)
@@ -311,6 +311,17 @@ namespace GxPT
 
                 if (c.Controls.Count > 0) CollectTrackedSnapshot(c, sb);
             }
+        }
+
+        // A RichTextBox normalizes its line endings (and may add/drop a trailing newline) when its
+        // handle is first created - which happens the first time its tab is shown. That makes the JSON
+        // editors read differently after a tab switch than when the baseline was captured (those tabs
+        // unrealized), spuriously enabling Apply. Compare on normalized line endings with trailing
+        // whitespace removed so the realize artifact is ignored while real content edits still differ.
+        private static string NormalizeText(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            return s.Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd();
         }
 
         private void SettingsForm_Shown(object sender, EventArgs e)
