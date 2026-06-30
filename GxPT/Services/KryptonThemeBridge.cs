@@ -22,6 +22,7 @@ namespace GxPT
     internal static class KryptonThemeBridge
     {
         private static KryptonPalette _palette;
+        private static KryptonManager _manager;
         private static readonly object _lock = new object();
 
         // Accent seed: the handful of colors injected on top of the neutral base.
@@ -59,11 +60,14 @@ namespace GxPT
                 KryptonPalette old = _palette;
                 _palette = palette;
 
-                KryptonManager.GlobalPalette = palette;
-                KryptonManager.GlobalPaletteMode = PaletteModeManager.Custom;
+                // KryptonManager's Global* members are instance properties that
+                // drive shared global state; a single shared instance suffices.
+                if (_manager == null) _manager = new KryptonManager();
+                _manager.GlobalPalette = palette;
+                _manager.GlobalPaletteMode = PaletteModeManager.Custom;
                 // Let Krypton color the stock MenuStrip / StatusStrip / ToolStrip
                 // too, so we don't have to replace them with Krypton equivalents.
-                KryptonManager.GlobalApplyToolstrips = true;
+                _manager.GlobalApplyToolstrips = true;
 
                 // Dispose the previously-installed palette only after the new one
                 // is live, so controls never observe a null/disposed palette.
@@ -130,8 +134,10 @@ namespace GxPT
         private static void ApplyPanelBack(KryptonPalettePanel panel, Color back)
         {
             if (panel == null) return;
-            try { panel.StateCommon.Back.Color1 = back; } catch { }
-            try { panel.StateCommon.Back.Color2 = back; } catch { }
+            // A panel state is a PaletteBack directly (background only - no border
+            // or content), so Color1/Color2 sit straight on StateCommon.
+            try { panel.StateCommon.Color1 = back; } catch { }
+            try { panel.StateCommon.Color2 = back; } catch { }
         }
 
         private static void ApplyFormBack(KryptonPaletteForm form, Color back)
@@ -148,8 +154,9 @@ namespace GxPT
             try { input.StateCommon.Back.Color2 = back; } catch { }
             try { input.StateCommon.Border.Color1 = border; } catch { }
             try { input.StateCommon.Border.Color2 = border; } catch { }
-            // Input content states expose a flat Color1 (no ShortText/LongText split).
-            try { input.StateCommon.Content.Color1 = text; } catch { }
+            // Input content is a regular PaletteContent (ShortText/LongText split).
+            try { input.StateCommon.Content.ShortText.Color1 = text; } catch { }
+            try { input.StateCommon.Content.LongText.Color1 = text; } catch { }
         }
 
         private static void ApplyButtonAccent(KryptonPaletteCheckButton button, AccentSeed a)
