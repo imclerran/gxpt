@@ -215,6 +215,25 @@ namespace GxPT
             catch { }
         }
 
+        // The palette color Krypton draws ordinary label text with (the same blue-ish
+        // tone a KryptonLabel uses on Office 2010, or the light grey on Sparkle dark).
+        // Plain WinForms Labels built in code don't follow the palette, so read the
+        // exact color here and assign it so they match the surrounding KryptonLabels.
+        public static Color LabelTextColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetContentShortTextColor1(
+                        PaletteContentStyle.LabelNormalControl, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
+        }
+
         // Make stock WinForms layout containers (TableLayoutPanel / Panel /
         // FlowLayoutPanel) transparent so the themed Krypton surface they sit on
         // (a KryptonPage, KryptonPanel, or KryptonGroupBox.Panel) shows through.

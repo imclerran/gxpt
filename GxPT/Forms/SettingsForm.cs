@@ -1319,7 +1319,7 @@ namespace GxPT
                     && this.tblMcp.RowStyles[2] is RowStyle)
                 {
                     ((RowStyle)this.tblMcp.RowStyles[2]).SizeType = SizeType.Absolute;
-                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 100F;
+                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 112F;
                 }
 
                 // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
@@ -1336,7 +1336,7 @@ namespace GxPT
                 layout.RowCount = 2;
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
                 layout.Controls.Add(BuildEffortGrid(), 0, 1);
                 this.grpAgents.Panel.Controls.Add(layout);
@@ -1356,8 +1356,9 @@ namespace GxPT
         private TableLayoutPanel BuildEffortGrid()
         {
             // Plain Labels in this code-built grid don't follow the Krypton palette, so
-            // pick a foreground that reads on the (dark or light) group panel behind them.
-            Color fg = ThemeService.GetColors(KryptonThemeBridge.IsDarkMode()).UiForeground;
+            // give them the exact label text color Krypton uses (the accent-blue tone on
+            // Office 2010, light grey on Sparkle dark) to match the surrounding labels.
+            Color fg = KryptonThemeBridge.LabelTextColor();
 
             TableLayoutPanel grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
