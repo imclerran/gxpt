@@ -14,10 +14,11 @@ namespace GxPT
     //    are deliberately NOT driven from here; they keep their own ThemeColors
     //    intake. This class only colors the Krypton-drawn chrome.
     //  * A theme is (accent, mode). We render with a STOCK Krypton palette mode
-    //    (KryptonManager.GlobalPaletteMode = Office2007Blue / SparkleBlue|Orange|
+    //    (KryptonManager.GlobalPaletteMode = Office2010Blue / SparkleBlue|Orange|
     //    Purple) exactly as the Krypton sample apps do - no custom palette and no
     //    per-element overrides, so the whole window is internally consistent. In
-    //    dark mode the accent picks the Sparkle variant; light mode is Office 2007.
+    //    dark mode the accent picks the Sparkle variant; light mode is Office 2010
+    //    (its caption matches the menu, unlike Office 2007's glossier title bar).
     //  * A separate non-rendered "probe" palette tracks the active mode purely so
     //    the few custom-painted, non-Krypton bits (the tab +/x glyph, status strip)
     //    can read the matching theme colors.
@@ -110,13 +111,13 @@ namespace GxPT
                 if (_manager == null) _manager = new KryptonManager();
 
                 // Render with the STOCK palette mode, exactly as the Krypton sample
-                // apps do (kryptonManager.GlobalPaletteMode = ...Office2007Blue): the
+                // apps do (kryptonManager.GlobalPaletteMode = ...Office2010Blue): the
                 // whole window - title bar, menu, panels, strips - is the canonical
                 // Krypton theme, with no custom palette or overrides, so the chrome
                 // and menu bar match by construction. The accent selects the Sparkle
                 // variant in dark mode.
                 _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accentId)
-                                                  : PaletteModeManager.Office2007Blue;
+                                                  : PaletteModeManager.Office2010Blue;
                 // Force the shared stock-toolstrip renderer to rebuild on every apply.
                 _manager.GlobalApplyToolstrips = false;
                 _manager.GlobalApplyToolstrips = true;
@@ -126,7 +127,7 @@ namespace GxPT
                 // theme colors from it for the handful of custom-painted bits (the
                 // tab +/x glyph, the status strip) that aren't Krypton controls.
                 if (_palette == null) _palette = new KryptonPalette();
-                _palette.BasePaletteMode = dark ? DarkSparkleMode(accentId) : PaletteMode.Office2007Blue;
+                _palette.BasePaletteMode = dark ? DarkSparkleMode(accentId) : PaletteMode.Office2010Blue;
             }
         }
 
