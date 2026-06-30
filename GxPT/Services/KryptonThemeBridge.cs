@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Windows.Forms;
 using Krypton.Toolkit;
 
 namespace GxPT
@@ -153,6 +154,67 @@ namespace GxPT
             }
             catch { }
             return SystemColors.WindowText;
+        }
+
+        // Paint a (plain or Krypton) DataGridView's cell/header/background/selection
+        // colors from the active palette's grid styles. KryptonDataGridView themes
+        // its chrome but leaves cell interiors to DefaultCellStyle (white by
+        // default), which reads as un-themed; this fills them with the real Sparkle
+        // grid colors so the whole grid is one cohesive surface.
+        public static void StyleDataGrid(DataGridView grid)
+        {
+            if (grid == null) return;
+            KryptonPalette p;
+            lock (_lock) { p = _palette; }
+            if (p == null) return;
+            try
+            {
+                Color cellBack = ResolveBack(p, PaletteBackStyle.GridDataCellList, SystemColors.Window);
+                Color cellFore = ResolveText(p, PaletteContentStyle.GridDataCellList, SystemColors.WindowText);
+                Color gridBg = ResolveBack(p, PaletteBackStyle.GridBackgroundList, cellBack);
+                Color hdrBack = ResolveBack(p, PaletteBackStyle.GridHeaderColumnList, cellBack);
+                Color hdrFore = ResolveText(p, PaletteContentStyle.GridHeaderColumnList, cellFore);
+                AccentSeed accent = GetAccent(ReadAccentId());
+
+                grid.BackgroundColor = gridBg;   // area behind/below the rows
+                grid.GridColor = hdrBack;         // cell gridlines
+
+                DataGridViewCellStyle cs = grid.DefaultCellStyle;
+                cs.BackColor = cellBack;
+                cs.ForeColor = cellFore;
+                cs.SelectionBackColor = accent.Normal;
+                cs.SelectionForeColor = accent.OnAccent;
+
+                DataGridViewCellStyle hs = grid.ColumnHeadersDefaultCellStyle;
+                hs.BackColor = hdrBack;
+                hs.ForeColor = hdrFore;
+                // Keep header color stable when a cell in that column is selected.
+                hs.SelectionBackColor = hdrBack;
+                hs.SelectionForeColor = hdrFore;
+            }
+            catch { }
+        }
+
+        private static Color ResolveBack(KryptonPalette p, PaletteBackStyle style, Color fallback)
+        {
+            try
+            {
+                Color c = p.GetBackColor1(style, PaletteState.Normal);
+                if (!c.IsEmpty && c.A != 0) return c;
+            }
+            catch { }
+            return fallback;
+        }
+
+        private static Color ResolveText(KryptonPalette p, PaletteContentStyle style, Color fallback)
+        {
+            try
+            {
+                Color c = p.GetContentShortTextColor1(style, PaletteState.Normal);
+                if (!c.IsEmpty && c.A != 0) return c;
+            }
+            catch { }
+            return fallback;
         }
 
         // --- Style-group helpers (all paths verified against Krypton.Toolkit.xml) ---

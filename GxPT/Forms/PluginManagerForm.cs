@@ -68,6 +68,9 @@ namespace GxPT
             _list.SelectionChanged += new EventHandler(OnSelectionChanged);
             _list.CellMouseDown += new DataGridViewCellMouseEventHandler(OnGridCellMouseDown);
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
+            // KryptonDataGridView themes its chrome but leaves cell interiors white;
+            // fill cell/header/background/selection colors from the active palette.
+            KryptonThemeBridge.StyleDataGrid(_list);
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
             // Install is the dialog's primary affordance, so it carries the accent (Custom1); the rest
