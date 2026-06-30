@@ -1324,7 +1324,9 @@ namespace GxPT
 
                 // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
                 // (the checkbox keeps its name/state/wiring - only its parent changes).
-                this.grpAgents.Controls.Remove(this.chkAgents);
+                // A KryptonGroupBox hosts its content on .Panel (not .Controls); adding to
+                // .Controls would put the table behind the panel and hide everything.
+                this.grpAgents.Panel.Controls.Remove(this.chkAgents);
                 this.chkAgents.Anchor = AnchorStyles.Left;
                 this.chkAgents.Margin = new Padding(3, 3, 3, 2);
 
@@ -1337,7 +1339,12 @@ namespace GxPT
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
                 layout.Controls.Add(BuildEffortGrid(), 0, 1);
-                this.grpAgents.Controls.Add(layout);
+                this.grpAgents.Panel.Controls.Add(layout);
+
+                // These containers are built after the constructor's theming pass, so
+                // make them transparent now too - otherwise the stock TableLayoutPanels
+                // paint a light rectangle over the dark group panel in dark mode.
+                KryptonThemeBridge.MakeLayoutContainersTransparent(this.grpAgents);
             }
             finally { this.grpAgents.ResumeLayout(); }
         }
@@ -1348,6 +1355,10 @@ namespace GxPT
         // clipping; each caption centers over its combo.
         private TableLayoutPanel BuildEffortGrid()
         {
+            // Plain Labels in this code-built grid don't follow the Krypton palette, so
+            // pick a foreground that reads on the (dark or light) group panel behind them.
+            Color fg = ThemeService.GetColors(KryptonThemeBridge.IsDarkMode()).UiForeground;
+
             TableLayoutPanel grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
             grid.ColumnCount = 4;
@@ -1366,6 +1377,7 @@ namespace GxPT
             lbl.Dock = DockStyle.Fill;
             lbl.TextAlign = ContentAlignment.MiddleLeft;
             lbl.Margin = new Padding(3, 0, 6, 0);
+            lbl.ForeColor = fg;
             grid.Controls.Add(lbl, 0, 0);
             grid.SetRowSpan(lbl, 2);
             _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
@@ -1375,9 +1387,9 @@ namespace GxPT
             this.cmbEffortMedium = MakeEffortCombo();
             this.cmbEffortHigh = MakeEffortCombo();
 
-            grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
-            grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
-            grid.Controls.Add(MakeEffortCaption("High effort"), 3, 0);
+            grid.Controls.Add(MakeEffortCaption("Low effort", fg), 1, 0);
+            grid.Controls.Add(MakeEffortCaption("Medium effort", fg), 2, 0);
+            grid.Controls.Add(MakeEffortCaption("High effort", fg), 3, 0);
             grid.Controls.Add(this.cmbEffortLow, 1, 1);
             grid.Controls.Add(this.cmbEffortMedium, 2, 1);
             grid.Controls.Add(this.cmbEffortHigh, 3, 1);
@@ -1386,13 +1398,14 @@ namespace GxPT
 
         // A tier caption that centers over its combo: Dock=Fill + centered text, with the same right margin
         // the combo uses so the two line up.
-        private static Label MakeEffortCaption(string text)
+        private static Label MakeEffortCaption(string text, Color fg)
         {
             Label c = new Label();
             c.Text = text;
             c.Dock = DockStyle.Fill;
             c.TextAlign = ContentAlignment.MiddleCenter;
             c.Margin = new Padding(0, 0, 6, 0);
+            c.ForeColor = fg;
             return c;
         }
 
@@ -1403,6 +1416,7 @@ namespace GxPT
             c.Margin = new Padding(0, 2, 6, 2);
             c.DropDownStyle = ComboBoxStyle.DropDownList;
             c.DrawMode = DrawMode.OwnerDrawFixed;   // show just the model name; the item value stays the full id
+            // Left at stock (white) colors deliberately, even in dark mode.
             c.DrawItem += EffortCombo_DrawItem;
             c.DropDown += EffortCombo_DropDown;
             return c;
