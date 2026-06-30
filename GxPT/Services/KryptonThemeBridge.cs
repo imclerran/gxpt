@@ -215,6 +215,41 @@ namespace GxPT
             catch { }
         }
 
+        // Make stock WinForms layout containers (TableLayoutPanel / Panel /
+        // FlowLayoutPanel) transparent so the themed Krypton surface they sit on
+        // (a KryptonPage, KryptonPanel, or KryptonGroupBox.Panel) shows through.
+        //
+        // Why this is needed: Krypton controls (KryptonLabel, KryptonGroupBox,
+        // KryptonPage, ...) follow the global palette, so in dark mode their text
+        // is light and their backgrounds are dark. But a plain WinForms layout
+        // panel keeps its system BackColor (light grey) regardless of palette, and
+        // when one of those panels is used purely for layout *between* a themed
+        // surface and the Krypton labels on it, it paints a light rectangle over
+        // the dark surface - leaving light text on a light panel (unreadable).
+        // Setting these layout-only containers to Transparent lets the dark
+        // Krypton surface paint through, so the labels read correctly again. The
+        // colors track the palette automatically, in both light and dark mode.
+        public static void MakeLayoutContainersTransparent(Control root)
+        {
+            if (root == null) return;
+            foreach (Control c in root.Controls)
+            {
+                try
+                {
+                    // Only retarget genuine stock WinForms layout containers; never
+                    // touch Krypton controls (they paint themselves) or input/edit
+                    // controls (transparency there looks wrong).
+                    if ((c is TableLayoutPanel || c is FlowLayoutPanel || c is Panel) &&
+                        c.GetType().Namespace == "System.Windows.Forms")
+                    {
+                        c.BackColor = Color.Transparent;
+                    }
+                }
+                catch { }
+                if (c.Controls.Count > 0) MakeLayoutContainersTransparent(c);
+            }
+        }
+
         // --- Settings intake (mirrors ThemeManager; no settings-schema change) ----
 
         private static bool ReadDark()

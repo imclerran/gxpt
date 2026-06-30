@@ -58,6 +58,14 @@ namespace GxPT
             InitializeComponent();
             this.Disposed += delegate { try { _mcpTip.Dispose(); } catch { } };
 
+            // The visual tabs nest stock WinForms layout panels (TableLayoutPanels,
+            // Panels) inside themed Krypton surfaces. Left opaque, those panels paint
+            // a light rectangle over the dark KryptonPage/GroupBox in dark mode and the
+            // KryptonLabels on them become light-on-light. Making the layout-only
+            // containers transparent lets the themed surface show through so the labels
+            // read correctly in both light and dark mode.
+            try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); } catch { }
+
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
             _settingsFile = Path.Combine(_settingsDir, "settings.json");
