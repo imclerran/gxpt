@@ -41,6 +41,10 @@ namespace GxPT
             MinimumSize = new Size(620, 300);
 
             _list = new KryptonDataGridView();
+            // KryptonDataGridView defaults AutoSize on, which shrinks the control to
+            // its content (header + rows). Turn it off so SetBounds + anchors make it
+            // fill the dialog like the old ListView did.
+            _list.AutoSize = false;
             _list.SetBounds(12, 12, 636, 302);
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             // Read-only, full-row single selection, no row-header gutter, and no

@@ -122,62 +122,42 @@ namespace GxPT
             }
         }
 
-        // Resolved background color the active palette uses for ordinary controls
-        // - so plain (non-Krypton) controls such as a Details-view ListView can be
-        // painted to match the Krypton chrome (Sparkle blue-grey in dark mode)
-        // instead of standing out. Falls back to the system color before the
-        // palette exists.
-        public static Color ResolvedControlBackColor()
-        {
-            try
-            {
-                if (_palette != null)
-                {
-                    Color c = _palette.GetBackColor1(PaletteBackStyle.ControlClient, PaletteState.Normal);
-                    if (!c.IsEmpty && c.A != 0) return c;
-                }
-            }
-            catch { }
-            return SystemColors.Window;
-        }
-
-        // Resolved text color matching ResolvedControlBackColor.
-        public static Color ResolvedControlForeColor()
-        {
-            try
-            {
-                if (_palette != null)
-                {
-                    Color c = _palette.GetContentShortTextColor1(PaletteContentStyle.LabelNormalControl, PaletteState.Normal);
-                    if (!c.IsEmpty && c.A != 0) return c;
-                }
-            }
-            catch { }
-            return SystemColors.WindowText;
-        }
-
         // Paint a (plain or Krypton) DataGridView's cell/header/background/selection
-        // colors from the active palette's grid styles. KryptonDataGridView themes
-        // its chrome but leaves cell interiors to DefaultCellStyle (white by
-        // default), which reads as un-themed; this fills them with the real Sparkle
-        // grid colors so the whole grid is one cohesive surface.
+        // colors to match the active theme. KryptonDataGridView themes its chrome
+        // but leaves cell interiors and header fills to the standard DataGridView
+        // styles (white by default), so set them explicitly. In dark mode we use a
+        // cohesive dark blue-grey that matches the Sparkle chrome; light mode keeps
+        // the standard light grid.
         public static void StyleDataGrid(DataGridView grid)
         {
             if (grid == null) return;
-            KryptonPalette p;
-            lock (_lock) { p = _palette; }
-            if (p == null) return;
+            bool dark = ReadDark();
+            AccentSeed accent = GetAccent(ReadAccentId());
+
+            Color cellBack, cellFore, hdrBack, hdrFore, lines;
+            if (dark)
+            {
+                cellBack = Color.FromArgb(0x3C, 0x46, 0x51); // dark blue-grey cells
+                cellFore = Color.FromArgb(0xE8, 0xEA, 0xED); // near-white text
+                hdrBack = Color.FromArgb(0x50, 0x5C, 0x6A);  // lighter header band
+                hdrFore = Color.FromArgb(0xFF, 0xFF, 0xFF);
+                lines = Color.FromArgb(0x58, 0x64, 0x72);    // subtle gridlines
+            }
+            else
+            {
+                cellBack = SystemColors.Window;
+                cellFore = SystemColors.WindowText;
+                hdrBack = SystemColors.Control;
+                hdrFore = SystemColors.ControlText;
+                lines = SystemColors.ControlDark;
+            }
+
             try
             {
-                Color cellBack = ResolveBack(p, PaletteBackStyle.GridDataCellList, SystemColors.Window);
-                Color cellFore = ResolveText(p, PaletteContentStyle.GridDataCellList, SystemColors.WindowText);
-                Color gridBg = ResolveBack(p, PaletteBackStyle.GridBackgroundList, cellBack);
-                Color hdrBack = ResolveBack(p, PaletteBackStyle.GridHeaderColumnList, cellBack);
-                Color hdrFore = ResolveText(p, PaletteContentStyle.GridHeaderColumnList, cellFore);
-                AccentSeed accent = GetAccent(ReadAccentId());
-
-                grid.BackgroundColor = gridBg;   // area behind/below the rows
-                grid.GridColor = hdrBack;         // cell gridlines
+                // Required for the header colors below to apply instead of the OS style.
+                grid.EnableHeadersVisualStyles = false;
+                grid.BackgroundColor = cellBack; // fills the empty area below the rows
+                grid.GridColor = lines;
 
                 DataGridViewCellStyle cs = grid.DefaultCellStyle;
                 cs.BackColor = cellBack;
@@ -193,28 +173,6 @@ namespace GxPT
                 hs.SelectionForeColor = hdrFore;
             }
             catch { }
-        }
-
-        private static Color ResolveBack(KryptonPalette p, PaletteBackStyle style, Color fallback)
-        {
-            try
-            {
-                Color c = p.GetBackColor1(style, PaletteState.Normal);
-                if (!c.IsEmpty && c.A != 0) return c;
-            }
-            catch { }
-            return fallback;
-        }
-
-        private static Color ResolveText(KryptonPalette p, PaletteContentStyle style, Color fallback)
-        {
-            try
-            {
-                Color c = p.GetContentShortTextColor1(style, PaletteState.Normal);
-                if (!c.IsEmpty && c.A != 0) return c;
-            }
-            catch { }
-            return fallback;
         }
 
         // --- Style-group helpers (all paths verified against Krypton.Toolkit.xml) ---
