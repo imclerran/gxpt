@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -9,14 +10,14 @@ namespace GxPT
     // from a checklist) buttons - so this one dialog is the whole plugin UI. State is read live from the
     // plugin registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and
     // the list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
-    internal sealed class PluginManagerForm : Form
+    internal sealed class PluginManagerForm : KryptonForm
     {
         private readonly string _workingDir;
-        private readonly ListView _list;
-        private readonly Button _toggle;
-        private readonly Button _export;
-        private readonly Button _uninstall;
-        private readonly Button _details;
+        private readonly KryptonListView _list;
+        private readonly KryptonButton _toggle;
+        private readonly KryptonButton _export;
+        private readonly KryptonButton _uninstall;
+        private readonly KryptonButton _details;
         private readonly ContextMenuStrip _menu;
         private readonly ToolStripMenuItem _miToggle;
         private readonly ToolStripMenuItem _miExport;
@@ -36,7 +37,7 @@ namespace GxPT
             ClientSize = new Size(660, 360);
             MinimumSize = new Size(620, 300);
 
-            _list = new ListView();
+            _list = new KryptonListView();
             _list.SetBounds(12, 12, 636, 302);
             _list.View = View.Details;
             _list.FullRowSelect = true;
@@ -53,8 +54,8 @@ namespace GxPT
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
-            Button install = MakeButton("&Install...", 12, OnInstall);
-            Button newPlugin = MakeButton("Ne&w...", 90, OnNew);
+            KryptonButton install = MakeButton("&Install...", 12, OnInstall);
+            KryptonButton newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
             // Per-row actions, set off from the global group by a wider gap. The toggle reads "Enable" or
             // "Disable" for the selection (see UpdateButtons).
@@ -63,7 +64,7 @@ namespace GxPT
             _uninstall = MakeButton("&Uninstall", 342, OnUninstall);
             _details = MakeButton("De&tails...", 420, OnDetails);
 
-            Button close = new Button();
+            KryptonButton close = new KryptonButton();
             close.Text = "&Close";
             close.SetBounds(572, 322, 76, 26);
             close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
@@ -100,9 +101,9 @@ namespace GxPT
             PluginImportExportManager.ApplyOwnerIcon(this);
         }
 
-        private Button MakeButton(string text, int x, EventHandler onClick)
+        private KryptonButton MakeButton(string text, int x, EventHandler onClick)
         {
-            Button b = new Button();
+            KryptonButton b = new KryptonButton();
             b.Text = text;
             b.SetBounds(x, 322, 76, 26);
             b.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
