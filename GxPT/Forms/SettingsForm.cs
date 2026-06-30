@@ -72,10 +72,6 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // KryptonCheckBox captions default to the (dimmer) NormalPanel label style;
-            // switch them to NormalControl so their text matches the KryptonLabels.
-            try { KryptonThemeBridge.MatchCheckBoxTextStyle(this); } catch { }
-
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
             _settingsFile = Path.Combine(_settingsDir, "settings.json");
@@ -1359,11 +1355,6 @@ namespace GxPT
         // clipping; each caption centers over its combo.
         private TableLayoutPanel BuildEffortGrid()
         {
-            // Plain Labels in this code-built grid don't follow the Krypton palette, so
-            // give them the exact label text color Krypton uses (the accent-blue tone on
-            // Office 2010, light grey on Sparkle dark) to match the surrounding labels.
-            Color fg = KryptonThemeBridge.LabelTextColor();
-
             TableLayoutPanel grid = new TableLayoutPanel();
             grid.Dock = DockStyle.Fill;
             grid.ColumnCount = 4;
@@ -1373,16 +1364,19 @@ namespace GxPT
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // captions
-            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // combos
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F)); // captions (fixed so the
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // Dock=Fill labels don't collapse)
 
             // Row label spanning both rows -> vertically centered across the caption+combo block.
-            Label lbl = new Label();
+            // A KryptonLabel themes itself from the palette exactly like the designer labels,
+            // so it stays consistent with the surrounding text in both light and dark mode.
+            KryptonLabel lbl = new KryptonLabel();
             lbl.Text = "Models";
+            lbl.AutoSize = false;
             lbl.Dock = DockStyle.Fill;
-            lbl.TextAlign = ContentAlignment.MiddleLeft;
             lbl.Margin = new Padding(3, 0, 6, 0);
-            lbl.ForeColor = fg;
+            lbl.StateCommon.ShortText.TextH = PaletteRelativeAlign.Near;
+            lbl.StateCommon.ShortText.TextV = PaletteRelativeAlign.Center;
             grid.Controls.Add(lbl, 0, 0);
             grid.SetRowSpan(lbl, 2);
             _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
@@ -1392,9 +1386,9 @@ namespace GxPT
             this.cmbEffortMedium = MakeEffortCombo();
             this.cmbEffortHigh = MakeEffortCombo();
 
-            grid.Controls.Add(MakeEffortCaption("Low effort", fg), 1, 0);
-            grid.Controls.Add(MakeEffortCaption("Medium effort", fg), 2, 0);
-            grid.Controls.Add(MakeEffortCaption("High effort", fg), 3, 0);
+            grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
+            grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
+            grid.Controls.Add(MakeEffortCaption("High effort"), 3, 0);
             grid.Controls.Add(this.cmbEffortLow, 1, 1);
             grid.Controls.Add(this.cmbEffortMedium, 2, 1);
             grid.Controls.Add(this.cmbEffortHigh, 3, 1);
@@ -1403,14 +1397,15 @@ namespace GxPT
 
         // A tier caption that centers over its combo: Dock=Fill + centered text, with the same right margin
         // the combo uses so the two line up.
-        private static Label MakeEffortCaption(string text, Color fg)
+        private static KryptonLabel MakeEffortCaption(string text)
         {
-            Label c = new Label();
+            KryptonLabel c = new KryptonLabel();
             c.Text = text;
+            c.AutoSize = false;
             c.Dock = DockStyle.Fill;
-            c.TextAlign = ContentAlignment.MiddleCenter;
             c.Margin = new Padding(0, 0, 6, 0);
-            c.ForeColor = fg;
+            c.StateCommon.ShortText.TextH = PaletteRelativeAlign.Center;
+            c.StateCommon.ShortText.TextV = PaletteRelativeAlign.Center;
             return c;
         }
 
