@@ -97,14 +97,21 @@ namespace GxPT
             _menu.Opening += new System.ComponentModel.CancelEventHandler(OnMenuOpening);
             _list.ContextMenuStrip = _menu;
 
-            Controls.Add(_list);
-            Controls.Add(install);
-            Controls.Add(newPlugin);
-            Controls.Add(_toggle);
-            Controls.Add(_export);
-            Controls.Add(_uninstall);
-            Controls.Add(_details);
-            Controls.Add(close);
+            // A KryptonForm themes only its border/caption; its client area is a
+            // plain Form surface (system grey). Host the controls on a KryptonPanel
+            // docked to fill, so the area around the list takes the palette's panel
+            // color (Sparkle blue-grey in dark mode) and blends with the chrome.
+            KryptonPanel root = new KryptonPanel();
+            root.Dock = DockStyle.Fill;
+            root.Controls.Add(_list);
+            root.Controls.Add(install);
+            root.Controls.Add(newPlugin);
+            root.Controls.Add(_toggle);
+            root.Controls.Add(_export);
+            root.Controls.Add(_uninstall);
+            root.Controls.Add(_details);
+            root.Controls.Add(close);
+            Controls.Add(root);
 
             AcceptButton = close;
             CancelButton = close;
