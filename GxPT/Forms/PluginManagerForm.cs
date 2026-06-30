@@ -50,15 +50,13 @@ namespace GxPT
             _list.BorderStyle = BorderStyle.FixedSingle;
             _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             // KryptonListView can't do Details view, so colour the plain ListView
-            // to match the active palette (dark backdrop in dark mode).
+            // to match the active Krypton palette (Sparkle blue-grey in dark mode),
+            // pulling the resolved chrome colors so it blends with the rest of the
+            // window rather than standing out as a black or white block.
             try
             {
-                string theme = AppSettings.GetString("theme");
-                bool dark = !string.IsNullOrEmpty(theme) &&
-                            theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                ThemeColors tc = ThemeService.GetColors(dark);
-                _list.BackColor = tc.UiBackground;
-                _list.ForeColor = tc.UiForeground;
+                _list.BackColor = KryptonThemeBridge.ResolvedControlBackColor();
+                _list.ForeColor = KryptonThemeBridge.ResolvedControlForeColor();
             }
             catch { }
             _list.Columns.Add("Plugin", 200);

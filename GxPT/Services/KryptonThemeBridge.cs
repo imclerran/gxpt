@@ -84,44 +84,18 @@ namespace GxPT
         // Reconfigure the persistent palette in place for the given (accent, mode).
         private static void Configure(KryptonPalette palette, string accentId, bool dark)
         {
-            ThemeColors tc = ThemeService.GetColors(dark);
             AccentSeed accent = GetAccent(accentId);
 
             // Clear any prior-mode overrides so light/dark don't bleed together,
-            // then re-base. Dark uses the Sparkle renderer (recolors uniformly,
-            // the better dark base); light keeps the period Office 2007 look.
+            // then re-base. Dark uses the Sparkle renderer, which recolors the
+            // whole window (chrome, strips, panels, borders) into a cohesive
+            // blue-grey - so we deliberately do NOT override its neutrals; doing
+            // so (e.g. forcing #242424) produced black panels/borders that
+            // clashed with the Sparkle title bar. Light keeps the period Office
+            // 2007 look. Only the accent is layered on top, in both modes.
             try { palette.ResetToDefaults(true); }
             catch { }
             palette.BasePaletteMode = dark ? PaletteMode.SparkleBlue : PaletteMode.Office2007Blue;
-
-            // --- Neutrals -------------------------------------------------------
-            // In dark mode we override the base neutrals to exactly match the
-            // transcript backdrop; in light mode we mostly inherit the familiar
-            // Office light scheme and only inject the accent.
-            if (dark)
-            {
-                Color bg = tc.UiBackground;          // #242424 family
-                Color fg = tc.UiForeground;          // light grey text
-                Color field = tc.InlineCodeBack;     // slightly raised field bg
-                Color fieldBorder = tc.CodeBorder;
-
-                ApplyControlBack(palette.ControlStyles.ControlCommon, bg);
-                ApplyControlBack(palette.ControlStyles.ControlClient, bg);
-                ApplyPanelBack(palette.PanelStyles.PanelCommon, bg);
-                ApplyPanelBack(palette.PanelStyles.PanelClient, bg);
-
-                // Form caption + client backdrop.
-                ApplyFormBack(palette.FormStyles.FormMain, bg);
-
-                // Input controls (text boxes, combos): raised field over the bg.
-                ApplyInputBack(palette.InputControlStyles.InputControlCommon, field, fg, fieldBorder);
-                ApplyInputBack(palette.InputControlStyles.InputControlStandalone, field, fg, fieldBorder);
-
-                // Stock MenuStrip / StatusStrip / ToolStrip + dropdown menus. The
-                // base palette's toolstrip colors don't go dark on their own, so
-                // set them explicitly here.
-                ApplyDarkToolStrips(palette, tc, accent);
-            }
 
             // --- Accent ---------------------------------------------------------
             // Standalone buttons stay neutral (inherit the base palette). The
@@ -135,42 +109,41 @@ namespace GxPT
             ApplyHeaderAccent(palette.HeaderStyles.HeaderPrimary, accent);
         }
 
+        // Resolved background color the active palette uses for ordinary controls
+        // - so plain (non-Krypton) controls such as a Details-view ListView can be
+        // painted to match the Krypton chrome (Sparkle blue-grey in dark mode)
+        // instead of standing out. Falls back to the system color before the
+        // palette exists.
+        public static Color ResolvedControlBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetBackColor1(PaletteBackStyle.ControlClient, PaletteState.Normal);
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return SystemColors.Window;
+        }
+
+        // Resolved text color matching ResolvedControlBackColor.
+        public static Color ResolvedControlForeColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetContentShortTextColor1(PaletteContentStyle.LabelNormalControl, PaletteState.Normal);
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return SystemColors.WindowText;
+        }
+
         // --- Style-group helpers (all paths verified against Krypton.Toolkit.xml) ---
-
-        private static void ApplyControlBack(KryptonPaletteControl control, Color back)
-        {
-            if (control == null) return;
-            try { control.StateCommon.Back.Color1 = back; } catch { }
-            try { control.StateCommon.Back.Color2 = back; } catch { }
-        }
-
-        private static void ApplyPanelBack(KryptonPalettePanel panel, Color back)
-        {
-            if (panel == null) return;
-            // A panel state is a PaletteBack directly (background only - no border
-            // or content), so Color1/Color2 sit straight on StateCommon.
-            try { panel.StateCommon.Color1 = back; } catch { }
-            try { panel.StateCommon.Color2 = back; } catch { }
-        }
-
-        private static void ApplyFormBack(KryptonPaletteForm form, Color back)
-        {
-            if (form == null) return;
-            try { form.StateCommon.Back.Color1 = back; } catch { }
-            try { form.StateCommon.Back.Color2 = back; } catch { }
-        }
-
-        private static void ApplyInputBack(KryptonPaletteInputControl input, Color back, Color text, Color border)
-        {
-            if (input == null) return;
-            try { input.StateCommon.Back.Color1 = back; } catch { }
-            try { input.StateCommon.Back.Color2 = back; } catch { }
-            try { input.StateCommon.Border.Color1 = border; } catch { }
-            try { input.StateCommon.Border.Color2 = border; } catch { }
-            // Input content is a regular PaletteContent (ShortText/LongText split).
-            try { input.StateCommon.Content.ShortText.Color1 = text; } catch { }
-            try { input.StateCommon.Content.LongText.Color1 = text; } catch { }
-        }
 
         private static void ApplyButtonAccent(KryptonPaletteCheckButton button, AccentSeed a)
         {
@@ -178,50 +151,6 @@ namespace GxPT
             SetTripleFace(button.StateNormal, a.Normal, a.Normal, a.OnAccent);
             SetTripleFace(button.StateTracking, a.Track, a.Track, a.OnAccent);
             SetTripleFace(button.StatePressed, a.Pressed, a.Pressed, a.OnAccent);
-        }
-
-        // Explicit dark colors for the stock toolstrips and dropdown menus.
-        // The base palette doesn't supply dark toolstrip colors, so set the
-        // ProfessionalColorTable-style gradients/text directly.
-        private static void ApplyDarkToolStrips(KryptonPalette palette, ThemeColors tc, AccentSeed accent)
-        {
-            if (palette == null) return;
-            Color bg = tc.UiBackground;          // strip backdrop (#242424 family)
-            Color raised = tc.InlineCodeBack;    // menu image-margin column
-            Color text = tc.UiForeground;        // strip / item text
-            Color border = tc.CodeBorder;        // strip + menu border
-
-            KryptonPaletteTMS tms = palette.ToolMenuStatus;
-            if (tms == null) return;
-
-            // Top menu bar.
-            try { tms.MenuStrip.MenuStripGradientBegin = bg; } catch { }
-            try { tms.MenuStrip.MenuStripGradientEnd = bg; } catch { }
-            try { tms.MenuStrip.MenuStripText = text; } catch { }
-
-            // Status bar.
-            try { tms.StatusStrip.StatusStripGradientBegin = bg; } catch { }
-            try { tms.StatusStrip.StatusStripGradientEnd = bg; } catch { }
-            try { tms.StatusStrip.StatusStripText = text; } catch { }
-
-            // Tool strips + the body of drop-down menus.
-            try { tms.ToolStrip.ToolStripGradientBegin = bg; } catch { }
-            try { tms.ToolStrip.ToolStripGradientMiddle = bg; } catch { }
-            try { tms.ToolStrip.ToolStripGradientEnd = bg; } catch { }
-            try { tms.ToolStrip.ToolStripText = text; } catch { }
-            try { tms.ToolStrip.ToolStripBorder = border; } catch { }
-            try { tms.ToolStrip.ToolStripDropDownBackground = bg; } catch { }
-
-            // Drop-down menu items: margin column, text, border, and the
-            // accent-colored selection highlight.
-            try { tms.Menu.ImageMarginGradientBegin = raised; } catch { }
-            try { tms.Menu.ImageMarginGradientMiddle = raised; } catch { }
-            try { tms.Menu.ImageMarginGradientEnd = raised; } catch { }
-            try { tms.Menu.MenuItemText = text; } catch { }
-            try { tms.Menu.MenuBorder = border; } catch { }
-            try { tms.Menu.MenuItemSelected = accent.Normal; } catch { }
-            try { tms.Menu.MenuItemSelectedGradientBegin = accent.Normal; } catch { }
-            try { tms.Menu.MenuItemSelectedGradientEnd = accent.Pressed; } catch { }
         }
 
         private static void ApplyHeaderAccent(KryptonPaletteHeader header, AccentSeed a)
