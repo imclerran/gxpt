@@ -30,9 +30,9 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SettingsForm));
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
-            this.btnOk = new System.Windows.Forms.Button();
-            this.btnCancel = new System.Windows.Forms.Button();
-            this.btnApply = new System.Windows.Forms.Button();
+            this.btnOk = new Krypton.Toolkit.KryptonButton();
+            this.btnCancel = new Krypton.Toolkit.KryptonButton();
+            this.btnApply = new Krypton.Toolkit.KryptonButton();
             this.rtbJson = new System.Windows.Forms.RichTextBox();
             this.tblSettings = new System.Windows.Forms.TableLayoutPanel();
             this.grpAccount = new System.Windows.Forms.GroupBox();
@@ -58,21 +58,21 @@
             this.txtModels = new System.Windows.Forms.TextBox();
             this.pnlModelsRight = new System.Windows.Forms.Panel();
             this.grpRecommended = new System.Windows.Forms.GroupBox();
-            this.btnAddRecommended = new System.Windows.Forms.Button();
-            this.btnReplaceRecommended = new System.Windows.Forms.Button();
-            this.btnUpdateModelInfo = new System.Windows.Forms.Button();
+            this.btnAddRecommended = new Krypton.Toolkit.KryptonButton();
+            this.btnReplaceRecommended = new Krypton.Toolkit.KryptonButton();
+            this.btnUpdateModelInfo = new Krypton.Toolkit.KryptonButton();
             this.cmbDefaultModel = new System.Windows.Forms.ComboBox();
             this.cmbTheme = new System.Windows.Forms.ComboBox();
             this.nudTranscriptMaxWidth = new System.Windows.Forms.NumericUpDown();
             this.nudMessageMaxWidth = new System.Windows.Forms.NumericUpDown();
             this.nudFontSize = new System.Windows.Forms.NumericUpDown();
-            this.chkEnableLogging = new System.Windows.Forms.CheckBox();
+            this.chkEnableLogging = new Krypton.Toolkit.KryptonCheckBox();
             this.lblProviderDataCollection = new System.Windows.Forms.Label();
-            this.chkZdr = new System.Windows.Forms.CheckBox();
+            this.chkZdr = new Krypton.Toolkit.KryptonCheckBox();
             this.lblColor = new System.Windows.Forms.Label();
             this.cmbColor = new System.Windows.Forms.ComboBox();
             this.lblMemoryEnabled = new System.Windows.Forms.Label();
-            this.chkMemoryEnabled = new System.Windows.Forms.CheckBox();
+            this.chkMemoryEnabled = new Krypton.Toolkit.KryptonCheckBox();
             this.lblMemoryMaxLines = new System.Windows.Forms.Label();
             this.nudMemoryMaxLines = new System.Windows.Forms.NumericUpDown();
             this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
@@ -82,21 +82,21 @@
             this.tblMcp = new System.Windows.Forms.TableLayoutPanel();
             this.grpMcpWeb = new System.Windows.Forms.GroupBox();
             this.tblMcpWeb = new System.Windows.Forms.TableLayoutPanel();
-            this.chkMcpWeb = new System.Windows.Forms.CheckBox();
+            this.chkMcpWeb = new Krypton.Toolkit.KryptonCheckBox();
             this.txtWebSearchKey = new System.Windows.Forms.TextBox();
-            this.chkMcpGithub = new System.Windows.Forms.CheckBox();
+            this.chkMcpGithub = new Krypton.Toolkit.KryptonCheckBox();
             this.txtGithubPat = new System.Windows.Forms.TextBox();
             this.grpMcpWorkspace = new System.Windows.Forms.GroupBox();
             this.tblMcpWorkspace = new System.Windows.Forms.TableLayoutPanel();
             this.tblMcpKeyless = new System.Windows.Forms.TableLayoutPanel();
-            this.chkMcpFiles = new System.Windows.Forms.CheckBox();
-            this.chkMcpCommand = new System.Windows.Forms.CheckBox();
-            this.chkMcpGit = new System.Windows.Forms.CheckBox();
-            this.chkMcpMsBuild = new System.Windows.Forms.CheckBox();
-            this.chkMcpCommandScratch = new System.Windows.Forms.CheckBox();
+            this.chkMcpFiles = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpCommand = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpGit = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpMsBuild = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpCommandScratch = new Krypton.Toolkit.KryptonCheckBox();
             this.grpMcpCustom = new System.Windows.Forms.GroupBox();
             this.grpAgents = new System.Windows.Forms.GroupBox();
-            this.chkAgents = new System.Windows.Forms.CheckBox();
+            this.chkAgents = new Krypton.Toolkit.KryptonCheckBox();
             this.tblMcpCustom = new System.Windows.Forms.TableLayoutPanel();
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
@@ -156,7 +156,6 @@
             this.btnOk.Size = new System.Drawing.Size(75, 23);
             this.btnOk.TabIndex = 0;
             this.btnOk.Text = "OK";
-            this.btnOk.UseVisualStyleBackColor = true;
             this.btnOk.Click += new System.EventHandler(this.btnOk_Click);
             //
             // btnCancel
@@ -167,7 +166,6 @@
             this.btnCancel.Size = new System.Drawing.Size(75, 23);
             this.btnCancel.TabIndex = 1;
             this.btnCancel.Text = "Cancel";
-            this.btnCancel.UseVisualStyleBackColor = true;
             //
             // btnApply
             //
@@ -177,7 +175,6 @@
             this.btnApply.Size = new System.Drawing.Size(75, 23);
             this.btnApply.TabIndex = 2;
             this.btnApply.Text = "Apply";
-            this.btnApply.UseVisualStyleBackColor = true;
             this.btnApply.Click += new System.EventHandler(this.btnApply_Click);
             // 
             // rtbJson
@@ -522,7 +519,6 @@
             this.btnAddRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnAddRecommended.TabIndex = 0;
             this.btnAddRecommended.Text = "Add to list";
-            this.btnAddRecommended.UseVisualStyleBackColor = true;
             // 
             // btnReplaceRecommended
             // 
@@ -531,7 +527,6 @@
             this.btnReplaceRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnReplaceRecommended.TabIndex = 1;
             this.btnReplaceRecommended.Text = "Replace list...";
-            this.btnReplaceRecommended.UseVisualStyleBackColor = true;
             //
             // btnUpdateModelInfo
             //
@@ -541,7 +536,6 @@
             this.btnUpdateModelInfo.Size = new System.Drawing.Size(185, 23);
             this.btnUpdateModelInfo.TabIndex = 22;
             this.btnUpdateModelInfo.Text = "Update Model Info";
-            this.btnUpdateModelInfo.UseVisualStyleBackColor = true;
             //
             // cmbDefaultModel
             //
@@ -628,7 +622,6 @@
             this.chkEnableLogging.Name = "chkEnableLogging";
             this.chkEnableLogging.Size = new System.Drawing.Size(457, 14);
             this.chkEnableLogging.TabIndex = 4;
-            this.chkEnableLogging.UseVisualStyleBackColor = true;
             // 
             // lblProviderDataCollection
             // 
@@ -650,7 +643,6 @@
             this.chkZdr.Size = new System.Drawing.Size(299, 17);
             this.chkZdr.TabIndex = 17;
             this.chkZdr.Text = "Default new conversations to zero-retention providers only";
-            this.chkZdr.UseVisualStyleBackColor = true;
             // 
             // lblColor
             // 
@@ -693,7 +685,6 @@
             this.chkMemoryEnabled.Size = new System.Drawing.Size(457, 17);
             this.chkMemoryEnabled.TabIndex = 21;
             this.chkMemoryEnabled.Text = "Remember facts about my workspaces (persistent project memory)";
-            this.chkMemoryEnabled.UseVisualStyleBackColor = true;
             // 
             // lblMemoryMaxLines
             // 
@@ -861,7 +852,6 @@
             this.chkMcpWeb.Size = new System.Drawing.Size(84, 17);
             this.chkMcpWeb.TabIndex = 0;
             this.chkMcpWeb.Text = "Web search";
-            this.chkMcpWeb.UseVisualStyleBackColor = true;
             // 
             // txtWebSearchKey
             // 
@@ -881,7 +871,6 @@
             this.chkMcpGithub.Size = new System.Drawing.Size(59, 17);
             this.chkMcpGithub.TabIndex = 2;
             this.chkMcpGithub.Text = "GitHub";
-            this.chkMcpGithub.UseVisualStyleBackColor = true;
             // 
             // txtGithubPat
             // 
@@ -921,7 +910,6 @@
             this.chkMcpFiles.Size = new System.Drawing.Size(47, 17);
             this.chkMcpFiles.TabIndex = 4;
             this.chkMcpFiles.Text = "Files";
-            this.chkMcpFiles.UseVisualStyleBackColor = true;
             // 
             // chkMcpCommand
             // 
@@ -933,7 +921,6 @@
             this.chkMcpCommand.Size = new System.Drawing.Size(73, 17);
             this.chkMcpCommand.TabIndex = 5;
             this.chkMcpCommand.Text = "Command";
-            this.chkMcpCommand.UseVisualStyleBackColor = true;
             // 
             // chkMcpGit
             // 
@@ -945,7 +932,6 @@
             this.chkMcpGit.Size = new System.Drawing.Size(39, 17);
             this.chkMcpGit.TabIndex = 6;
             this.chkMcpGit.Text = "Git";
-            this.chkMcpGit.UseVisualStyleBackColor = true;
             // 
             // chkMcpMsBuild
             // 
@@ -957,7 +943,6 @@
             this.chkMcpMsBuild.Size = new System.Drawing.Size(65, 17);
             this.chkMcpMsBuild.TabIndex = 7;
             this.chkMcpMsBuild.Text = "MSBuild";
-            this.chkMcpMsBuild.UseVisualStyleBackColor = true;
             //
             // chkMcpCommandScratch
             //
@@ -969,7 +954,6 @@
             this.chkMcpCommandScratch.Size = new System.Drawing.Size(355, 17);
             this.chkMcpCommandScratch.TabIndex = 2;
             this.chkMcpCommandScratch.Text = "Run Command in a temporary scratch folder when no workspace is set";
-            this.chkMcpCommandScratch.UseVisualStyleBackColor = true;
             //
             // grpMcpCustom
             //
@@ -1005,7 +989,6 @@
             this.chkAgents.Size = new System.Drawing.Size(320, 17);
             this.chkAgents.TabIndex = 0;
             this.chkAgents.Text = "Enable sub-agents (delegate sub-tasks to specialist agents)";
-            this.chkAgents.UseVisualStyleBackColor = true;
             //
             // tblMcpCustom
             //
@@ -1099,9 +1082,9 @@
         #endregion
 
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
-        private System.Windows.Forms.Button btnOk;
-        private System.Windows.Forms.Button btnCancel;
-        private System.Windows.Forms.Button btnApply;
+        private Krypton.Toolkit.KryptonButton btnOk;
+        private Krypton.Toolkit.KryptonButton btnCancel;
+        private Krypton.Toolkit.KryptonButton btnApply;
         private System.Windows.Forms.RichTextBox rtbJson;
         private System.Windows.Forms.TableLayoutPanel tblSettings;
         private System.Windows.Forms.GroupBox grpAccount;
@@ -1118,15 +1101,15 @@
         private System.Windows.Forms.Label lblModels;
         private System.Windows.Forms.Label lblDefaultModel;
         private System.Windows.Forms.Label lblEnableLogging;
-        private System.Windows.Forms.CheckBox chkEnableLogging;
+        private Krypton.Toolkit.KryptonCheckBox chkEnableLogging;
         private System.Windows.Forms.ComboBox cmbDefaultModel;
         private System.Windows.Forms.TextBox txtModels;
         private System.Windows.Forms.Panel pnlModelsRow;
         private System.Windows.Forms.Panel pnlModelsRight;
         private System.Windows.Forms.GroupBox grpRecommended;
-        private System.Windows.Forms.Button btnAddRecommended;
-        private System.Windows.Forms.Button btnReplaceRecommended;
-        private System.Windows.Forms.Button btnUpdateModelInfo;
+        private Krypton.Toolkit.KryptonButton btnAddRecommended;
+        private Krypton.Toolkit.KryptonButton btnReplaceRecommended;
+        private Krypton.Toolkit.KryptonButton btnUpdateModelInfo;
         private System.Windows.Forms.TextBox txtApiKey;
         private Krypton.Navigator.KryptonNavigator tabControl1;
         private Krypton.Navigator.KryptonPage tabVisual;
@@ -1140,9 +1123,9 @@
         private System.Windows.Forms.Label lblMessageMaxWidth;
         private System.Windows.Forms.NumericUpDown nudMessageMaxWidth;
         private System.Windows.Forms.Label lblProviderDataCollection;
-        private System.Windows.Forms.CheckBox chkZdr;
+        private Krypton.Toolkit.KryptonCheckBox chkZdr;
         private System.Windows.Forms.Label lblMemoryEnabled;
-        private System.Windows.Forms.CheckBox chkMemoryEnabled;
+        private Krypton.Toolkit.KryptonCheckBox chkMemoryEnabled;
         private System.Windows.Forms.Label lblMemoryMaxLines;
         private System.Windows.Forms.NumericUpDown nudMemoryMaxLines;
         private System.Windows.Forms.Label lblColor;
@@ -1156,17 +1139,17 @@
         private System.Windows.Forms.TableLayoutPanel tblMcpKeyless;
         private System.Windows.Forms.GroupBox grpMcpCustom;
         private System.Windows.Forms.GroupBox grpAgents;
-        private System.Windows.Forms.CheckBox chkAgents;
+        private Krypton.Toolkit.KryptonCheckBox chkAgents;
         private System.Windows.Forms.TableLayoutPanel tblMcpCustom;
-        private System.Windows.Forms.CheckBox chkMcpWeb;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpWeb;
         private System.Windows.Forms.TextBox txtWebSearchKey;
-        private System.Windows.Forms.CheckBox chkMcpGithub;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpGithub;
         private System.Windows.Forms.TextBox txtGithubPat;
-        private System.Windows.Forms.CheckBox chkMcpFiles;
-        private System.Windows.Forms.CheckBox chkMcpGit;
-        private System.Windows.Forms.CheckBox chkMcpCommand;
-        private System.Windows.Forms.CheckBox chkMcpCommandScratch;
-        private System.Windows.Forms.CheckBox chkMcpMsBuild;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpFiles;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpGit;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpCommand;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpCommandScratch;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpMsBuild;
         private System.Windows.Forms.RichTextBox rtbMcpJson;
     }
 }
