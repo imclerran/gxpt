@@ -880,8 +880,8 @@ namespace GxPT
         // A right-aligned +/x button on the menu strip. It is a stock ToolStripButton
         // so Krypton's toolstrip renderer draws its hover/pressed background to match
         // the themed strip (we deliberately do NOT paint our own background, which is
-        // what used to clash). We only paint the glyph, in a color that reads against
-        // the strip - light in dark mode, dark in light mode.
+        // what used to clash). We only paint the glyph, in the same color Krypton
+        // uses for the menu-bar text so it blends with File/View/Help.
         private sealed class GlyphToolStripButton : ToolStripButton
         {
             public enum GlyphType { Plus, Close }
@@ -905,7 +905,7 @@ namespace GxPT
                 var g = e.Graphics;
                 Rectangle r = new Rectangle(0, 0, (int)this.Width - 1, (int)this.Height - 1);
                 Color glyphColor;
-                try { glyphColor = KryptonThemeBridge.IsDarkMode() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50); }
+                try { glyphColor = KryptonThemeBridge.MenuTextColor(); }
                 catch { glyphColor = Color.FromArgb(0x50, 0x50, 0x50); }
 
                 using (var pen = new Pen(glyphColor, 2f))

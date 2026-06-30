@@ -50,6 +50,22 @@ namespace GxPT
             return ReadDark();
         }
 
+        // The exact color Krypton uses to draw menu-bar text (File/View/Help), so a
+        // custom strip glyph can match it. Falls back to a sensible per-mode color.
+        public static Color MenuTextColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.ColorTable.MenuStripText;
+                    if (!c.IsEmpty && c.A != 0) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50);
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
