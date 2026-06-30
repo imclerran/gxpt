@@ -206,7 +206,7 @@
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 180F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 118F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 92F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 80F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 88F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblSettings.Size = new System.Drawing.Size(590, 405);
             this.tblSettings.TabIndex = 2;
@@ -344,7 +344,7 @@
             this.grpPrivacy.Location = new System.Drawing.Point(3, 488);
             this.grpPrivacy.Name = "grpPrivacy";
             this.grpPrivacy.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
-            this.grpPrivacy.Size = new System.Drawing.Size(584, 74);
+            this.grpPrivacy.Size = new System.Drawing.Size(584, 82);
             this.grpPrivacy.TabIndex = 4;
             this.grpPrivacy.TabStop = false;
             this.grpPrivacy.Text = "Privacy && diagnostics";
@@ -1012,11 +1012,11 @@
             this.CancelButton = this.btnCancel;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(604, 596);
+            this.ClientSize = new System.Drawing.Size(604, 590);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.flowLayoutPanel1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.MinimumSize = new System.Drawing.Size(620, 634);
+            this.MinimumSize = new System.Drawing.Size(620, 628);
             this.Name = "SettingsForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Settings";
