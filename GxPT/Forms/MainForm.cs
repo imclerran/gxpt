@@ -3263,10 +3263,18 @@ namespace GxPT
         // value stays the full "author/model" id.
         private void cmbModel_DrawItem(object sender, DrawItemEventArgs e)
         {
+            DrawModelComboItem(e, this.cmbModel);
+        }
+
+        // Shared owner-draw for any model-list combo: render only the short model name (ShortModelName)
+        // while the item value stays the full "author/model" id. Used by the main window's model selector
+        // and the settings effort-tier pickers so the two render identically.
+        internal static void DrawModelComboItem(DrawItemEventArgs e, ComboBox combo)
+        {
             e.DrawBackground();
-            if (e.Index >= 0 && this.cmbModel != null && e.Index < this.cmbModel.Items.Count)
+            if (combo != null && e.Index >= 0 && e.Index < combo.Items.Count)
             {
-                string full = Convert.ToString(this.cmbModel.Items[e.Index]);
+                string full = Convert.ToString(combo.Items[e.Index]);
                 // Clip the name at the edge like a native combo (no ellipsis).
                 TextRenderer.DrawText(e.Graphics, ShortModelName(full), e.Font, e.Bounds, e.ForeColor,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
@@ -3602,6 +3610,20 @@ namespace GxPT
                                 // the parent orchestrator was configured with above.
                                 dispatcher.Zdr = orch.Zdr;
                                 dispatcher.ProviderDataCollectionAllowed = orch.ProviderDataCollectionAllowed;
+                                // Map agent effort tiers to the models the user configured in Settings, so a
+                                // frontmatter `effort:` or a dispatch `effort` arg resolves to a real id.
+                                // Read live from AppSettings (EnsureSeeded guarantees a value); a blank tier
+                                // simply falls through to the model/parent fallbacks in ResolveModel.
+                                dispatcher.EffortModel = delegate(AgentEffort eff)
+                                {
+                                    switch (eff)
+                                    {
+                                        case AgentEffort.Low: return AppSettings.GetString("model_effort_low");
+                                        case AgentEffort.Medium: return AppSettings.GetString("model_effort_medium");
+                                        case AgentEffort.High: return AppSettings.GetString("model_effort_high");
+                                        default: return null;
+                                    }
+                                };
                                 // Child usage adds to cost/token totals but must NOT move the parent's context
                                 // gauge (the child has its own isolated context) - so it routes through the
                                 // updateContextGauge=false overload, not orch.UsageReported.

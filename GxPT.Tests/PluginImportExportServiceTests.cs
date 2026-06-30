@@ -52,7 +52,7 @@ namespace GxPT.Tests
                 "---\nname: " + slug + "\ndescription: " + description + "\ntools: [a]\n---\n\nPrompt.\n",
                 new UTF8Encoding(false));
             return new Agent(slug, slug, description, new string[] { "a" },
-                AgentMaxTier.Write, null, 0, file, AgentSource.User);
+                AgentMaxTier.Write, null, AgentEffort.Unset, 0, file, AgentSource.User);
         }
 
         private string ExportSample(string name, string version, IEnumerable<Skill> skills, IEnumerable<Agent> agents)

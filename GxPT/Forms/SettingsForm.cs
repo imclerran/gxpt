@@ -45,6 +45,12 @@ namespace GxPT
         // Tooltip explaining why the Git toggle is disabled when git isn't on PATH.
         private readonly ToolTip _mcpTip = new ToolTip();
 
+        // Agent effort-tier model pickers (low/medium/high), built in code into the Models groupbox. Narrow
+        // owner-drawn combos that show just the model name while storing the full "author/model" id.
+        private ComboBox cmbEffortLow;
+        private ComboBox cmbEffortMedium;
+        private ComboBox cmbEffortHigh;
+
         public SettingsForm()
         {
             InitializeComponent();
@@ -171,6 +177,11 @@ namespace GxPT
                 // Toggling the command server enables/disables its dependent scratch-dir option.
                 this.chkMcpCommand.CheckedChanged += McpCredential_TextChanged;
             }
+            catch { }
+
+            // Build the agent effort-tier pickers into the Sub-agents groupbox (before dirty-tracking is
+            // wired, so the new combos are covered too).
+            try { BuildEffortRow(); }
             catch { }
 
             // Track edits across every input so the Apply button can light up only when there are
@@ -929,6 +940,11 @@ namespace GxPT
             }
             finally { this.cmbDefaultModel.EndUpdate(); }
 
+            // Effort-tier pickers: same model list, each seeded with its configured (or default) model.
+            SyncEffortCombo(this.cmbEffortLow, s.models, s.model_effort_low);
+            SyncEffortCombo(this.cmbEffortMedium, s.models, s.model_effort_medium);
+            SyncEffortCombo(this.cmbEffortHigh, s.models, s.model_effort_high);
+
             // Font size
             try
             {
@@ -1057,6 +1073,12 @@ namespace GxPT
             if (string.IsNullOrEmpty(sel)) sel = this.cmbDefaultModel.Text;
             if (string.IsNullOrEmpty(sel)) sel = models.FirstOrDefault() ?? string.Empty;
             target.default_model = sel ?? string.Empty;
+
+            // Effort tiers from their combos (fall back to the existing working value if a combo is empty,
+            // so a tier is never silently wiped).
+            target.model_effort_low = EffortComboValue(this.cmbEffortLow, target.model_effort_low);
+            target.model_effort_medium = EffortComboValue(this.cmbEffortMedium, target.model_effort_medium);
+            target.model_effort_high = EffortComboValue(this.cmbEffortHigh, target.model_effort_high);
 
             // Font size
             try { target.font_size = (double)this.nudFontSize.Value; }
@@ -1257,6 +1279,177 @@ namespace GxPT
             }
         }
 
+        // Builds the effort-tier model pickers into the "Sub-agents" groupbox (Tools tab) in code, so the
+        // designer's layout is left untouched. The existing enable checkbox and the new pickers are re-hosted
+        // in a small docked table; the group's row in tblMcp is grown to fit (its neighbour is Percent(100),
+        // which absorbs the change, so no other section moves).
+        private void BuildEffortRow()
+        {
+            if (this.grpAgents == null || this.chkAgents == null) return;
+            this.grpAgents.SuspendLayout();
+            try
+            {
+                // Give the Sub-agents group room for the stacked caption + combo row (its tblMcp row is
+                // Absolute height).
+                if (this.tblMcp != null && this.tblMcp.RowStyles.Count > 2
+                    && this.tblMcp.RowStyles[2] is RowStyle)
+                {
+                    ((RowStyle)this.tblMcp.RowStyles[2]).SizeType = SizeType.Absolute;
+                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 100F;
+                }
+
+                // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
+                // (the checkbox keeps its name/state/wiring - only its parent changes).
+                this.grpAgents.Controls.Remove(this.chkAgents);
+                this.chkAgents.Anchor = AnchorStyles.Left;
+                this.chkAgents.Margin = new Padding(3, 3, 3, 2);
+
+                TableLayoutPanel layout = new TableLayoutPanel();
+                layout.Dock = DockStyle.Fill;
+                layout.ColumnCount = 1;
+                layout.RowCount = 2;
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
+                layout.Controls.Add(this.chkAgents, 0, 0);
+                layout.Controls.Add(BuildEffortGrid(), 0, 1);
+                this.grpAgents.Controls.Add(layout);
+            }
+            finally { this.grpAgents.ResumeLayout(); }
+        }
+
+        // The effort-tier pickers: a 4-column x 2-row grid. Column 0 is the "Models" row-label (spanning both
+        // rows so it centers vertically against the caption+combo block); columns 1-3 stack each tier's caption
+        // ("Low/Medium/High effort") directly above its combo. Equal Percent tier columns fit the width with no
+        // clipping; each caption centers over its combo.
+        private TableLayoutPanel BuildEffortGrid()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel();
+            grid.Dock = DockStyle.Fill;
+            grid.ColumnCount = 4;
+            grid.RowCount = 2;
+            grid.Margin = new Padding(0, 1, 0, 1);
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));   // row label
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // captions
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // combos
+
+            // Row label spanning both rows -> vertically centered across the caption+combo block.
+            Label lbl = new Label();
+            lbl.Text = "Models";
+            lbl.Dock = DockStyle.Fill;
+            lbl.TextAlign = ContentAlignment.MiddleLeft;
+            lbl.Margin = new Padding(3, 0, 6, 0);
+            grid.Controls.Add(lbl, 0, 0);
+            grid.SetRowSpan(lbl, 2);
+            _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
+                + "dispatch_agent) can ask for low/medium/high without naming a model.");
+
+            this.cmbEffortLow = MakeEffortCombo();
+            this.cmbEffortMedium = MakeEffortCombo();
+            this.cmbEffortHigh = MakeEffortCombo();
+
+            grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
+            grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
+            grid.Controls.Add(MakeEffortCaption("High effort"), 3, 0);
+            grid.Controls.Add(this.cmbEffortLow, 1, 1);
+            grid.Controls.Add(this.cmbEffortMedium, 2, 1);
+            grid.Controls.Add(this.cmbEffortHigh, 3, 1);
+            return grid;
+        }
+
+        // A tier caption that centers over its combo: Dock=Fill + centered text, with the same right margin
+        // the combo uses so the two line up.
+        private static Label MakeEffortCaption(string text)
+        {
+            Label c = new Label();
+            c.Text = text;
+            c.Dock = DockStyle.Fill;
+            c.TextAlign = ContentAlignment.MiddleCenter;
+            c.Margin = new Padding(0, 0, 6, 0);
+            return c;
+        }
+
+        private ComboBox MakeEffortCombo()
+        {
+            ComboBox c = new ComboBox();
+            c.Dock = DockStyle.Fill;
+            c.Margin = new Padding(0, 2, 6, 2);
+            c.DropDownStyle = ComboBoxStyle.DropDownList;
+            c.DrawMode = DrawMode.OwnerDrawFixed;   // show just the model name; the item value stays the full id
+            c.DrawItem += EffortCombo_DrawItem;
+            c.DropDown += EffortCombo_DropDown;
+            return c;
+        }
+
+        // Owner-draw via the shared helper so the effort pickers render the short model name exactly like
+        // the main window's model selector.
+        private void EffortCombo_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            MainForm.DrawModelComboItem(e, sender as ComboBox);
+        }
+
+        // The box is narrow, so widen the dropdown to fit the longest (short) model name when it opens.
+        private void EffortCombo_DropDown(object sender, EventArgs e)
+        {
+            ComboBox combo = sender as ComboBox;
+            if (combo == null) return;
+            int w = combo.Width;
+            try
+            {
+                using (Graphics g = combo.CreateGraphics())
+                {
+                    foreach (object item in combo.Items)
+                    {
+                        string s = MainForm.ShortModelName(Convert.ToString(item));
+                        int tw = TextRenderer.MeasureText(g, s, combo.Font).Width + 24;
+                        if (tw > w) w = tw;
+                    }
+                }
+                combo.DropDownWidth = Math.Min(w, 600);
+            }
+            catch { }
+        }
+
+        // Repopulate one effort combo from the model list, preserving (or seeding) its selection. A stored
+        // value not in the list is still added so it stays visible/selectable (mirrors cmbDefaultModel).
+        private void SyncEffortCombo(ComboBox combo, IList<string> models, string selected)
+        {
+            if (combo == null) return;
+            combo.BeginUpdate();
+            try
+            {
+                combo.Items.Clear();
+                if (models != null)
+                    foreach (var m in models) combo.Items.Add(m);
+                string sel = selected ?? string.Empty;
+                if (sel.Length > 0 && !ContainsOrdinalIgnoreCase(models, sel))
+                    combo.Items.Add(sel);
+                combo.SelectedItem = sel;
+            }
+            finally { combo.EndUpdate(); }
+        }
+
+        private static bool ContainsOrdinalIgnoreCase(IList<string> list, string value)
+        {
+            if (list == null) return false;
+            for (int i = 0; i < list.Count; i++)
+                if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // The selected model id for an effort combo, or the fallback (the existing working value) when the
+        // combo is empty - so capturing settings never silently clears a tier.
+        private static string EffortComboValue(ComboBox combo, string fallback)
+        {
+            if (combo == null) return fallback ?? string.Empty;
+            string sel = combo.SelectedItem as string;
+            if (string.IsNullOrEmpty(sel)) sel = combo.Text;
+            return string.IsNullOrEmpty(sel) ? (fallback ?? string.Empty) : sel;
+        }
+
         private void TxtModels_TextChanged(object sender, EventArgs e)
         {
             if (_isSyncing) return;
@@ -1303,6 +1496,11 @@ namespace GxPT
             {
                 this.cmbDefaultModel.EndUpdate();
             }
+
+            // Keep the effort-tier pickers in step with the model list too, preserving each selection.
+            SyncEffortCombo(this.cmbEffortLow, models, this.cmbEffortLow != null ? this.cmbEffortLow.SelectedItem as string : null);
+            SyncEffortCombo(this.cmbEffortMedium, models, this.cmbEffortMedium != null ? this.cmbEffortMedium.SelectedItem as string : null);
+            SyncEffortCombo(this.cmbEffortHigh, models, this.cmbEffortHigh != null ? this.cmbEffortHigh.SelectedItem as string : null);
 
             UpdateRecommendedButtonStates();
         }
@@ -1558,6 +1756,11 @@ namespace GxPT
             public string openrouter_api_key { get; set; }
             public List<string> models { get; set; }
             public string default_model { get; set; }
+            // Agent effort tiers: each maps a capability level the model/agent can request to a model id.
+            // Round-tripped through the form (and the raw JSON editor) like any other setting.
+            public string model_effort_low { get; set; }
+            public string model_effort_medium { get; set; }
+            public string model_effort_high { get; set; }
             // Fingerprint (ModelDefaults.RecommendedHash) of the recommended catalog the user has
             // acknowledged. Carried through here so saving settings doesn't drop the key the
             // "updated recommended models" banner relies on. Not surfaced in the visual editor.

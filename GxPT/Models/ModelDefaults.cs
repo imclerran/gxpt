@@ -16,6 +16,13 @@ namespace GxPT
         // Selected by default on a fresh install. Must be one of Models below.
         public const string DefaultModel = "~anthropic/claude-sonnet-latest";
 
+        // Default model for each agent effort tier (Settings > Tools > Sub-agents). Each must be one of
+        // Models below so a fresh install's tier combos start on a real, in-list model. low = cheap/fast,
+        // high = most capable.
+        public const string DefaultEffortLow = "deepseek/deepseek-v4-flash";
+        public const string DefaultEffortMedium = "z-ai/glm-5.2";
+        public const string DefaultEffortHigh = "~anthropic/claude-opus-latest";
+
         // Default catalog, in display order (the model combo is sorted, so order is cosmetic there;
         // it is preserved verbatim in the seeded settings.json).
         public static readonly string[] Models = new string[]

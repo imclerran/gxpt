@@ -238,6 +238,143 @@ namespace GxPT.Tests
             Assert.Equal("override-model", ui.LastFanOutFirstModel);
         }
 
+        // ---- effort tier resolution ----
+
+        // The standard test effort map: low/medium/high -> distinct sentinel model ids.
+        private static Func<AgentEffort, string> EffortMap()
+        {
+            return delegate(AgentEffort e)
+            {
+                switch (e)
+                {
+                    case AgentEffort.Low: return "model-low";
+                    case AgentEffort.Medium: return "model-medium";
+                    case AgentEffort.High: return "model-high";
+                    default: return null;
+                }
+            };
+        }
+
+        // Writes an agent whose frontmatter pins an effort tier.
+        private Agent WriteAgentWithEffort(string slug, string effort)
+        {
+            string file = Path.Combine(_dir, slug + ".md");
+            File.WriteAllText(file,
+                "---\nname: " + slug + "\ndescription: d\neffort: " + effort + "\n---\nbody\n",
+                new UTF8Encoding(false));
+            AgentCatalog cat = AgentCatalog.Build(_dir, null);
+            Agent a;
+            cat.TryGet(slug, out a);
+            return a;
+        }
+
+        [Fact]
+        public void EffortArg_ResolvesViaEffortMap()
+        {
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.EffortModel = EffortMap();
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\",\"effort\":\"high\"}]}");
+
+            Assert.Equal("model-high", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void ModelArg_BeatsEffortArg()
+        {
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.EffortModel = EffortMap();
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\",\"effort\":\"high\",\"model\":\"explicit\"}]}");
+
+            Assert.Equal("explicit", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void EffortArg_BeatsFrontmatterModel()
+        {
+            Agent a = WriteAgentWithModel("explorer", "frontmatter-model");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.EffortModel = EffortMap();
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\",\"effort\":\"low\"}]}");
+
+            Assert.Equal("model-low", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void FrontmatterEffort_ResolvesWhenNoArgsOrModel()
+        {
+            Agent a = WriteAgentWithEffort("explorer", "medium");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.EffortModel = EffortMap();
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.Equal("model-medium", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void FrontmatterModel_BeatsFrontmatterEffort()
+        {
+            // An agent that pins BOTH model and effort: the explicit model is more specific and wins.
+            string file = Path.Combine(_dir, "explorer.md");
+            File.WriteAllText(file,
+                "---\nname: explorer\ndescription: d\nmodel: pinned-model\neffort: high\n---\nbody\n",
+                new UTF8Encoding(false));
+            AgentCatalog cat = AgentCatalog.Build(_dir, null);
+            Agent a; cat.TryGet("explorer", out a);
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+            AgentDispatcher d = Dispatcher(streamer, a);
+            d.EffortModel = EffortMap();
+
+            d.Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.Equal("pinned-model", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void FrontmatterEffort_WithNoEffortHook_FallsBackToParentModel()
+        {
+            // No EffortModel host hook set (e.g. the dispatcher wasn't given a settings map): the effort tier
+            // resolves to nothing and the chain lands on the parent model rather than crashing.
+            Agent a = WriteAgentWithEffort("explorer", "high");
+            ScriptedStreamer streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            Dispatcher(streamer, a)   // EffortModel left null; parent model is "parent-model"
+                .Dispatch("{\"agents\":[{\"name\":\"explorer\",\"task\":\"t\"}]}");
+
+            Assert.Equal("parent-model", streamer.SeenModels[0]);
+        }
+
+        [Fact]
+        public void DispatchAgentDef_ExposesEffortEnum()
+        {
+            Agent a = WriteAgent("explorer", "Explore.", "You explore.");
+            JObject def = Dispatcher(new ScriptedStreamer(), a).DispatchAgentDef();
+            JToken props = def["function"]["parameters"]["properties"]["agents"]["items"]["properties"];
+            Assert.NotNull(props["effort"]);
+            JArray en = (JArray)props["effort"]["enum"];
+            Assert.Contains("low", en.Values<string>());
+            Assert.Contains("medium", en.Values<string>());
+            Assert.Contains("high", en.Values<string>());
+            // effort is optional: only name and task are required.
+            JArray required = (JArray)def["function"]["parameters"]["properties"]["agents"]["items"]["required"];
+            Assert.DoesNotContain("effort", required.Values<string>());
+        }
+
         [Fact]
         public void HasAgents_ReflectsCatalog()
         {

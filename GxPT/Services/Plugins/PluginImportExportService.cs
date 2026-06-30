@@ -196,7 +196,7 @@ namespace GxPT
                 string slug = m.Agents[i];
                 string file = CurrentPath(MemberKind.Agent, m.Enabled, skillsRoot, agentsRoot, disabled, slug);
                 if (File.Exists(file))
-                    agents.Add(new Agent(slug, slug, string.Empty, null, AgentMaxTier.Write, null, 0, file, AgentSource.User));
+                    agents.Add(new Agent(slug, slug, string.Empty, null, AgentMaxTier.Write, null, AgentEffort.Unset, 0, file, AgentSource.User));
             }
 
             ExportPlugin(m.Name, m.Version, m.Description, skills, agents, archivePath);

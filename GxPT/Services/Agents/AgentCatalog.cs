@@ -104,7 +104,7 @@ namespace GxPT
 
             string name = (fm.Name != null && fm.Name.Length > 0) ? fm.Name : slug;
             return new Agent(slug, name, fm.Description, fm.Tools, fm.MaxTier, fm.Model,
-                             fm.MaxTurns, file, source);
+                             fm.Effort, fm.MaxTurns, file, source);
         }
 
         // The manifest body the model sees: one "- <slug> - <description>" line per agent, slug-ordered

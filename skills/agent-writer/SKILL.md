@@ -50,6 +50,10 @@ producing what? You are capturing how this specialist should behave. Pin down:
   `max_tier` ceiling).
 - Which tools it needs (file read/edit, git, web, command, etc.).
 - Whether it should be capped to a few turns (cheap, fast) or allowed to run longer.
+- **How capable a model the job needs** - this sets the agent's `effort` (`low` | `medium` |
+  `high`). A mechanical retrieval/formatting/search job runs fine on `low`; a general worker on
+  `medium`; deep reasoning (subtle code review, architecture, hard debugging) wants `high`. Settle
+  on a tier for almost every agent - it's a normal part of the interview, not an afterthought.
 
 There is no single right altitude for the system prompt - it depends on the answers above. A
 focused builder the user will hand a precise brief each time wants a lean prompt; a checker that
@@ -79,7 +83,12 @@ Propose, in plain terms:
   `destructive` (can run deleting/irreversible tools). Pick the lowest that still does the job - a
   reviewer or explorer should be `readonly`.
 - **max_turns** - an optional iteration budget; keep explorers/reviewers low.
-- **model** - usually omit (inherits the parent's model); set it only if they want a specific one.
+- **effort** - the capability tier the agent runs at: `low` (cheap/fast), `medium`, or `high` (most
+  capable); the user maps each to a model in settings. **Set this by default** - pick the tier that
+  fits the job (see step 2). This is the normal way to choose an agent's model.
+- **model** - a specific model id. Set this *only* if the user explicitly wants one particular
+  model; it overrides `effort`. Set `effort` OR `model`, never both. Leave **both** blank only when
+  the user wants the agent to inherit whatever model the conversation is currently using.
 
 ## 4. Propose, then confirm
 
@@ -100,8 +109,9 @@ the app (like `code-explore`) as well as user/project ones - and adapt it. `read
 agent in any scope, so you don't pass a scope to it.
 
 Creating a new agent:
-- `create_agent(slug, name, description, body, tools, max_tier, model, max_turns)` - the body is the
-  agent's system prompt. Follow the four-part structure from `writing-agents.md`, in order:
+- `create_agent(slug, name, description, body, tools, max_tier, model, effort, max_turns)` - the body
+  is the agent's system prompt. Set `effort` (not `model`) unless the user asked for a specific model.
+  Follow the four-part structure from `writing-agents.md`, in order:
   (1) a second-person identity line ("You are a …"); (2) the one job plus a bullet list of what the
   written result must contain; (3) the rules and boundaries (state read-only limits explicitly); and
   (4) the **final instructions** - the closing paragraph that every built-in agent ends on, telling
@@ -119,8 +129,8 @@ read the one you want before changing it):
   targeted edit that replaces an exact span in the body. Don't re-send the whole prompt for a small
   change.
 - `update_agent(slug, ...)` - for the frontmatter contract (`name`, `description`, `tools`,
-  `max_tier`, `model`, `max_turns`), or when replacing the whole body. Pass only the fields that
-  change; the rest stay. Pass `tools: []` to clear the allowlist.
+  `max_tier`, `model`, `effort`, `max_turns`), or when replacing the whole body. Pass only the
+  fields that change; the rest stay. Pass `tools: []` to clear the allowlist.
 - `delete_agent(slug)` removes the whole agent. It's destructive - the user confirms, so only reach
   for it when asked.
 

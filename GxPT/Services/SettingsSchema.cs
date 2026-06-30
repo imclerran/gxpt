@@ -40,6 +40,12 @@ namespace GxPT
             d["models"] = (string[])ModelDefaults.Models.Clone();
             d["default_model"] = ModelDefaults.DefaultModel;
             d["recommended_hash_seen"] = ModelDefaults.RecommendedHash();
+            // Agent effort tiers (design A18): each maps a level the model/agent can request to a concrete
+            // model id, so a dispatch can ask for "high effort" without naming a slug. Seeded from the shared
+            // catalog so they start on real, in-list models.
+            d["model_effort_low"] = ModelDefaults.DefaultEffortLow;
+            d["model_effort_medium"] = ModelDefaults.DefaultEffortMedium;
+            d["model_effort_high"] = ModelDefaults.DefaultEffortHigh;
 
             // --- Appearance ---
             d["theme"] = "light";

@@ -23,6 +23,20 @@ namespace GxPT
         Destructive
     }
 
+    // The model "effort" an agent prefers (design A18): a user-configurable capability level the host maps
+    // to a concrete model in settings (Settings > Models: low/medium/high -> a model id each). It lets an
+    // agent - or a single dispatch - ask for "high effort" without naming a model slug, so the author/model
+    // never has to know provider ids. Unset => no effort hint (resolution falls through to an explicit model,
+    // then the parent turn's model). Deliberately NOT named "tier": AgentMaxTier already owns "tier" for the
+    // tool-permission ceiling, which is a different axis entirely.
+    internal enum AgentEffort
+    {
+        Unset,
+        Low,
+        Medium,
+        High
+    }
+
     // One discovered sub-agent: a flat <slug>.md file whose frontmatter declares the agent's contract
     // and whose body is the agent's system prompt (design A4 - one file per agent, no folder). The
     // catalog holds a slug -> Agent map. The body is read from FilePath on dispatch (a single small
@@ -50,6 +64,11 @@ namespace GxPT
         // Optional model id override; null/empty => the parent turn's model.
         public string Model { get; private set; }
 
+        // Optional model effort (capability tier). Unset => no effort hint. Resolved to a concrete model
+        // against the user's settings at dispatch (AgentDispatcher.ResolveModel); an explicit Model wins
+        // over Effort, matching "a specific id beats the abstraction".
+        public AgentEffort Effort { get; private set; }
+
         // Per-agent iteration budget (design A17), fed to the child orchestrator's maxIterations. 0 => unset
         // (use the host default). Lets an explore agent cap low and a coder run long; a tight budget is also
         // a safety bound on an unattended run.
@@ -61,7 +80,7 @@ namespace GxPT
         public AgentSource Source { get; private set; }
 
         public Agent(string slug, string name, string description, string[] tools,
-                     AgentMaxTier maxTier, string model, int maxTurns,
+                     AgentMaxTier maxTier, string model, AgentEffort effort, int maxTurns,
                      string filePath, AgentSource source)
         {
             Slug = slug;
@@ -70,6 +89,7 @@ namespace GxPT
             Tools = tools;
             MaxTier = maxTier;
             Model = model;
+            Effort = effort;
             MaxTurns = maxTurns;
             FilePath = filePath;
             Source = source;
