@@ -379,14 +379,14 @@
             // 
             // lblModels
             // 
-            this.lblModels.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblModels.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)));
             this.lblModels.AutoSize = true;
             this.lblModels.Location = new System.Drawing.Point(83, 32);
             this.lblModels.Margin = new System.Windows.Forms.Padding(3, 6, 3, 0);
             this.lblModels.Name = "lblModels";
             this.lblModels.Size = new System.Drawing.Size(41, 13);
             this.lblModels.TabIndex = 1;
-            this.lblModels.Text = "Models";
+            this.lblModels.Text = "Model List";
             // 
             // lblDefaultModel
             // 
