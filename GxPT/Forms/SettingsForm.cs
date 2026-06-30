@@ -1365,7 +1365,7 @@ namespace GxPT
             grid.ColumnCount = 4;
             grid.RowCount = 2;
             grid.Margin = new Padding(0, 1, 0, 1);
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));   // row label
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76F));   // row label ("Models")
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
