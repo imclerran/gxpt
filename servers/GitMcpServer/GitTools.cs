@@ -24,7 +24,8 @@ namespace GitMcpServer
     ///   - merge/cherry-pick pass --no-edit so git never blocks on an editor.
     ///
     /// Worktrees: the <c>worktree</c> tool creates linked working trees as subdirectories of the
-    /// workspace root (confined by PathSandbox), and every tool accepts an optional <c>cwd</c>
+    /// workspace root (confined by PathSandbox), conventionally under <c>.worktrees/</c>, and every
+    /// tool accepts an optional <c>cwd</c>
     /// argument naming the subdirectory git should run in. Together these let the model carve out a
     /// worktree and then drive its whole git workflow inside it — still inside the sandbox, since a
     /// <c>cwd</c> that resolved outside GXPT_WORKDIR is rejected (servers-spec §2).
@@ -142,10 +143,10 @@ namespace GitMcpServer
                 ToolAnnotations.Write(),
                 delegate(ToolCallContext ctx) { return Branch(config, runner, sandbox, ctx); });
 
-            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees live in a subdirectory of the workspace root.",
+            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees live in a subdirectory of the workspace root; by convention place them under .worktrees/ (e.g. .worktrees/feat).",
                 SchemaBuilder.Object()
                     .Str("action", false, "list | add | remove | prune (default: list)")
-                    .Str("path", false, "Worktree directory, relative to the workspace root (required for add/remove)")
+                    .Str("path", false, "Worktree directory, relative to the workspace root (required for add/remove). Prefer .worktrees/<name> (e.g. .worktrees/feat) to keep worktrees in one tidy, dotfile-hidden location.")
                     .Str("ref", false, "Commit/branch to check out in the new worktree (action=add)")
                     .Str("branch", false, "Create a new branch with this name in the new worktree (action=add, git worktree add -b)")
                     .Bool("force", false, "Force the operation (action=add/remove)")
