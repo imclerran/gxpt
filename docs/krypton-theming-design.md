@@ -94,19 +94,22 @@ independently, and Krypton 4.x/5.5x ships no true-dark stock palette anyway.
 - **Reference** in `GxPT.csproj`, mirroring the existing `DotNetZip`/`itextsharp`
   entries:
   ```xml
-  <Reference Include="ComponentFactory.Krypton.Toolkit">
+  <Reference Include="Krypton.Toolkit">
     <SpecificVersion>False</SpecificVersion>
-    <HintPath>lib\ComponentFactory.Krypton.Toolkit.dll</HintPath>
+    <HintPath>lib\Krypton.Toolkit.dll</HintPath>
   </Reference>
   ```
-- **Namespace / assembly:** the 5.5xx assembly and namespace are still
-  `ComponentFactory.Krypton.Toolkit` (the package *ID* `Krypton.Toolkit` differs
-  from the assembly name). Confirm the exact filename in `lib\net35\` once
-  extracted.
+- **Namespace / assembly:** the 5.5xx open-source fork **renamed** the namespace
+  and assembly from `ComponentFactory.Krypton.Toolkit` to **`Krypton.Toolkit`**.
+  Confirmed via the XML doc that ships alongside the DLL: `<name>Krypton.Toolkit</name>`.
+  All `using` statements and type references use `Krypton.Toolkit`; the DLL
+  filename is `Krypton.Toolkit.dll`.
 
 ---
 
 ## 5. Krypton API facts (5.5xx, verified against source)
+
+All types in namespace `Krypton.Toolkit` (confirmed from the shipped XML doc).
 
 - Apply a custom palette globally:
   ```csharp
@@ -114,6 +117,11 @@ independently, and Krypton 4.x/5.5x ships no true-dark stock palette anyway.
   KryptonManager.GlobalPaletteMode = PaletteModeManager.Custom;
   ```
   Setting `GlobalPalette` updates all Krypton controls in one action.
+- `KryptonManager.GlobalApplyToolstrips` (bool, default true) — when set, Krypton
+  applies palette colors to **all** stock WinForms `ToolStrip`-derived controls
+  (MenuStrip, StatusStrip, ToolStrip) automatically. The existing controls do **not**
+  need to be replaced with Krypton equivalents; this is why `SafeToolStripRenderer`
+  and `StatusStripTooltipFix` can be retired once the palette is applied.
 - `KryptonPalette` is the custom palette component. Key members:
   - `BasePaletteMode` (enum **`PaletteMode`** — *different enum* from the
     manager's `PaletteModeManager`): inherit a base scheme, then override.
@@ -121,18 +129,28 @@ independently, and Krypton 4.x/5.5x ships no true-dark stock palette anyway.
     `Custom` are excluded from inheritance (stay local).
   - Style tree groups: `ButtonStyles`, `HeaderStyles`, `FormStyles`,
     `ControlStyles`, `InputControlStyles`, `PanelStyles`, `LabelStyles`,
-    `TabStyles`, `SeparatorStyles`, `GridStyles`, `Common`, …
+    `TabStyles`, `SeparatorStyles`, `GridStyles`, `Common`, `ToolMenuStatus`
+    (for MenuStrip / StatusStrip / ToolStrip colors), `ContextMenu`, `Images`, …
   - Import/export palette definitions as XML.
+- **`PaletteMode` enum** (used by `KryptonPalette.BasePaletteMode`): includes
+  `Office2007Blue/Silver/White/Black`, `Office2010Blue/Silver/White/Black`,
+  `Office2013`, `Office365Black/Blue/Silver/White`, `SparkleBlue/Orange/Purple`,
+  **`VisualStudioDark`**, **`VisualStudioLight`**, `Custom`. The two VS modes are the
+  built-in dark/light flat themes — `VisualStudioDark` is a viable dark base.
+- **`PaletteModeManager` enum** (used by `KryptonManager.GlobalPaletteMode`):
+  mirrors `PaletteMode` (same members) but lacks the `Global` sentinel. Use
+  `PaletteModeManager.Custom` when setting a custom `GlobalPalette`.
 - **Renderer vs palette:** the *renderer* controls shape/gloss (Office-2007
   glass, Sparkle, Office-2010 flat); the *palette* controls colors. Basing on a
   mode inherits its renderer; `Renderer` can also be set explicitly to mix a
   renderer with custom colors. This is what lets us keep an Office/Sparkle
   *style* with our own *colors*.
 
-> Note: 4.x→5.5x has **no single base-hue knob** (that's a modern-fork feature).
+> Note: 5.5xx has **no single base-hue knob** (that's a modern-fork feature).
 > Recoloring = overriding the specific style groups (form/header/button/input).
 > A little Office-2007 glass sheen is baked into the renderer and won't fully
-> recolor; Sparkle recolors more uniformly and is the better dark base.
+> recolor; Sparkle recolors more uniformly and is better for custom dark bases.
+> `VisualStudioDark` (flat, no gloss) is the cleanest dark starting point.
 
 ---
 
@@ -141,8 +159,8 @@ independently, and Krypton 4.x/5.5x ships no true-dark stock palette anyway.
 ```
 Generate(accentSeed, mode):
     (neutrals, baseMode) = ModeTemplate[mode]
-        # Light → Office-style base + light neutral backgrounds/text
-        # Dark  → Sparkle-based base + #242424-family neutrals
+        # Light → Office2007Blue base + light neutral backgrounds/text
+        # Dark  → VisualStudioDark base + #242424-family neutrals (flattest dark)
     palette = new KryptonPalette { BasePaletteMode = baseMode }
     apply neutrals to: FormStyles, ControlStyles, PanelStyles, InputControlStyles
     inject accentSeed into: ButtonStyles (standalone),
