@@ -13,13 +13,16 @@ namespace GxPT
     //  * The transcript (ChatTranscriptControl) and Catppuccin code highlighting
     //    are deliberately NOT driven from here; they keep their own ThemeColors
     //    intake. This class only colors the Krypton-drawn chrome.
-    //  * A theme is (accent, mode). In dark mode the accent maps straight to a
-    //    Sparkle palette variant (Blue/Orange/Purple), which recolors the whole
-    //    window cohesively - so there is no per-element color injection; we let
-    //    Sparkle do the work and only nudge a couple of states (disabled buttons).
-    //    Light mode uses the Office 2007 base.
+    //  * A theme is (accent, mode). We render with a STOCK Krypton palette mode
+    //    (KryptonManager.GlobalPaletteMode = Office2007Blue / SparkleBlue|Orange|
+    //    Purple) exactly as the Krypton sample apps do - no custom palette and no
+    //    per-element overrides, so the whole window is internally consistent. In
+    //    dark mode the accent picks the Sparkle variant; light mode is Office 2007.
+    //  * A separate non-rendered "probe" palette tracks the active mode purely so
+    //    the few custom-painted, non-Krypton bits (the tab +/x glyph, status strip)
+    //    can read the matching theme colors.
     //  * Everything is wrapped defensively: a bad palette path must never crash
-    //    theme application. Worst case, chrome falls back to the inherited base.
+    //    theme application.
     internal static class KryptonThemeBridge
     {
         private static KryptonPalette _palette;
@@ -104,74 +107,26 @@ namespace GxPT
         {
             lock (_lock)
             {
-                // Reuse one persistent palette + manager for the whole app life.
-                // Re-theming mutates this same instance rather than swapping in a
-                // new one: swapping (and disposing the old) left the stock
-                // toolstrips stuck on the first palette's colors after a toggle.
                 if (_manager == null) _manager = new KryptonManager();
-                bool first = (_palette == null);
-                if (_palette == null) _palette = new KryptonPalette();
 
-                Configure(_palette, accentId, dark);
-
-                if (first)
-                {
-                    _manager.GlobalPalette = _palette;
-                    _manager.GlobalPaletteMode = PaletteModeManager.Custom;
-                }
-
-                // Krypton controls repaint from the palette's own change events,
-                // but the shared stock-toolstrip renderer only rebuilds when
-                // GlobalApplyToolstrips transitions - an in-place palette mutation
-                // raises no GlobalPaletteChanged. Toggle off->on to force the
-                // MenuStrip / StatusStrip / ToolStrip renderer to rebuild from the
-                // freshly reconfigured palette every time.
+                // Render with the STOCK palette mode, exactly as the Krypton sample
+                // apps do (kryptonManager.GlobalPaletteMode = ...Office2007Blue): the
+                // whole window - title bar, menu, panels, strips - is the canonical
+                // Krypton theme, with no custom palette or overrides, so the chrome
+                // and menu bar match by construction. The accent selects the Sparkle
+                // variant in dark mode.
+                _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accentId)
+                                                  : PaletteModeManager.Office2007Blue;
+                // Force the shared stock-toolstrip renderer to rebuild on every apply.
                 _manager.GlobalApplyToolstrips = false;
                 _manager.GlobalApplyToolstrips = true;
-            }
-        }
 
-        // Reconfigure the persistent palette in place for the given (accent, mode).
-        private static void Configure(KryptonPalette palette, string accentId, bool dark)
-        {
-            // Clear any prior-mode overrides so light/dark don't bleed together,
-            // then re-base. The Sparkle variant IS the accent in dark mode - it
-            // recolors the whole window (chrome, strips, panels, selection) into a
-            // cohesive blue/orange/purple, so the color choice maps straight to a
-            // Sparkle variant and no separate color injection is needed. Light keeps
-            // the period Office 2007 look.
-            try { palette.ResetToDefaults(true); }
-            catch { }
-            palette.BasePaletteMode = dark ? DarkSparkleMode(accentId) : PaletteMode.Office2007Blue;
-
-            // Sparkle's disabled-button treatment reads as a light/un-themed grey
-            // against the dark chrome, so give disabled buttons an explicit muted
-            // dark face + dimmed text in dark mode. (Light mode keeps Office's
-            // disabled look, which already fits.)
-            if (dark)
-            {
-                Color disabledBack = Color.FromArgb(0x3E, 0x47, 0x52);
-                Color disabledText = Color.FromArgb(0x80, 0x88, 0x92);
-                SetTripleFace(palette.ButtonStyles.ButtonStandalone.StateDisabled, disabledBack, disabledBack, disabledText);
-            }
-            else
-            {
-                // In stock Office 2007 the form caption/border renders a touch darker
-                // than the MenuStrip, so the title bar doesn't match the menu bar.
-                // Align the form chrome to the menu color so the two read as one bar
-                // (the Krypton sample apps don't show this split).
-                try
-                {
-                    Color chrome = palette.ColorTable.MenuStripGradientBegin;
-                    if (!chrome.IsEmpty && chrome.A != 0)
-                    {
-                        try { palette.FormStyles.FormMain.StateActive.Back.Color1 = chrome; } catch { }
-                        try { palette.FormStyles.FormMain.StateActive.Back.Color2 = chrome; } catch { }
-                        try { palette.FormStyles.FormMain.StateInactive.Back.Color1 = chrome; } catch { }
-                        try { palette.FormStyles.FormMain.StateInactive.Back.Color2 = chrome; } catch { }
-                    }
-                }
-                catch { }
+                // A non-rendered "probe" palette kept in sync with the active mode.
+                // It is never assigned as the global palette; we only read resolved
+                // theme colors from it for the handful of custom-painted bits (the
+                // tab +/x glyph, the status strip) that aren't Krypton controls.
+                if (_palette == null) _palette = new KryptonPalette();
+                _palette.BasePaletteMode = dark ? DarkSparkleMode(accentId) : PaletteMode.Office2007Blue;
             }
         }
 
@@ -185,6 +140,19 @@ namespace GxPT
                 case "red": return PaletteMode.SparklePurple;
                 case "blue":
                 default: return PaletteMode.SparkleBlue;
+            }
+        }
+
+        // Same Sparkle-variant mapping as DarkSparkleMode, for the manager's
+        // GlobalPaletteMode (a different enum than the palette's BasePaletteMode).
+        private static PaletteModeManager DarkSparkleModeManager(string accentId)
+        {
+            switch ((accentId ?? "blue").Trim().ToLowerInvariant())
+            {
+                case "orange": return PaletteModeManager.SparkleOrange;
+                case "red": return PaletteModeManager.SparklePurple;
+                case "blue":
+                default: return PaletteModeManager.SparkleBlue;
             }
         }
 
@@ -243,17 +211,6 @@ namespace GxPT
                 cs.SelectionForeColor = selFore;
             }
             catch { }
-        }
-
-        // --- Style-group helpers (all paths verified against Krypton.Toolkit.xml) ---
-
-        private static void SetTripleFace(PaletteTriple state, Color back1, Color back2, Color text)
-        {
-            if (state == null) return;
-            try { state.Back.Color1 = back1; } catch { }
-            try { state.Back.Color2 = back2; } catch { }
-            try { state.Content.ShortText.Color1 = text; } catch { }
-            try { state.Content.LongText.Color1 = text; } catch { }
         }
 
         // --- Settings intake (mirrors ThemeManager; no settings-schema change) ----
