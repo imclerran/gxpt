@@ -50,10 +50,6 @@ namespace GxPT
             // Read-only, full-row single selection, no row-header gutter, and no
             // user editing/adding - it's a display list, not an editable grid.
             _list.ReadOnly = true;
-            // Let Krypton paint the column headers from the palette (Sparkle
-            // blue-grey) instead of the OS visual style, which otherwise leaves a
-            // light-grey header strip that ignores the theme.
-            _list.EnableHeadersVisualStyles = false;
             _list.EditMode = DataGridViewEditMode.EditProgrammatically;
             _list.AllowUserToAddRows = false;
             _list.AllowUserToDeleteRows = false;
@@ -80,10 +76,7 @@ namespace GxPT
             KryptonThemeBridge.StyleDataGrid(_list);
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
-            // Install is the dialog's primary affordance, so it carries the accent (Custom1); the rest
-            // stay neutral.
             KryptonButton install = MakeButton("&Install...", 12, OnInstall);
-            install.ButtonStyle = ButtonStyle.Custom1;
             KryptonButton newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
             // Per-row actions, set off from the global group by a wider gap. The toggle reads "Enable" or
