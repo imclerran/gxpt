@@ -73,6 +73,26 @@ namespace GxPT
 
         private static bool Usable(Color c) { return !c.IsEmpty && c.A != 0; }
 
+        // The live global palette Krypton is currently rendering with. Accessed via
+        // reflection so this compiles regardless of whether KryptonManager exposes
+        // CurrentGlobalPalette as a static or instance member in this build.
+        private static IPalette CurrentGlobalPalette()
+        {
+            try
+            {
+                System.Reflection.PropertyInfo prop =
+                    typeof(KryptonManager).GetProperty("CurrentGlobalPalette");
+                if (prop != null)
+                {
+                    object target = prop.GetGetMethod() != null && prop.GetGetMethod().IsStatic
+                        ? null : (_manager ?? (_manager = new KryptonManager()));
+                    return prop.GetValue(target, null) as IPalette;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         // The exact color Krypton uses to draw menu-bar text (File/View/Help), so a
         // custom strip glyph can match it. Falls back to a sensible per-mode color.
         public static Color MenuTextColor()
@@ -221,9 +241,21 @@ namespace GxPT
         // exact color here and assign it so they match the surrounding KryptonLabels.
         public static Color LabelTextColor()
         {
-            // Match what a KryptonLabel (LabelStyle.NormalControl) renders. The probe
-            // palette is synced to the same base mode, so its resolved LabelNormalControl
-            // color equals the live one. Fall back to a per-mode constant if unavailable.
+            // Match exactly what a KryptonLabel (LabelStyle.NormalControl) renders by
+            // reading the LIVE global palette - the non-rendered probe resolves a
+            // different (dimmer) value for this style. Fall back to the probe, then a
+            // per-mode constant.
+            try
+            {
+                IPalette live = CurrentGlobalPalette();
+                if (live != null)
+                {
+                    Color c = live.GetContentShortTextColor1(
+                        PaletteContentStyle.LabelNormalControl, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
             try
             {
                 if (_palette != null)
@@ -237,21 +269,27 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : SystemColors.ControlText;
         }
 
-        // KryptonCheckBox defaults its caption to LabelStyle.NormalPanel, which the
-        // Sparkle dark palette renders as a muted grey - dimmer than the NormalControl
-        // style KryptonLabel (and the rest of the body text) uses, so checkbox captions
-        // look washed out. Switch every checkbox to NormalControl so its caption matches
-        // the labels in every theme. This is a style change, not a hard-coded color, so
-        // the palette still drives the actual color in both light and dark mode.
+        // KryptonCheckBox renders its caption noticeably dimmer than a KryptonLabel on
+        // the Sparkle dark palette, so the checkbox captions look washed out next to the
+        // labels around them. The LabelStyle property doesn't move the rendered color
+        // here, so set the short-text color explicitly to the same color a KryptonLabel
+        // uses (read from the live palette). It's still palette-derived, so light and
+        // dark mode both stay correct; the settings form is rebuilt on each open so the
+        // value tracks the current theme.
         public static void MatchCheckBoxTextStyle(Control root)
         {
             if (root == null) return;
+            Color fg = LabelTextColor();
             foreach (Control c in root.Controls)
             {
                 try
                 {
                     KryptonCheckBox cb = c as KryptonCheckBox;
-                    if (cb != null) cb.LabelStyle = LabelStyle.NormalControl;
+                    if (cb != null)
+                    {
+                        cb.LabelStyle = LabelStyle.NormalControl;
+                        cb.StateCommon.ShortText.Color1 = fg;
+                    }
                 }
                 catch { }
                 if (c.Controls.Count > 0) MatchCheckBoxTextStyle(c);
