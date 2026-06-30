@@ -201,14 +201,22 @@ namespace GxPT
             if (root == null) return;
             foreach (Control c in root.Controls)
             {
-                if (c is TextBox || c is RichTextBox)
+                // TextChanged is a Control-level event, so it covers the stock and
+                // Krypton text / rich-text controls alike without a cast.
+                if (c is TextBox || c is RichTextBox || c is KryptonTextBox || c is KryptonRichTextBox)
                     c.TextChanged += AnyInput_Changed;
                 else if (c is CheckBox)
                     ((CheckBox)c).CheckedChanged += AnyInput_Changed;
+                else if (c is KryptonCheckBox)
+                    ((KryptonCheckBox)c).CheckedChanged += AnyInput_Changed;
                 else if (c is ComboBox)
                     ((ComboBox)c).SelectedIndexChanged += AnyInput_Changed;
+                else if (c is KryptonComboBox)
+                    ((KryptonComboBox)c).SelectedIndexChanged += AnyInput_Changed;
                 else if (c is NumericUpDown)
                     ((NumericUpDown)c).ValueChanged += AnyInput_Changed;
+                else if (c is KryptonNumericUpDown)
+                    ((KryptonNumericUpDown)c).ValueChanged += AnyInput_Changed;
 
                 if (c.HasChildren) WireDirtyTracking(c);
             }
