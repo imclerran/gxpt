@@ -94,6 +94,13 @@ namespace GxPT
             // Wire events (in case not hooked up in designer)
             this.Load += SettingsForm_Load;
 
+            // Some Krypton inputs (KryptonComboBox / KryptonNumericUpDown) raise their
+            // Changed events when first realized on screen - which happens after Load has
+            // already cleared the dirty flag - spuriously enabling Apply on open. Clear the
+            // dirty state once more after the form has finished showing (and the deferred
+            // events have flushed) so Apply starts disabled until the user actually edits.
+            this.Shown += SettingsForm_Shown;
+
             // Grey out the memory size limit when memory is disabled (it only applies when on).
             try
             {
@@ -252,6 +259,22 @@ namespace GxPT
             if (_isSyncing) return;
             _isDirty = true;
             UpdateDialogButtons();
+        }
+
+        private void SettingsForm_Shown(object sender, EventArgs e)
+        {
+            // Absorb any dirty marks left by Krypton inputs raising Changed events as they
+            // were first realized on screen. Deferred via BeginInvoke so it runs after the
+            // initial display (and those events) have settled; the form always opens clean.
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    _isDirty = false;
+                    UpdateDialogButtons();
+                });
+            }
+            catch { }
         }
 
         // OK and Cancel are always enabled (standard Windows practice); Apply only when there are
