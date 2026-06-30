@@ -6195,13 +6195,10 @@ namespace GxPT
             try
             {
                 if (this.ssMain == null) return;
-                // Krypton doesn't paint the StatusStrip background (its BackColor
-                // shows through), so set BackColor to the menu-bar color - matching
-                // the top and bottom bars - rather than the StatusStrip-specific
-                // color, which Sparkle renders near-black. ForeColor is set from the
-                // palette so the labels (which inherit it) read on the strip. The
-                // Saved label sets its own ForeColor (red/green/default).
-                this.ssMain.BackColor = KryptonThemeBridge.StatusStripBackColor();
+                // Experiment: with the stock global palette mode, let Krypton paint
+                // the StatusStrip background itself (no BackColor override). We still
+                // set ForeColor from the palette so the labels - which inherit it -
+                // read on the themed strip; the Saved label keeps its own color.
                 this.ssMain.ForeColor = KryptonThemeBridge.StatusStripTextColor();
                 SyncUsageStatusFromActiveTab();
             }
