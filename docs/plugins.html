@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GxPT — Plugins</title>
+  <meta name="description" content="Download plugins for GxPT, the native agentic chatbot client and coding agent for Windows XP. Plugins bundle skills and sub-agents you can install." />
+  <link rel="icon" href="assets/icons/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
+  <link rel="manifest" href="site.webmanifest" />
+  <meta name="theme-color" content="#3a5d96" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Plugin cards reuse the site palette; minimal additions only. */
+    .plugin { margin: 0 0 18px; padding: 12px 14px; border: 1px solid #b9c4d6; background: #fff; }
+    .plugin h3 { margin: 0 0 2px; }
+    .plugin .pmeta { color: #5a6678; font-size: 0.85em; margin: 0 0 6px; }
+    .plugin .pdesc { margin: 0 0 10px; }
+    .plugin .members { margin: 6px 0 0; padding: 0; list-style: none; font-size: 0.9em; }
+    .plugin .members li { padding: 3px 0; border-top: 1px solid #eef1f6; }
+    .plugin .members .kind { display: inline-block; min-width: 46px; color: #3a5d96; font-weight: bold; }
+    .plugin .members .mdesc { color: #5a6678; }
+    .plugin .pfoot { margin-top: 10px; }
+    .toggle { background: none; border: 0; color: #3a5d96; cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+    #plugin-status { color: #5a6678; }
+  </style>
+</head>
+<body>
+  <div class="site">
+
+    <div class="banner">
+      <a class="logo-link" href="index.html"><img class="logo" src="assets/GxPT-logo-400.png" alt="GxPT logo" width="56" height="56" /></a>
+      <div class="banner-text">
+        <a href="index.html"><h1>GxPT</h1></a>
+        <p class="slogan">Windows XP goes agentic!</p>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="sidebar">
+        <div class="navbox">
+          <div class="navhead">Navigation</div>
+          <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="download.html">Download</a></li>
+            <li><a href="plugins.html" class="current">Plugins</a></li>
+            <li><a href="screenshots.html">Screenshots</a></li>
+            <li><a href="faq.html">FAQ</a></li>
+            <li><a href="https://github.com/imclerran/GxPT">GitHub</a></li>
+          </ul>
+        </div>
+        <div class="sidenote">
+          <b>Installing a plugin</b><br>
+          Download the <code>.gxpl</code>, then in GxPT open the Plugins Manager and import it.
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="section">
+          <h2 class="bar">Plugins</h2>
+          <p>Plugins bundle <b>skills</b> and <b>sub-agents</b> you can add to GxPT. Download a
+            <code>.gxpl</code> file and import it from the in-app Plugins Manager. Plugins aren't
+            installed by default &mdash; you choose what to add.</p>
+          <div id="plugin-list">
+            <p id="plugin-status">Loading plugins&hellip;</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      &copy; 2026 GxPT &middot; <a href="https://github.com/imclerran/GxPT">View on GitHub</a><br>
+      Best viewed at 1024&times;768 &middot; Made for Windows XP
+    </div>
+
+  </div>
+
+  <script>
+    // Discovery is a single same-origin fetch of a static manifest the CI build
+    // generates - no GitHub API call, so it can't be rate-limited.
+    (function () {
+      var list = document.getElementById('plugin-list');
+      var status = document.getElementById('plugin-status');
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+      }
+      function kb(n) {
+        if (!n && n !== 0) return '';
+        return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB';
+      }
+
+      function render(plugins) {
+        if (!plugins || !plugins.length) {
+          status.textContent = 'No plugins available yet.';
+          return;
+        }
+        list.innerHTML = '';
+        plugins.forEach(function (p, i) {
+          var div = document.createElement('div');
+          div.className = 'plugin';
+          var members = (p.members || []).map(function (m) {
+            return '<li><span class="kind">' + esc(m.kind) + '</span> <b>' +
+              esc(m.name || m.slug) + '</b> &mdash; <span class="mdesc">' + esc(m.description) + '</span></li>';
+          }).join('');
+          var nSkills = (p.members || []).filter(function (m) { return m.kind === 'skill'; }).length;
+          var nAgents = (p.members || []).filter(function (m) { return m.kind === 'agent'; }).length;
+          div.innerHTML =
+            '<h3>' + esc(p.name) + '</h3>' +
+            '<p class="pmeta">v' + esc(p.version) + ' &middot; ' + nSkills + ' skill' + (nSkills === 1 ? '' : 's') +
+              ', ' + nAgents + ' agent' + (nAgents === 1 ? '' : 's') + ' &middot; ' + esc(kb(p.size)) + '</p>' +
+            '<p class="pdesc">' + esc(p.description) + '</p>' +
+            '<div class="pfoot"><a class="dl-btn" href="plugins/' + esc(p.download) + '">Download .gxpl</a> ' +
+              '<button class="toggle" data-i="' + i + '">Show contents</button></div>' +
+            '<ul class="members" id="members-' + i + '" style="display:none">' + members + '</ul>';
+          list.appendChild(div);
+        });
+        list.addEventListener('click', function (e) {
+          var btn = e.target.closest ? e.target.closest('.toggle') : null;
+          if (!btn) return;
+          var ul = document.getElementById('members-' + btn.getAttribute('data-i'));
+          if (!ul) return;
+          var open = ul.style.display !== 'none';
+          ul.style.display = open ? 'none' : 'block';
+          btn.textContent = open ? 'Show contents' : 'Hide contents';
+        });
+      }
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'plugins/index.json', true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { render((JSON.parse(xhr.responseText) || {}).plugins || []); }
+          catch (err) { status.textContent = 'Could not read the plugin list.'; }
+        } else {
+          status.textContent = 'No plugins available yet.';
+        }
+      };
+      xhr.send();
+    })();
+  </script>
+</body>
+</html>

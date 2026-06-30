@@ -1,0 +1,19 @@
+{
+  "name": "Xtra Powers",
+  "version": "0.1.0",
+  "description": "A disciplined ideation-to-implementation workflow for GxPT: brainstorm a design, write a bite-sized plan, then execute it task-by-task with sub-agents, git worktrees, and review gates. Adapted for GxPT from the Superpowers skill collection (github.com/obra/superpowers).",
+  "enabled": true,
+  "skills": [
+    "brainstorming",
+    "writing-plans",
+    "executing-plans",
+    "subagent-driven-development",
+    "using-git-worktrees",
+    "finishing-a-development-branch"
+  ],
+  "agents": [
+    "doc-reviewer",
+    "plan-implementer",
+    "task-reviewer"
+  ]
+}
