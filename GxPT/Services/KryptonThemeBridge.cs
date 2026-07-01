@@ -19,16 +19,30 @@ namespace GxPT
     //    per-element overrides, so the whole window is internally consistent. In
     //    dark mode the accent picks the Sparkle variant; light mode is Office 2010
     //    (its caption matches the menu, unlike Office 2007's glossier title bar).
-    //  * A separate non-rendered "probe" palette tracks the active mode purely so
-    //    the few custom-painted, non-Krypton bits (the tab +/x glyph, status strip)
-    //    can read the matching theme colors.
+    //  * The few custom-painted, non-Krypton bits (the tab +/x glyph, status strip,
+    //    input NUDs) read their matching theme colors straight off the palette that
+    //    Krypton is ACTUALLY rendering with - KryptonManager.CurrentGlobalPalette.
+    //    We deliberately do NOT keep a second "probe" KryptonPalette in sync: a
+    //    KryptonPalette rebuilds and re-hooks its whole state graph every time its
+    //    BasePaletteMode is reassigned, and re-driving that on every light/dark
+    //    toggle made each toggle progressively slower (the accumulating cost the
+    //    user hit). CurrentGlobalPalette is free - Krypton already owns it - and is
+    //    by definition an exact match for the rendered chrome.
     //  * Everything is wrapped defensively: a bad palette path must never crash
     //    theme application.
     internal static class KryptonThemeBridge
     {
-        private static KryptonPalette _palette;
         private static KryptonManager _manager;
         private static readonly object _lock = new object();
+
+        // The palette Krypton is currently rendering all chrome with. This is the authoritative source
+        // for every resolved theme color/font we read; it tracks GlobalPaletteMode automatically, so we
+        // never have to keep (and repeatedly re-mode) a second palette instance.
+        private static PaletteBase Global()
+        {
+            try { return KryptonManager.CurrentGlobalPalette; }
+            catch { return null; }
+        }
 
         // Last-applied (accent, dark) so a repeat apply of the same theme is a true no-op. Several calls
         // apply the theme during startup (and the font-size path re-applies it as a no-op); without this
@@ -63,10 +77,9 @@ namespace GxPT
 
         // The KryptonColorTable that Krypton is ACTUALLY rendering the toolstrips
         // with (via the global ToolStrip renderer). This is the authoritative source
-        // for menu/status colors - the non-rendered probe palette doesn't compute the
-        // Krypton-specific colors (MenuStripText / StatusStripText), so reading them
-        // off the probe yields empty and falls through to an approximate color that
-        // won't match the labels. The probe is only a last-resort fallback.
+        // for menu/status colors (MenuStripText / StatusStripText) - the general
+        // PaletteBase does not expose those Krypton-specific strip colors, so the
+        // per-mode constant is the only fallback when the renderer isn't a Krypton one.
         private static KryptonColorTable ActiveColorTable()
         {
             try
@@ -85,7 +98,6 @@ namespace GxPT
         public static Color MenuTextColor()
         {
             try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.MenuStripText)) return ct.MenuStripText; } catch { }
-            try { if (_palette != null && Usable(_palette.ColorTable.MenuStripText)) return _palette.ColorTable.MenuStripText; } catch { }
             return ReadDark() ? Color.FromArgb(0xDC, 0xDF, 0xE3) : Color.FromArgb(0x50, 0x50, 0x50);
         }
 
@@ -97,7 +109,6 @@ namespace GxPT
         public static Color StatusStripTextColor()
         {
             try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.StatusStripText)) return ct.StatusStripText; } catch { }
-            try { if (_palette != null && Usable(_palette.ColorTable.StatusStripText)) return _palette.ColorTable.StatusStripText; } catch { }
             return MenuTextColor();
         }
 
@@ -108,7 +119,6 @@ namespace GxPT
         public static Color StatusStripBackColor()
         {
             try { KryptonColorTable ct = ActiveColorTable(); if (ct != null && Usable(ct.MenuStripGradientBegin)) return ct.MenuStripGradientBegin; } catch { }
-            try { if (_palette != null && Usable(_palette.ColorTable.MenuStripGradientBegin)) return _palette.ColorTable.MenuStripGradientBegin; } catch { }
             return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
         }
 
@@ -124,9 +134,10 @@ namespace GxPT
         {
             try
             {
-                if (_palette != null)
+                PaletteBase p = Global();
+                if (p != null)
                 {
-                    Font f = _palette.GetContentShortTextFont(
+                    Font f = p.GetContentShortTextFont(
                         PaletteContentStyle.InputControlStandalone, PaletteState.Normal);
                     if (f != null) return (Font)f.Clone();
                 }
@@ -145,9 +156,10 @@ namespace GxPT
         {
             try
             {
-                if (_palette != null)
+                PaletteBase p = Global();
+                if (p != null)
                 {
-                    Color c = _palette.GetBackColor1(
+                    Color c = p.GetBackColor1(
                         PaletteBackStyle.InputControlStandalone, PaletteState.Normal);
                     if (Usable(c)) return c;
                 }
@@ -166,9 +178,10 @@ namespace GxPT
         {
             try
             {
-                if (_palette != null)
+                PaletteBase p = Global();
+                if (p != null)
                 {
-                    Color c = _palette.GetBackColor1(
+                    Color c = p.GetBackColor1(
                         PaletteBackStyle.ControlGroupBox, PaletteState.Normal);
                     if (Usable(c)) return c;
                 }
@@ -185,9 +198,10 @@ namespace GxPT
         {
             try
             {
-                if (_palette != null)
+                PaletteBase p = Global();
+                if (p != null)
                 {
-                    Color c = _palette.GetBackColor1(PaletteBackStyle.PanelClient, PaletteState.Normal);
+                    Color c = p.GetBackColor1(PaletteBackStyle.PanelClient, PaletteState.Normal);
                     if (Usable(c)) return c;
                 }
             }
@@ -265,36 +279,18 @@ namespace GxPT
                 // (kryptonManager.GlobalPaletteMode = ...Office2010Blue): the whole window - title bar,
                 // menu, panels, strips - is the canonical Krypton theme, with no custom palette or
                 // overrides, so the chrome and menu bar match by construction. The accent selects the
-                // Sparkle variant in dark mode. KryptonManager.GlobalApplyToolstrips defaults to true and
-                // changing GlobalPaletteMode already re-themes the toolstrips (its setter calls
-                // UpdateToolStripManager), so we must NOT toggle GlobalApplyToolstrips here - that forced a
-                // redundant renderer teardown/rebuild on every apply.
+                // Sparkle variant in dark mode. GlobalApplyToolstrips defaults to true and changing
+                // GlobalPaletteMode already re-themes the toolstrips (its setter calls
+                // UpdateToolStripManager) AND updates CurrentGlobalPalette - which is what our
+                // custom-painted bits read their colors from - so we neither toggle GlobalApplyToolstrips
+                // nor keep any secondary palette in sync here.
                 _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accent)
                                                   : PaletteModeManager.Office2010Blue;
-
-                // A non-rendered "probe" palette kept in sync with the active mode. It is never assigned
-                // as the global palette; we only read resolved theme colors from it for the handful of
-                // custom-painted bits (the tab +/x glyph, the status strip) that aren't Krypton controls.
-                if (_palette == null) _palette = new KryptonPalette();
-                _palette.BasePaletteMode = dark ? DarkSparkleMode(accent) : PaletteMode.Office2010Blue;
             }
         }
 
-        // The Sparkle palette variant for the chosen accent color. Sparkle ships
-        // Blue / Orange / Purple; red maps to Purple (no red variant exists).
-        private static PaletteMode DarkSparkleMode(string accentId)
-        {
-            switch ((accentId ?? "blue").Trim().ToLowerInvariant())
-            {
-                case "orange": return PaletteMode.SparkleOrange;
-                case "red": return PaletteMode.SparklePurple;
-                case "blue":
-                default: return PaletteMode.SparkleBlue;
-            }
-        }
-
-        // Same Sparkle-variant mapping as DarkSparkleMode, for the manager's
-        // GlobalPaletteMode (a different enum than the palette's BasePaletteMode).
+        // The Sparkle palette variant for the chosen accent color, for the manager's GlobalPaletteMode.
+        // Sparkle ships Blue / Orange / Purple; red maps to Purple (no red variant exists).
         private static PaletteModeManager DarkSparkleModeManager(string accentId)
         {
             switch ((accentId ?? "blue").Trim().ToLowerInvariant())
@@ -401,14 +397,15 @@ namespace GxPT
         }
 
         // The light caption color a KryptonLabel uses in dark mode. Read the brighter
-        // of the two normal label content styles from the probe palette (whichever one
-        // the labels resolve to, it's the higher-luminance value in dark mode), with a
+        // of the two normal label content styles from the active global palette (whichever
+        // one the labels resolve to, it's the higher-luminance value in dark mode), with a
         // near-white fallback if the palette can't be read.
         private static Color DarkCheckBoxTextColor()
         {
             Color best = Color.Empty;
             float bestLum = -1f;
-            if (_palette != null)
+            PaletteBase p = Global();
+            if (p != null)
             {
                 PaletteContentStyle[] styles =
                 {
@@ -419,7 +416,7 @@ namespace GxPT
                 {
                     try
                     {
-                        Color c = _palette.GetContentShortTextColor1(s, PaletteState.Normal);
+                        Color c = p.GetContentShortTextColor1(s, PaletteState.Normal);
                         if (Usable(c) && c.GetBrightness() > bestLum)
                         {
                             bestLum = c.GetBrightness();

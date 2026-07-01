@@ -6136,22 +6136,30 @@ namespace GxPT
                 // Update menu checked state immediately
                 if (this.miDarkMode != null) this.miDarkMode.Checked = toDark;
 
+                // TEMP perf diagnostic: time each stage so a growing-per-toggle slowdown can be localized.
+                PerfLog.Session __perf = PerfLog.Begin(toDark ? "->dark" : "->light");
+
                 // Apply theme to all transcripts and relevant UI controls now
                 if (_themeManager != null)
                 {
-                    _themeManager.ApplyThemeToAllTranscripts();
-                    _themeManager.ApplyFontSizeSettingToAllUi(); // keep fonts consistent; no-op for theme but safe
+                    __perf.Stage("transcripts", delegate { _themeManager.ApplyThemeToAllTranscripts(); });
+                    __perf.Stage("fonts", delegate { _themeManager.ApplyFontSizeSettingToAllUi(); }); // keep fonts consistent; no-op for theme but safe
                 }
 
                 // Also refresh tab headers (font/color may rely on system colors)
-                try { if (this.tabControl1 != null) this.tabControl1.Invalidate(); }
-                catch { }
+                __perf.Stage("tabsInvalidate", delegate
+                {
+                    try { if (this.tabControl1 != null) this.tabControl1.Invalidate(); }
+                    catch { }
+                });
 
                 // Status bar follows the UI theme
-                ApplyThemeToStatusBar();
+                __perf.Stage("statusBar", delegate { ApplyThemeToStatusBar(); });
 
                 // Re-theme any open tool-approval prompts so they switch with the rest of the UI
-                ApplyThemeToAllApprovalPanels();
+                __perf.Stage("approvalPanels", delegate { ApplyThemeToAllApprovalPanels(); });
+
+                __perf.End();
             }
             catch { }
         }

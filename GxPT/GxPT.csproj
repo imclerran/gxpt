@@ -317,6 +317,7 @@
     <Compile Include="Services\TextFileAttachmentExtractor.cs" />
     <Compile Include="Services\ThemeService.cs" />
     <Compile Include="Services\KryptonThemeBridge.cs" />
+    <Compile Include="Services\PerfLog.cs" />
     <Compile Include="Utilities\FileSafe.cs" />
     <Compile Include="Utilities\ZipSafe.cs" />
   </ItemGroup>
