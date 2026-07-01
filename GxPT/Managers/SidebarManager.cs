@@ -465,6 +465,10 @@ namespace GxPT
                     _lvConversations.BackgroundColor = bg;          // area below the rows
                     _lvConversations.GridColor = bg;                // hide gridlines by matching bg
                     _lvConversations.CellBorderStyle = DataGridViewCellBorderStyle.None;
+                    // KryptonDataGridView draws its own palette cell borders on top of the above; turn them
+                    // off so the conversation rows have no outlines.
+                    try { _lvConversations.StateCommon.DataCell.Border.DrawBorders = PaletteDrawBorders.None; }
+                    catch { }
                     var cs = _lvConversations.DefaultCellStyle;
                     cs.BackColor = bg;
                     cs.ForeColor = fg;
