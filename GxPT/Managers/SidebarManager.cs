@@ -38,6 +38,10 @@ namespace GxPT
         private Panel _renameHostPanel;
         private DataGridViewRow _renamingItem;
         private int _sidebarRowHeight = 22;
+        // Themed vertical scrollbar overlaid on the conversation grid (whose native scrollbars are off).
+        private KryptonScrollBar _sidebarScrollBar;
+        private const int SidebarScrollBarWidth = 17;
+        private bool _syncingSidebarScroll;
 
         // Tooltip for the sidebar arrow clickable region
         private ToolTip _sidebarToolTip;
@@ -376,6 +380,7 @@ namespace GxPT
                 _lvConversations.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
                 _lvConversations.RowTemplate.Height = _sidebarRowHeight;
                 _lvConversations.ShowCellToolTips = true;
+                _lvConversations.ScrollBars = ScrollBars.None; // scrolling is driven by the KryptonScrollBar
                 _lvConversations.Dock = DockStyle.Left;
 
                 // Single text column that fills the client width (no horizontal scroll).
@@ -389,6 +394,17 @@ namespace GxPT
                 _lvConversations.CellDoubleClick += LvConversations_CellDoubleClick;
                 _lvConversations.CellMouseUp += LvConversations_CellMouseUp;
                 _lvConversations.MouseDown += LvConversations_MouseDown;
+                _lvConversations.MouseWheel += LvConversations_MouseWheel;
+                _lvConversations.SelectionChanged += delegate { UpdateSidebarScrollBar(); };
+                _lvConversations.RowsAdded += delegate { UpdateSidebarScrollBar(); };
+                _lvConversations.RowsRemoved += delegate { UpdateSidebarScrollBar(); };
+
+                // Themed scrollbar overlaid in the reserved gutter to the left of the collapse arrow.
+                _sidebarScrollBar = new KryptonScrollBar();
+                _sidebarScrollBar.Orientation = ScrollBarOrientation.VERTICAL;
+                _sidebarScrollBar.Width = SidebarScrollBarWidth;
+                _sidebarScrollBar.Scroll += SidebarScrollBar_Scroll;
+                _splitContainer.Panel1.Controls.Add(_sidebarScrollBar);
 
                 // Create context menu but don't assign it directly
                 _conversationContextMenu = new ContextMenuStrip();
@@ -509,10 +525,106 @@ namespace GxPT
             {
                 if (_splitContainer == null || _lvConversations == null) return;
                 int arrowW = (_sidebarArrowPanel != null ? _sidebarArrowPanel.Width : 0);
+                int sbW = (_sidebarScrollBar != null ? SidebarScrollBarWidth : 0);
                 int panelW = _splitContainer.Panel1.ClientSize.Width;
-                int targetW = Math.Max(0, panelW - arrowW);
+                int panelH = _splitContainer.Panel1.ClientSize.Height;
+                // Reserve a fixed gutter for the scrollbar between the list and the collapse arrow.
+                int targetW = Math.Max(0, panelW - arrowW - sbW);
                 if (_lvConversations.Dock != DockStyle.Left) _lvConversations.Dock = DockStyle.Left;
                 if (_lvConversations.Width != targetW) _lvConversations.Width = targetW;
+
+                if (_sidebarScrollBar != null)
+                {
+                    _sidebarScrollBar.Bounds = new Rectangle(targetW, 0, sbW, panelH);
+                    _sidebarScrollBar.BringToFront();
+                }
+                UpdateSidebarScrollBar();
+            }
+            catch { }
+        }
+
+        // Reflect the grid's vertical scroll state onto the KryptonScrollBar (row-based): show/enable it
+        // only when the rows overflow the viewport, and size the thumb by the number of visible rows.
+        private void UpdateSidebarScrollBar()
+        {
+            if (_syncingSidebarScroll) return;
+            try
+            {
+                if (_lvConversations == null || _sidebarScrollBar == null) return;
+                int rowCount = _lvConversations.Rows.Count;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                bool needed = rowCount > visibleRows;
+
+                _sidebarScrollBar.Visible = needed;
+                _sidebarScrollBar.Enabled = needed;
+                if (!needed) return;
+
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                int first = 0;
+                try { first = Math.Max(0, _lvConversations.FirstDisplayedScrollingRowIndex); }
+                catch { }
+                first = Math.Min(first, maxFirst);
+
+                _syncingSidebarScroll = true;
+                try
+                {
+                    _sidebarScrollBar.Minimum = 0;
+                    _sidebarScrollBar.SmallChange = 1;
+                    _sidebarScrollBar.LargeChange = Math.Max(1, visibleRows);
+                    // WinForms convention: usable Value max = Maximum - LargeChange + 1, so pick Maximum
+                    // such that it equals maxFirst.
+                    _sidebarScrollBar.Maximum = maxFirst + _sidebarScrollBar.LargeChange - 1;
+                    _sidebarScrollBar.Value = Math.Max(0, Math.Min(maxFirst, first));
+                }
+                catch { }
+                finally { _syncingSidebarScroll = false; }
+            }
+            catch { }
+        }
+
+        // Drive the grid from the scrollbar: set the first displayed row to the (clamped) scrollbar value.
+        private void SidebarScrollBar_Scroll(object sender, ScrollEventArgs e)
+        {
+            if (_syncingSidebarScroll) return;
+            try
+            {
+                if (_lvConversations == null) return;
+                int rowCount = _lvConversations.Rows.Count;
+                if (rowCount == 0) return;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                int target = Math.Max(0, Math.Min(maxFirst, _sidebarScrollBar.Value));
+                try { _lvConversations.FirstDisplayedScrollingRowIndex = target; }
+                catch { }
+            }
+            catch { }
+        }
+
+        // The grid's native wheel scrolling is off (ScrollBars=None), so scroll it here and resync the bar.
+        private void LvConversations_MouseWheel(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (_lvConversations == null) return;
+                int rowCount = _lvConversations.Rows.Count;
+                if (rowCount == 0) return;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                if (maxFirst <= 0) return;
+
+                int lines = SystemInformation.MouseWheelScrollLines;
+                if (lines <= 0) lines = 3;
+                int first = Math.Max(0, _lvConversations.FirstDisplayedScrollingRowIndex);
+                int target = Math.Max(0, Math.Min(maxFirst, first - (e.Delta / 120) * lines));
+                try { _lvConversations.FirstDisplayedScrollingRowIndex = target; }
+                catch { }
+                UpdateSidebarScrollBar();
             }
             catch { }
         }
@@ -970,6 +1082,8 @@ namespace GxPT
                 catch { }
 
                 try { ResizeSidebarColumn(); }
+                catch { }
+                try { UpdateSidebarScrollBar(); } // row height changed -> recompute visible rows / thumb
                 catch { }
                 try { _lvConversations.Invalidate(); _lvConversations.Update(); }
                 catch { }
