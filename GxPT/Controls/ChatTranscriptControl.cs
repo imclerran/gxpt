@@ -3828,22 +3828,9 @@ namespace GxPT
         // scrolling.
         private void SyncVBarValue(int offset)
         {
-            try
-            {
-                int lo = _vbar.Minimum;
-                int hi = _vbar.Maximum;
-                int v = Math.Max(lo, Math.Min(hi, offset));
-                _vbar.Value = v;
-                // KryptonScrollBar repositions its thumb on mouse interaction but NOT on a programmatic
-                // Value change, so wheel/programmatic scrolls leave the thumb stale. Nudging Maximum
-                // (hi+1 -> hi) reruns its internal thumb reposition for the current Value.
-                if (hi > lo)
-                {
-                    _vbar.Maximum = hi + 1;
-                    _vbar.Maximum = hi;
-                }
-            }
-            catch { }
+            // KryptonScrollBar doesn't move its thumb on a programmatic Value change; the bridge writes the
+            // backing value and forces the thumb reposition so wheel/programmatic scrolls stay in sync.
+            KryptonThemeBridge.SetScrollBarValue(_vbar, offset);
         }
 
         private void ScrollToBottom()

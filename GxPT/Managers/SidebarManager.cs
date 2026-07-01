@@ -594,15 +594,9 @@ namespace GxPT
                     _sidebarScrollBar.SmallChange = 1;
                     _sidebarScrollBar.LargeChange = page;
 
-                    int v = Math.Max(0, Math.Min(maxFirst, first));
-                    _sidebarScrollBar.Value = v;
-                    // KryptonScrollBar doesn't reposition its thumb on a programmatic Value change; nudge
-                    // Maximum (maxFirst+1 -> maxFirst) to force the internal reposition for wheel syncs.
-                    if (maxFirst > 0)
-                    {
-                        _sidebarScrollBar.Maximum = maxFirst + 1;
-                        _sidebarScrollBar.Maximum = maxFirst;
-                    }
+                    // KryptonScrollBar doesn't reposition its thumb on a programmatic Value change; the
+                    // bridge writes the backing value and forces the reposition so wheel syncs the thumb.
+                    KryptonThemeBridge.SetScrollBarValue(_sidebarScrollBar, Math.Max(0, Math.Min(maxFirst, first)));
                 }
                 catch { }
                 finally { _syncingSidebarScroll = false; }

@@ -188,6 +188,45 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0x2E, 0x37, 0x41) : SystemColors.Control;
         }
 
+        // KryptonScrollBar (this build) only repositions its thumb on direct mouse interaction; assigning
+        // Value programmatically does not move the thumb (its Value setter doesn't update the backing field
+        // reliably here), so wheel/programmatic scrolls leave the thumb stale. Write the backing field
+        // directly so the value truly changes, then nudge Maximum (hi+1 -> hi) - whose setter reruns the
+        // control's internal thumb reposition for the current value - so the thumb follows.
+        private static System.Reflection.FieldInfo _scrollValueField;
+        private static bool _scrollValueFieldResolved;
+        public static void SetScrollBarValue(KryptonScrollBar bar, int value)
+        {
+            if (bar == null) return;
+            try
+            {
+                int lo = bar.Minimum, hi = bar.Maximum;
+                int v = Math.Max(lo, Math.Min(hi, value));
+
+                if (!_scrollValueFieldResolved)
+                {
+                    _scrollValueFieldResolved = true;
+                    try
+                    {
+                        _scrollValueField = typeof(KryptonScrollBar).GetField("_value",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    }
+                    catch { }
+                }
+
+                if (_scrollValueField != null) _scrollValueField.SetValue(bar, v);
+                else bar.Value = v;
+
+                if (hi > lo)
+                {
+                    bar.Maximum = hi + 1; // force the internal thumb reposition for the new value
+                    bar.Maximum = hi;
+                }
+                else bar.Invalidate();
+            }
+            catch { }
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
