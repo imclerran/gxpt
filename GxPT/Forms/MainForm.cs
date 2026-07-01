@@ -1621,6 +1621,30 @@ namespace GxPT
             }
         }
 
+        // Paint the window's stock WinForms background/composer panels with the active Krypton client
+        // color so the client area matches the themed KryptonForm chrome instead of showing the default
+        // Windows control grey (behind the ZDR checkbox, above the send button when the input grows, and
+        // the split-container fill). Krypton controls (combo, buttons, checkbox) paint themselves; the
+        // transcript fills Panel1 with its own surface, so these colors only show in the gaps.
+        internal void ApplyThemedChrome()
+        {
+            Color bg = KryptonThemeBridge.FormBackColor();
+            try { this.BackColor = bg; } catch { }
+
+            Control[] surfaces =
+            {
+                this.pnlBottom, this.pnlInput, this.pnlInputRight, this.pnlButtonsFill,
+                this.pnlButtons, this.pnlModelRow, this.splitContainer1,
+                this.splitContainer1 != null ? this.splitContainer1.Panel1 : null,
+                this.splitContainer1 != null ? this.splitContainer1.Panel2 : null,
+            };
+            foreach (Control c in surfaces)
+            {
+                try { if (c != null) c.BackColor = bg; }
+                catch { }
+            }
+        }
+
         private void InitializeClient()
         {
             // Read API key from settings.json in %AppData%\GxPT

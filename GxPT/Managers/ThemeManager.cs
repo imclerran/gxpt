@@ -146,6 +146,11 @@ namespace GxPT
             try { KryptonThemeBridge.Apply(); }
             catch { }
 
+            // Paint the stock WinForms composer/background panels with the themed client color so the
+            // window has no default-grey gaps (behind the ZDR checkbox, above the send button, etc.).
+            try { _mainForm.ApplyThemedChrome(); }
+            catch { }
+
             try
             {
                 if (_primaryTranscript != null)

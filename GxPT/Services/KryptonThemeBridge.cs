@@ -170,6 +170,24 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
         }
 
+        // The Krypton client/form background color, read from the active palette (PanelClient - the
+        // canonical KryptonPanel/form surface color). Used to paint the main window's stock WinForms
+        // layout panels (the composer chrome, split-container fill) so they match the themed KryptonForm
+        // instead of showing the default Windows control grey. Per-mode fallback if the palette is unread.
+        public static Color FormBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetBackColor1(PaletteBackStyle.PanelClient, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0x2E, 0x37, 0x41) : SystemColors.Control;
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
