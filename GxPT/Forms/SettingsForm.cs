@@ -78,22 +78,38 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // KryptonNumericUpDown paints its value with the palette font, but its hosted WinForms
+            // KryptonNumericUpDown paints its value with the palette font, but its HOSTED WinForms
             // edit uses the ambient Font (the .NET default Microsoft Sans Serif 8.25pt, since this
-            // form sets none). The two fonts land the painted value and the caret/edit at different
-            // X positions - which is why, on the inactive->active flip, the value appears to shift and
-            // the raw edit shows. Assigning the palette's own input font makes Krypton's paint and the
-            // hosted edit resolve identical metrics (so it stays seamless like the example app) and
-            // keeps the NUDs matching the other themed inputs. TextAlign=Left as before.
+            // form sets none). Those two fonts render at different metrics/position, so on the
+            // inactive->active flip the value shifts and the raw edit (different font, its own X)
+            // shows. Assigning nud.Font (the wrapper) does NOT reach the hosted control, so set the
+            // CONTAINED control's Font directly - via KryptonNumericUpDown.NumericUpDown - to the
+            // palette's own input font. That makes the active edit render in the same font as
+            // Krypton's paint (seamless like the example app) and matches the other themed inputs.
             try
             {
                 Font nudFont = KryptonThemeBridge.InputContentFont();
+                Color nudBack = KryptonThemeBridge.InputBackColor();
                 foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
                     { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
                 {
                     if (nud == null) continue;
-                    if (nudFont != null) nud.Font = nudFont;
                     nud.TextAlign = HorizontalAlignment.Left;
+                    if (nudFont != null) nud.Font = nudFont;
+                    // Configure the CONTAINED control directly (wrapper props don't reach it): match
+                    // its font to Krypton's paint font and give it an opaque input background, so the
+                    // active edit renders in the same font/position as Krypton's paint instead of
+                    // reverting to the raw WinForms edit (different font, its own X, transparent bg).
+                    try
+                    {
+                        System.Windows.Forms.NumericUpDown inner = nud.NumericUpDown;
+                        if (inner != null)
+                        {
+                            if (nudFont != null) inner.Font = nudFont;
+                            inner.BackColor = nudBack;
+                        }
+                    }
+                    catch { }
                 }
             }
             catch { }

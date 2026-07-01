@@ -130,6 +130,25 @@ namespace GxPT
             catch { return null; }
         }
 
+        // The opaque background Krypton uses for input controls, read from the active palette so it
+        // matches the other themed inputs. A NumericUpDown hosted on our transparent layout panels
+        // inherits BackColor=Transparent, which breaks its Krypton-styled edit painting; assigning
+        // this to the CONTAINED control gives it a solid, correctly-colored background.
+        public static Color InputBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetBackColor1(
+                        PaletteBackStyle.InputControlStandalone, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0x3C, 0x46, 0x51) : SystemColors.Window;
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
