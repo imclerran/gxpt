@@ -551,6 +551,16 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null || _sidebarScrollBar == null) return;
+
+                // Never show the scrollbar while the sidebar is collapsed or animating - it would sit over
+                // the collapse-arrow strip and make it un-clickable to reopen.
+                if (!_sidebarExpanded || _sidebarAnimating)
+                {
+                    try { _sidebarScrollBar.Visible = false; }
+                    catch { }
+                    return;
+                }
+
                 int rowCount = _lvConversations.Rows.Count;
                 int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
                 int rowH = Math.Max(1, _sidebarRowHeight);
@@ -573,10 +583,11 @@ namespace GxPT
                     _sidebarScrollBar.Minimum = 0;
                     _sidebarScrollBar.SmallChange = 1;
                     _sidebarScrollBar.LargeChange = Math.Max(1, visibleRows);
-                    // WinForms convention: usable Value max = Maximum - LargeChange + 1, so pick Maximum
-                    // such that it equals maxFirst.
-                    _sidebarScrollBar.Maximum = maxFirst + _sidebarScrollBar.LargeChange - 1;
+                    // KryptonScrollBar's Value ranges over [Minimum, Maximum] (thumb bottom at Value ==
+                    // Maximum), so Maximum IS the last first-displayed-row index - not maxFirst+LargeChange-1.
+                    _sidebarScrollBar.Maximum = maxFirst;
                     _sidebarScrollBar.Value = Math.Max(0, Math.Min(maxFirst, first));
+                    _sidebarScrollBar.Invalidate(); // repaint the thumb for programmatic (wheel) syncs
                 }
                 catch { }
                 finally { _syncingSidebarScroll = false; }
