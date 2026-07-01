@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -9,13 +10,13 @@ namespace GxPT
         private readonly MainForm _mainForm;
         private readonly ChatTranscriptControl _primaryTranscript;
         private readonly TextBox _txtMessage;
-        private readonly Button _btnSend;
+        private readonly KryptonButton _btnSend;
         private readonly ComboBox _cmbModel;
         private readonly LinkLabel _lnkOpenSettings;
         private readonly Label _lblNoApiKey;
 
         public ThemeManager(MainForm mainForm, ChatTranscriptControl primaryTranscript,
-            TextBox txtMessage, Button btnSend, ComboBox cmbModel,
+            TextBox txtMessage, KryptonButton btnSend, ComboBox cmbModel,
             LinkLabel lnkOpenSettings, Label lblNoApiKey)
         {
             _mainForm = mainForm;

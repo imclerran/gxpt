@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -13,7 +14,7 @@ namespace GxPT
         private readonly MainForm _mainForm;
         private readonly TextBox _txtMessage;
         private readonly Panel _pnlInput;
-        private readonly Button _btnSend;
+        private readonly KryptonButton _btnSend;
         private readonly ComboBox _cmbModel;
         private readonly SplitContainer _splitContainer;
         private readonly Panel _pnlApiKeyBanner;
@@ -35,7 +36,7 @@ namespace GxPT
         public bool TextIsHint { get; private set; }
 
         public InputManager(MainForm mainForm, TextBox txtMessage, Panel pnlInput,
-            Button btnSend, ComboBox cmbModel, SplitContainer splitContainer,
+            KryptonButton btnSend, ComboBox cmbModel, SplitContainer splitContainer,
             Panel pnlApiKeyBanner, Panel pnlAttachmentsBanner)
         {
             _mainForm = mainForm;

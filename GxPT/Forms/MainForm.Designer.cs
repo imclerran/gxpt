@@ -62,11 +62,11 @@
             this.pnlInputRight = new System.Windows.Forms.Panel();
             this.pnlButtonsFill = new System.Windows.Forms.Panel();
             this.pnlButtons = new System.Windows.Forms.Panel();
-            this.btnSend = new System.Windows.Forms.Button();
-            this.btnAttach = new System.Windows.Forms.Button();
+            this.btnSend = new Krypton.Toolkit.KryptonButton();
+            this.btnAttach = new Krypton.Toolkit.KryptonButton();
             this.pnlModelRow = new System.Windows.Forms.Panel();
             this.cmbModel = new System.Windows.Forms.ComboBox();
-            this.chkZdrTab = new System.Windows.Forms.CheckBox();
+            this.chkZdrTab = new Krypton.Toolkit.KryptonCheckBox();
             this.toolTipZdr = new System.Windows.Forms.ToolTip(this.components);
             this.pnlBottom = new System.Windows.Forms.Panel();
             this.pnlApiKeyBanner = new System.Windows.Forms.Panel();
@@ -393,18 +393,16 @@
             this.btnSend.Size = new System.Drawing.Size(174, 52);
             this.btnSend.TabIndex = 0;
             this.btnSend.Text = "Send";
-            this.btnSend.UseVisualStyleBackColor = true;
             this.btnSend.Click += new System.EventHandler(this.btnSend_Click);
             // 
             // btnAttach
             // 
             this.btnAttach.Dock = System.Windows.Forms.DockStyle.Left;
-            this.btnAttach.Image = global::GxPT.Properties.Resources.AttatchGrey;
             this.btnAttach.Location = new System.Drawing.Point(0, 0);
             this.btnAttach.Name = "btnAttach";
             this.btnAttach.Size = new System.Drawing.Size(26, 52);
             this.btnAttach.TabIndex = 3;
-            this.btnAttach.UseVisualStyleBackColor = true;
+            this.btnAttach.Values.Image = global::GxPT.Properties.Resources.AttatchGrey;
             // 
             // pnlModelRow
             // 
@@ -436,14 +434,12 @@
             // chkZdrTab
             // 
             this.chkZdrTab.Dock = System.Windows.Forms.DockStyle.Right;
-            this.chkZdrTab.FlatStyle = System.Windows.Forms.FlatStyle.System;
             this.chkZdrTab.Location = new System.Drawing.Point(152, 0);
             this.chkZdrTab.Margin = new System.Windows.Forms.Padding(0);
             this.chkZdrTab.Name = "chkZdrTab";
             this.chkZdrTab.Size = new System.Drawing.Size(48, 23);
             this.chkZdrTab.TabIndex = 3;
             this.chkZdrTab.Text = "ZDR";
-            this.chkZdrTab.UseVisualStyleBackColor = true;
             this.toolTipZdr.SetToolTip(this.chkZdrTab, "Enable Zero Data Retention for this conversation");
             // 
             // pnlBottom
@@ -718,6 +714,7 @@
             //
             // MainForm
             //
+            this.AcceptButton = this.btnSend;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(892, 766);
@@ -764,13 +761,13 @@
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
         private System.Windows.Forms.ToolStripMenuItem miExit;
         private System.Windows.Forms.Panel pnlInput;
-        private System.Windows.Forms.Button btnSend;
+        private Krypton.Toolkit.KryptonButton btnSend;
         private System.Windows.Forms.TextBox txtMessage;
         private System.Windows.Forms.Panel pnlInputRight;
         private System.Windows.Forms.Panel pnlButtonsFill;
         private System.Windows.Forms.Panel pnlModelRow;
         private System.Windows.Forms.ComboBox cmbModel;
-        private System.Windows.Forms.CheckBox chkZdrTab;
+        private Krypton.Toolkit.KryptonCheckBox chkZdrTab;
         private System.Windows.Forms.ToolTip toolTipZdr;
         private System.Windows.Forms.Panel pnlBottom;
         private System.Windows.Forms.Panel pnlApiKeyBanner;
@@ -795,7 +792,7 @@
         private System.Windows.Forms.ToolStripMenuItem miImport;
         private System.Windows.Forms.ToolStripMenuItem miExport;
         private System.Windows.Forms.ToolStripMenuItem miPluginManage;
-        private System.Windows.Forms.Button btnAttach;
+        private Krypton.Toolkit.KryptonButton btnAttach;
         private System.Windows.Forms.Panel pnlButtons;
         private System.Windows.Forms.FlowLayoutPanel pnlAttachmentsBanner;
         private System.Windows.Forms.ToolStripMenuItem miDarkMode;
