@@ -529,6 +529,7 @@
             // cmbDefaultModel
             //
             this.cmbDefaultModel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.cmbDefaultModel.Margin = new System.Windows.Forms.Padding(0, 3, 6, 3);
             this.cmbDefaultModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbDefaultModel.DropDownWidth = 175;
             this.cmbDefaultModel.FormattingEnabled = true;
