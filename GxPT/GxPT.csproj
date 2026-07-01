@@ -115,6 +115,7 @@
     <Compile Include="Controls\DiffPreviewPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\ModelComboBox.cs" />
     <Compile Include="Controls\SafeToolStripRenderer.cs" />
     <Compile Include="Controls\StatusStripTooltipFix.cs" />
     <Compile Include="Managers\ImportExportManager.cs" />

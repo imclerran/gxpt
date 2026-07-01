@@ -54,10 +54,10 @@ namespace GxPT
         private readonly ToolTip _mcpTip = new ToolTip();
 
         // Agent effort-tier model pickers (low/medium/high), built in code into the Models groupbox. Narrow
-        // owner-drawn combos that show just the model name while storing the full "author/model" id.
-        private KryptonComboBox cmbEffortLow;
-        private KryptonComboBox cmbEffortMedium;
-        private KryptonComboBox cmbEffortHigh;
+        // combos that show just the model name while storing the full "author/model" id.
+        private ModelComboBox cmbEffortLow;
+        private ModelComboBox cmbEffortMedium;
+        private ModelComboBox cmbEffortHigh;
 
         public SettingsForm()
         {
@@ -1132,9 +1132,9 @@ namespace GxPT
             finally { this.cmbDefaultModel.EndUpdate(); }
 
             // Effort-tier pickers: same model list, each seeded with its configured (or default) model.
-            SyncEffortCombo(this.cmbEffortLow, s.models, s.model_effort_low);
-            SyncEffortCombo(this.cmbEffortMedium, s.models, s.model_effort_medium);
-            SyncEffortCombo(this.cmbEffortHigh, s.models, s.model_effort_high);
+            this.cmbEffortLow.SetModels(s.models, s.model_effort_low);
+            this.cmbEffortMedium.SetModels(s.models, s.model_effort_medium);
+            this.cmbEffortHigh.SetModels(s.models, s.model_effort_high);
 
             // Font size
             try
@@ -1576,100 +1576,20 @@ namespace GxPT
             return c;
         }
 
-        // Combo item that displays the short model name (author/ prefix stripped) while keeping the full
-        // id for saving. Used instead of owner-draw: KryptonComboBox paints its own closed box from
-        // ToString(), so owner-draw only reached the dropdown - this makes both show the short name.
-        private sealed class EffortModelItem
+        private ModelComboBox MakeEffortCombo()
         {
-            public readonly string Id;
-            public EffortModelItem(string id) { Id = id ?? string.Empty; }
-            public override string ToString() { return MainForm.ShortModelName(Id); }
-            public override bool Equals(object obj)
-            {
-                EffortModelItem o = obj as EffortModelItem;
-                return o != null && string.Equals(o.Id, Id, StringComparison.OrdinalIgnoreCase);
-            }
-            public override int GetHashCode()
-            {
-                return Id == null ? 0 : Id.ToLowerInvariant().GetHashCode();
-            }
-        }
-
-        // The selected model id for an effort combo (items are EffortModelItem), or null when none.
-        private static string EffortSelectedId(KryptonComboBox combo)
-        {
-            if (combo == null) return null;
-            EffortModelItem item = combo.SelectedItem as EffortModelItem;
-            return item != null ? item.Id : null;
-        }
-
-        private KryptonComboBox MakeEffortCombo()
-        {
-            KryptonComboBox c = new KryptonComboBox();
+            ModelComboBox c = new ModelComboBox();   // short display name + full id, Krypton chrome, self-sizing dropdown
             c.Dock = DockStyle.Fill;
             c.Margin = new Padding(0, 2, 6, 2);
-            c.DropDownStyle = ComboBoxStyle.DropDownList;   // Krypton draws its own drop-down arrow / chrome
-            c.DropDown += EffortCombo_DropDown;
             return c;
-        }
-
-        // The box is narrow, so widen the dropdown to fit the longest (short) model name when it opens.
-        private void EffortCombo_DropDown(object sender, EventArgs e)
-        {
-            KryptonComboBox combo = sender as KryptonComboBox;
-            if (combo == null) return;
-            int w = combo.Width;
-            try
-            {
-                using (Graphics g = combo.CreateGraphics())
-                {
-                    foreach (object item in combo.Items)
-                    {
-                        string s = MainForm.ShortModelName(Convert.ToString(item));
-                        int tw = TextRenderer.MeasureText(g, s, combo.Font).Width + 24;
-                        if (tw > w) w = tw;
-                    }
-                }
-                combo.DropDownWidth = Math.Min(w, 600);
-            }
-            catch { }
-        }
-
-        // Repopulate one effort combo from the model list, preserving (or seeding) its selection. A stored
-        // value not in the list is still added so it stays visible/selectable (mirrors cmbDefaultModel).
-        private void SyncEffortCombo(KryptonComboBox combo, IList<string> models, string selected)
-        {
-            if (combo == null) return;
-            combo.BeginUpdate();
-            try
-            {
-                combo.Items.Clear();
-                if (models != null)
-                    foreach (var m in models) combo.Items.Add(new EffortModelItem(m));
-                string sel = selected ?? string.Empty;
-                if (sel.Length > 0 && !ContainsOrdinalIgnoreCase(models, sel))
-                    combo.Items.Add(new EffortModelItem(sel));
-                // EffortModelItem.Equals matches on Id, so the setter resolves to the right item.
-                if (sel.Length > 0) combo.SelectedItem = new EffortModelItem(sel);
-                else combo.SelectedIndex = -1;
-            }
-            finally { combo.EndUpdate(); }
-        }
-
-        private static bool ContainsOrdinalIgnoreCase(IList<string> list, string value)
-        {
-            if (list == null) return false;
-            for (int i = 0; i < list.Count; i++)
-                if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
         }
 
         // The selected model id for an effort combo, or the fallback (the existing working value) when the
         // combo is empty - so capturing settings never silently clears a tier.
-        private static string EffortComboValue(KryptonComboBox combo, string fallback)
+        private static string EffortComboValue(ModelComboBox combo, string fallback)
         {
             if (combo == null) return fallback ?? string.Empty;
-            string sel = EffortSelectedId(combo);
+            string sel = combo.SelectedModelId;
             return string.IsNullOrEmpty(sel) ? (fallback ?? string.Empty) : sel;
         }
 
@@ -1721,9 +1641,9 @@ namespace GxPT
             }
 
             // Keep the effort-tier pickers in step with the model list too, preserving each selection.
-            SyncEffortCombo(this.cmbEffortLow, models, EffortSelectedId(this.cmbEffortLow));
-            SyncEffortCombo(this.cmbEffortMedium, models, EffortSelectedId(this.cmbEffortMedium));
-            SyncEffortCombo(this.cmbEffortHigh, models, EffortSelectedId(this.cmbEffortHigh));
+            this.cmbEffortLow.SetModels(models, this.cmbEffortLow.SelectedModelId);
+            this.cmbEffortMedium.SetModels(models, this.cmbEffortMedium.SelectedModelId);
+            this.cmbEffortHigh.SetModels(models, this.cmbEffortHigh.SelectedModelId);
 
             UpdateRecommendedButtonStates();
         }

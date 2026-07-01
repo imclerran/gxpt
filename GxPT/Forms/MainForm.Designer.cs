@@ -65,7 +65,7 @@
             this.btnSend = new Krypton.Toolkit.KryptonButton();
             this.btnAttach = new Krypton.Toolkit.KryptonButton();
             this.pnlModelRow = new System.Windows.Forms.Panel();
-            this.cmbModel = new System.Windows.Forms.ComboBox();
+            this.cmbModel = new GxPT.ModelComboBox();
             this.chkZdrTab = new Krypton.Toolkit.KryptonCheckBox();
             this.toolTipZdr = new System.Windows.Forms.ToolTip(this.components);
             this.pnlBottom = new System.Windows.Forms.Panel();
@@ -418,9 +418,7 @@
             // cmbModel
             // 
             this.cmbModel.Dock = System.Windows.Forms.DockStyle.Left;
-            this.cmbModel.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.cmbModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.cmbModel.FormattingEnabled = true;
             // Items are populated at runtime by MainForm.PopulateModelsFromSettings (from the user's
             // settings, or ModelDefaults on a fresh install) - not hardcoded here, so the default
             // catalog lives in one place.
@@ -766,7 +764,7 @@
         private System.Windows.Forms.Panel pnlInputRight;
         private System.Windows.Forms.Panel pnlButtonsFill;
         private System.Windows.Forms.Panel pnlModelRow;
-        private System.Windows.Forms.ComboBox cmbModel;
+        private GxPT.ModelComboBox cmbModel;
         private Krypton.Toolkit.KryptonCheckBox chkZdrTab;
         private System.Windows.Forms.ToolTip toolTipZdr;
         private System.Windows.Forms.Panel pnlBottom;

@@ -637,17 +637,10 @@ namespace GxPT
             {
                 if (this.cmbModel != null)
                 {
+                    // ModelComboBox shows the short model name while storing the full "author/model" id,
+                    // and self-sizes its dropdown - so no owner-draw or width handler is wired here.
                     this.cmbModel.SelectedIndexChanged -= cmbModel_SelectedIndexChanged;
                     this.cmbModel.SelectedIndexChanged += cmbModel_SelectedIndexChanged;
-                    this.cmbModel.TextUpdate -= cmbModel_TextUpdate;
-                    this.cmbModel.TextUpdate += cmbModel_TextUpdate;
-                    // Adjust dropdown width dynamically to fit the widest item
-                    this.cmbModel.DropDown -= cmbModel_DropDownAdjustWidth;
-                    this.cmbModel.DropDown += cmbModel_DropDownAdjustWidth;
-                    // Owner-draw shows only the model name (after "author/"); the item value stays the
-                    // full "author/model" id, so GetSelectedModel and the request are unchanged.
-                    this.cmbModel.DrawItem -= cmbModel_DrawItem;
-                    this.cmbModel.DrawItem += cmbModel_DrawItem;
                 }
             }
             catch { }
@@ -1618,7 +1611,7 @@ namespace GxPT
         {
             try
             {
-                string m = (cmbModel != null ? cmbModel.Text : null) ?? string.Empty;
+                string m = (cmbModel != null ? cmbModel.SelectedModelId : null) ?? string.Empty;
                 m = m.Trim();
                 return string.IsNullOrEmpty(m) ? ModelDefaults.DefaultModel : m;
             }
@@ -2052,7 +2045,7 @@ namespace GxPT
                 if (this.cmbModel != null)
                 {
                     _syncingModelCombo = true;
-                    try { this.cmbModel.Text = slug; }
+                    try { this.cmbModel.SelectedModelId = slug; }
                     finally { _syncingModelCombo = false; }
                 }
                 var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
@@ -2423,7 +2416,7 @@ namespace GxPT
                     if (this.cmbModel != null)
                     {
                         _syncingModelCombo = true;
-                        try { this.cmbModel.Text = sourceCtx.SelectedModel; }
+                        try { this.cmbModel.SelectedModelId = sourceCtx.SelectedModel; }
                         finally { _syncingModelCombo = false; }
                     }
                 }
@@ -3260,29 +3253,6 @@ namespace GxPT
             catch { }
         }
 
-        // Owner-draw the model combo so only the model name shows (after the last "/"), while the item
-        // value stays the full "author/model" id.
-        private void cmbModel_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            DrawModelComboItem(e, this.cmbModel);
-        }
-
-        // Shared owner-draw for any model-list combo: render only the short model name (ShortModelName)
-        // while the item value stays the full "author/model" id. Used by the main window's model selector
-        // and the settings effort-tier pickers so the two render identically.
-        internal static void DrawModelComboItem(DrawItemEventArgs e, ComboBox combo)
-        {
-            e.DrawBackground();
-            if (combo != null && e.Index >= 0 && e.Index < combo.Items.Count)
-            {
-                string full = Convert.ToString(combo.Items[e.Index]);
-                // Clip the name at the edge like a native combo (no ellipsis).
-                TextRenderer.DrawText(e.Graphics, ShortModelName(full), e.Font, e.Bounds, e.ForeColor,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            }
-            e.DrawFocusRectangle();
-        }
-
         // "author/model-name" -> "model-name"; passes through anything without a slash.
         internal static string ShortModelName(string full)
         {
@@ -4021,65 +3991,16 @@ namespace GxPT
                     }
                     catch { }
 
-                    this.cmbModel.BeginUpdate();
-                    try
-                    {
-                        this.cmbModel.Items.Clear();
-                        foreach (var m in list) this.cmbModel.Items.Add(m);
-
-                        string target = !string.IsNullOrEmpty(currentTabModel) ? currentTabModel : (!string.IsNullOrEmpty(def) ? def : (list.Count > 0 ? list[0] : null));
-                        if (!string.IsNullOrEmpty(target))
-                        {
-                            _syncingModelCombo = true;
-                            try { this.cmbModel.Text = target; }
-                            finally { _syncingModelCombo = false; }
-                        }
-                    }
-                    finally
-                    {
-                        this.cmbModel.EndUpdate();
-                    }
-                    // Ensure dropdown width fits longest item (or control width if shorter)
-                    try { AdjustComboDropDownWidth(this.cmbModel); }
-                    catch { }
+                    // ModelComboBox stores full ids, shows short names, and self-sizes its dropdown.
+                    string target = !string.IsNullOrEmpty(currentTabModel) ? currentTabModel : (!string.IsNullOrEmpty(def) ? def : (list.Count > 0 ? list[0] : null));
+                    _syncingModelCombo = true;
+                    try { this.cmbModel.SetModels(list, target); }
+                    finally { _syncingModelCombo = false; }
                     // Ensure the active context stores whatever is shown
                     var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
                     if (ctx != null) ctx.SelectedModel = GetSelectedModel();
                 }
             }
-            catch { }
-        }
-
-        // Ensure the combo's dropdown width accommodates the widest item text
-        private void AdjustComboDropDownWidth(ComboBox combo)
-        {
-            if (combo == null) return;
-            try
-            {
-                int maxWidth = combo.Width; // at least the control width
-                // Measure each item text
-                for (int i = 0; i < combo.Items.Count; i++)
-                {
-                    string s = combo.GetItemText(combo.Items[i]) ?? string.Empty;
-                    if (s.Length == 0) continue;
-                    // TextRenderer accounts for ComboBox text rendering in WinForms
-                    int w = TextRenderer.MeasureText(s, combo.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width;
-                    if (w > maxWidth) maxWidth = w;
-                }
-                // Add space for vertical scrollbar if it will appear, plus a small margin
-                int extra = 10;
-                try { if (combo.Items.Count > combo.MaxDropDownItems) extra += SystemInformation.VerticalScrollBarWidth; }
-                catch { }
-                int target = Math.Max(combo.Width, Math.Min(maxWidth + extra, 2000)); // reasonable upper bound
-                combo.DropDownWidth = target;
-            }
-            catch { }
-        }
-
-        // Recompute dropdown width right before it opens
-        private void cmbModel_DropDownAdjustWidth(object sender, EventArgs e)
-        {
-            try { AdjustComboDropDownWidth(this.cmbModel); }
             catch { }
         }
 
@@ -4797,10 +4718,10 @@ namespace GxPT
                 if (ctx == null) return;
                 var target = ctx.SelectedModel;
                 if (string.IsNullOrEmpty(target)) target = GetConfiguredDefaultModel();
-                if (!string.Equals(this.cmbModel.Text, target, StringComparison.Ordinal))
+                if (!string.Equals(this.cmbModel.SelectedModelId, target, StringComparison.Ordinal))
                 {
                     _syncingModelCombo = true;
-                    try { this.cmbModel.Text = target; }
+                    try { this.cmbModel.SelectedModelId = target; }
                     finally { _syncingModelCombo = false; }
                 }
             }
@@ -4826,29 +4747,6 @@ namespace GxPT
                     }
                 }
                 // The context meter's denominator follows the selected model.
-                SyncUsageStatusFromActiveTab();
-            }
-            catch { }
-        }
-
-        // Track typed text into the combo box as model selection per tab
-        private void cmbModel_TextUpdate(object sender, EventArgs e)
-        {
-            if (_syncingModelCombo) return;
-            try
-            {
-                var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
-                if (ctx != null) ctx.SelectedModel = GetSelectedModel();
-                if (ctx != null && ctx.Conversation != null)
-                {
-                    ctx.Conversation.SelectedModel = ctx.SelectedModel;
-                    if (ctx.Conversation.History.Count > 0 && !ctx.NoSaveUntilUserSend)
-                    {
-                        ConversationStore.Save(ctx.Conversation);
-                        if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
-                    }
-                }
-                // The context meter's denominator follows the typed model id.
                 SyncUsageStatusFromActiveTab();
             }
             catch { }
@@ -5830,7 +5728,7 @@ namespace GxPT
             // Replace the conversation and refresh transcript UI
             ctx.Conversation = convo;
             ctx.SelectedModel = string.IsNullOrEmpty(convo.SelectedModel) ? GetSelectedModel() : convo.SelectedModel;
-            try { this.cmbModel.Text = ctx.SelectedModel; }
+            try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
             catch { }
             ConversationStore.EnsureConversationId(ctx.Conversation);
             if (_sidebarManager != null && ctx.Conversation != null)
@@ -5873,7 +5771,7 @@ namespace GxPT
                 // Update model selection for this tab
                 ctx.Conversation = convo;
                 ctx.SelectedModel = string.IsNullOrEmpty(convo.SelectedModel) ? GetSelectedModel() : convo.SelectedModel;
-                try { this.cmbModel.Text = ctx.SelectedModel; }
+                try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
                 catch { }
 
                 // Update sidebar tracking to point this page at the loaded conversation id

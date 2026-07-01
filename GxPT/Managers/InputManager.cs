@@ -15,7 +15,7 @@ namespace GxPT
         private readonly TextBox _txtMessage;
         private readonly Panel _pnlInput;
         private readonly KryptonButton _btnSend;
-        private readonly ComboBox _cmbModel;
+        private readonly ModelComboBox _cmbModel;
         private readonly SplitContainer _splitContainer;
         private readonly Panel _pnlApiKeyBanner;
         private readonly Panel _pnlAttachmentsBanner;
@@ -36,7 +36,7 @@ namespace GxPT
         public bool TextIsHint { get; private set; }
 
         public InputManager(MainForm mainForm, TextBox txtMessage, Panel pnlInput,
-            KryptonButton btnSend, ComboBox cmbModel, SplitContainer splitContainer,
+            KryptonButton btnSend, ModelComboBox cmbModel, SplitContainer splitContainer,
             Panel pnlApiKeyBanner, Panel pnlAttachmentsBanner)
         {
             _mainForm = mainForm;

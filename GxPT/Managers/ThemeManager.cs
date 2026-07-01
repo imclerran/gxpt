@@ -11,12 +11,12 @@ namespace GxPT
         private readonly ChatTranscriptControl _primaryTranscript;
         private readonly TextBox _txtMessage;
         private readonly KryptonButton _btnSend;
-        private readonly ComboBox _cmbModel;
+        private readonly ModelComboBox _cmbModel;
         private readonly LinkLabel _lnkOpenSettings;
         private readonly Label _lblNoApiKey;
 
         public ThemeManager(MainForm mainForm, ChatTranscriptControl primaryTranscript,
-            TextBox txtMessage, KryptonButton btnSend, ComboBox cmbModel,
+            TextBox txtMessage, KryptonButton btnSend, ModelComboBox cmbModel,
             LinkLabel lnkOpenSettings, Label lblNoApiKey)
         {
             _mainForm = mainForm;
