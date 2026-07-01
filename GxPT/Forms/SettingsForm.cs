@@ -78,19 +78,23 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // KryptonNumericUpDown paints a flat Krypton representation of the value when the
-            // control is inactive and only swaps in the real editable control on activation. In
-            // this fork those two are offset, so clicks land the caret away from the visible text
-            // and editing (selection/typing) fails. AlwaysActive keeps the real editable control
-            // shown at all times so there's no inactive-paint-vs-edit mismatch to click through;
-            // TextAlign=Left keeps the value left-justified like the surrounding controls.
+            // KryptonNumericUpDown hosts a stock NumericUpDown, which does NOT support a transparent
+            // BackColor (its edit control renders and takes input incorrectly - misplaced caret,
+            // no selection, typing prepends and overflows to Maximum). Our NUDs sit on the layout
+            // panels that MakeLayoutContainersTransparent turns transparent, so they inherit
+            // BackColor=Transparent via ambient inheritance and break. Give each an explicit opaque,
+            // theme-appropriate BackColor so the internal control has a solid background again
+            // (Krypton still themes the visible chrome). This is why the example app - whose NUDs sit
+            // on an opaque group box - works while ours did not.
             try
             {
+                bool nudDark = KryptonThemeBridge.IsDarkMode();
+                Color nudBack = nudDark ? Color.FromArgb(0x3C, 0x46, 0x51) : SystemColors.Window;
                 foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
                     { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
                 {
                     if (nud == null) continue;
-                    nud.AlwaysActive = true;
+                    nud.BackColor = nudBack;
                     nud.TextAlign = HorizontalAlignment.Left;
                 }
             }
