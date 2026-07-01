@@ -67,9 +67,16 @@ namespace GxPT.Properties {
             }
         }
 
-        internal static System.Drawing.Bitmap AttatchGrey22 {
+        internal static System.Drawing.Bitmap PaperclipLight {
             get {
-                object obj = ResourceManager.GetObject("AttatchGrey22", resourceCulture);
+                object obj = ResourceManager.GetObject("PaperclipLight", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        internal static System.Drawing.Bitmap PaperclipDark {
+            get {
+                object obj = ResourceManager.GetObject("PaperclipDark", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

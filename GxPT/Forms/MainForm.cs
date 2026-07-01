@@ -583,7 +583,7 @@ namespace GxPT
             _sidebarManager = new SidebarManager(this, this.splitContainer1, this.miConversationHistory);
             _tabManager = new TabManager(this, this.tabControl1, this.msMain);
             _themeManager = new ThemeManager(this, this.chatTranscript, this.txtMessage,
-                this.btnSend, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
+                this.btnSend, this.btnAttach, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
             _inputManager = new InputManager(this, this.txtMessage, this.pnlInput,
                 this.btnSend, this.cmbModel, this.splitContainer1, this.pnlApiKeyBanner, this.pnlAttachmentsBanner);
 
