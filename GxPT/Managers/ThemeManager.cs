@@ -184,7 +184,10 @@ namespace GxPT
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    DrawPaperclip(g, new RectangleF(0, 0, w, h), color);
+                    // Draw the glyph at ~80% scale, centered, so it doesn't fill the button edge to edge.
+                    const float scale = 0.8f;
+                    float gw = w * scale, gh = h * scale;
+                    DrawPaperclip(g, new RectangleF((w - gw) / 2f, (h - gh) / 2f, gw, gh), color);
                 }
 
                 _btnAttach.Values.Image = bmp;
@@ -228,7 +231,7 @@ namespace GxPT
             float y1 = top + rU1;                     // U1 top-bend centre (apex at the very top)
             float y2 = top + H - rU2 - H * 0.07f;     // U2 bottom-bend centre (lifted for even top/bottom margins)
             float y3 = top + rU3 + H * 0.16f;         // U3 top-bend centre (dropped well below U1's top bend)
-            float yaEnd = top + H * 0.84f;            // free end of the long outer-left tine
+            float yaEnd = top + H * 0.78f;            // free end of the long outer-left tine
             float ycEnd = top + H * 0.58f;            // free end of the shorter inner tine
 
             using (Pen pen = new Pen(color, thickness))
