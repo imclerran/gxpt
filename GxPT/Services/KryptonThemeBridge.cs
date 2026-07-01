@@ -303,14 +303,22 @@ namespace GxPT
         // different label content styles and Sparkle colors them differently, and the
         // checkbox's LabelStyle doesn't move the drawn color. Setting the caption color
         // explicitly DOES work, so do that - using the brighter of the two normal label
-        // styles, which in dark mode is the light text a label uses. Light mode already
-        // matches, so leave it (and its dark navy text) untouched.
+        // styles, which in dark mode is the light text a label uses. In light mode the
+        // override is cleared (Color.Empty) so the palette drives the caption color again -
+        // important for controls that persist across theme toggles (e.g. the main window),
+        // where a lingering dark-mode color would otherwise be unreadable on the light panel.
         public static void FixDarkCheckBoxText(Control root)
         {
-            if (root == null || !ReadDark()) return;
-            Color fg = DarkCheckBoxTextColor();
-            if (!Usable(fg)) return;
-            ApplyCheckBoxTextColor(root, fg);
+            if (root == null) return;
+            if (ReadDark())
+            {
+                Color fg = DarkCheckBoxTextColor();
+                if (Usable(fg)) ApplyCheckBoxTextColor(root, fg);
+            }
+            else
+            {
+                ApplyCheckBoxTextColor(root, Color.Empty);
+            }
         }
 
         private static void ApplyCheckBoxTextColor(Control root, Color fg)

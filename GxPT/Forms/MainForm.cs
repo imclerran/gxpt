@@ -1644,6 +1644,11 @@ namespace GxPT
                 try { if (c != null) c.BackColor = bg; }
                 catch { }
             }
+
+            // Fix KryptonCheckBox caption colors (e.g. the ZDR checkbox) - dimmer than labels in dark
+            // mode; cleared back to the palette color in light mode. Same fix used by the settings form.
+            try { KryptonThemeBridge.FixDarkCheckBoxText(this); }
+            catch { }
         }
 
         private void InitializeClient()
