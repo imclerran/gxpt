@@ -105,6 +105,25 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
         }
 
+        // The exact color Krypton draws normal label/control text with, read from the active palette
+        // (a dark blue under Office 2010, near-white under Sparkle dark). Custom-drawn glyphs that should
+        // read as "text" - e.g. the attach button's paperclip - use this so they match the theme font
+        // color instead of a flat black/white. Falls back to a per-mode approximation.
+        public static Color LabelTextColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetContentShortTextColor1(
+                        PaletteContentStyle.LabelNormalControl, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0xE6, 0xE8, 0xEB) : Color.FromArgb(0x21, 0x37, 0x5A);
+        }
+
         // The exact font Krypton paints input-control text with, resolved through the active
         // palette (so it reflects font substitution on the target OS - Segoe UI on modern Windows,
         // a substitute on XP). KryptonNumericUpDown paints its value with this font, but its hosted
