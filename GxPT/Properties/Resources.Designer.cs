@@ -67,18 +67,5 @@ namespace GxPT.Properties {
             }
         }
 
-        internal static System.Drawing.Bitmap PaperclipLight {
-            get {
-                object obj = ResourceManager.GetObject("PaperclipLight", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-
-        internal static System.Drawing.Bitmap PaperclipDark {
-            get {
-                object obj = ResourceManager.GetObject("PaperclipDark", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
     }
 }

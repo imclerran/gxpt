@@ -164,41 +164,83 @@ namespace GxPT
             ApplyAttachIcon();
         }
 
-        // Set the attach button's paperclip icon for the active theme. The source art (PaperclipLight /
-        // PaperclipDark) is higher-resolution than this narrow button, and Krypton drops a content image
-        // that overflows its rectangle, so the icon is scaled down to fit (preserving aspect) before use.
+        // Draw the attach button's paperclip glyph for the active theme, stroked in the theme's foreground
+        // (text) color so it always matches the mode. The glyph is rendered into a bitmap sized to fit
+        // inside this narrow button - Krypton drops a content image that overflows its content rectangle.
         public void ApplyAttachIcon()
         {
             if (_btnAttach == null) return;
             try
             {
-                bool dark = IsDarkTheme();
-                // Resources.* returns the ResourceManager's cached bitmap - read from it, never dispose it.
-                Image src = dark ? Properties.Resources.PaperclipDark : Properties.Resources.PaperclipLight;
-                if (src == null) return;
+                // Leave a small margin so the bitmap fits within the button's (border-inset) content box.
+                int w = Math.Max(1, _btnAttach.Width - 8);
+                int h = Math.Max(1, _btnAttach.Height - 10);
+                Color color = GetUiForeColor();
 
-                // Fit within the button with a small margin for the Krypton border/breathing room.
-                int availW = Math.Max(1, _btnAttach.Width - 6);
-                int availH = Math.Max(1, _btnAttach.Height - 8);
-                double scale = Math.Min((double)availW / src.Width, (double)availH / src.Height);
-                if (scale > 1.0) scale = 1.0; // never upscale
-                int w = Math.Max(1, (int)Math.Round(src.Width * scale));
-                int h = Math.Max(1, (int)Math.Round(src.Height * scale));
-
-                Bitmap scaled = new Bitmap(w, h);
-                using (Graphics g = Graphics.FromImage(scaled))
+                Bitmap bmp = new Bitmap(w, h); // 32bpp ARGB - starts fully transparent
+                using (Graphics g = Graphics.FromImage(bmp))
                 {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                    g.DrawImage(src, new Rectangle(0, 0, w, h));
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    DrawPaperclip(g, new RectangleF(0, 0, w, h), color);
                 }
 
-                _btnAttach.Values.Image = scaled;
+                _btnAttach.Values.Image = bmp;
                 Image prev = _attachIcon;
-                _attachIcon = scaled;
-                if (prev != null && !object.ReferenceEquals(prev, scaled)) prev.Dispose();
+                _attachIcon = bmp;
+                if (prev != null && !object.ReferenceEquals(prev, bmp)) prev.Dispose();
             }
             catch { }
+        }
+
+        // Render a vertical paperclip inside box: two nested, opposite-facing rounded "U" hairpins (an
+        // outer U opening upward, a narrower inner U opening downward) that overlap in the middle like a
+        // bent wire. Straight tines + semicircular bends, stroked with a round-capped pen.
+        private static void DrawPaperclip(Graphics g, RectangleF box, Color color)
+        {
+            float thickness = Math.Max(1.5f, box.Width * 0.13f);
+            float pad = thickness * 0.6f + 1f;              // keep strokes (and round caps) inside the box
+            float left = box.Left + pad;
+            float right = box.Right - pad;
+            float top = box.Top + pad;
+            float bottom = box.Bottom - pad;
+            float width = right - left;
+            float height = bottom - top;
+            if (width <= 0 || height <= 0) return;
+
+            // Outer tines sit slightly in from the edges; inner tines are pulled well toward the center.
+            float xOL = left + width * 0.16f;
+            float xOR = right - width * 0.16f;
+            float xIL = left + width * 0.34f;
+            float xIR = right - width * 0.34f;
+            float outerTop = top + height * 0.22f;          // outer U's open ends, in the upper quarter
+            float innerBottom = bottom - height * 0.22f;    // inner U's open ends, in the lower quarter
+            float rO = (xOR - xOL) / 2f;
+            float rI = (xIR - xIL) / 2f;
+
+            using (Pen pen = new Pen(color, thickness))
+            {
+                pen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+                pen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                pen.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+
+                // Outer U (opens up): left tine down -> bottom semicircle (left->bottom->right) -> right tine up.
+                using (System.Drawing.Drawing2D.GraphicsPath outer = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    outer.AddLine(xOL, outerTop, xOL, bottom - rO);
+                    outer.AddArc(xOL, bottom - 2f * rO, 2f * rO, 2f * rO, 180f, -180f);
+                    outer.AddLine(xOR, bottom - rO, xOR, outerTop);
+                    g.DrawPath(pen, outer);
+                }
+
+                // Inner U (opens down): left tine up -> top semicircle (left->top->right) -> right tine down.
+                using (System.Drawing.Drawing2D.GraphicsPath inner = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    inner.AddLine(xIL, innerBottom, xIL, top + rI);
+                    inner.AddArc(xIL, top, 2f * rI, 2f * rI, 180f, 180f);
+                    inner.AddLine(xIR, top + rI, xIR, innerBottom);
+                    g.DrawPath(pen, inner);
+                }
+            }
         }
 
         // Apply transcript max width setting to all existing transcripts

@@ -402,9 +402,9 @@
             this.btnAttach.Name = "btnAttach";
             this.btnAttach.Size = new System.Drawing.Size(26, 52);
             this.btnAttach.TabIndex = 3;
-            // The paperclip icon is theme-dependent (light/dark) and larger than this narrow button, so
-            // ThemeManager.ApplyAttachIcon sets it at runtime - downscaled to fit. Krypton drops a content
-            // image that overflows its rectangle (unlike stock Button), so zero the content padding here.
+            // The paperclip glyph is drawn at runtime by ThemeManager.ApplyAttachIcon in the active theme's
+            // text color. Krypton drops a content image that overflows its rectangle (unlike stock Button),
+            // so zero the content padding to give the glyph the most room.
             this.btnAttach.StateCommon.Content.Padding = new System.Windows.Forms.Padding(0);
             this.btnAttach.Values.Text = "";
             // 
