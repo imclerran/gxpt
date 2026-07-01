@@ -565,7 +565,7 @@
             0,
             0});
             this.nudTranscriptMaxWidth.Name = "nudTranscriptMaxWidth";
-            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 20);
+            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 22);
             this.nudTranscriptMaxWidth.TabIndex = 13;
             this.nudTranscriptMaxWidth.Value = new decimal(new int[] {
             1000,
@@ -587,7 +587,7 @@
             0,
             0});
             this.nudMessageMaxWidth.Name = "nudMessageMaxWidth";
-            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 20);
+            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 22);
             this.nudMessageMaxWidth.TabIndex = 15;
             this.nudMessageMaxWidth.Value = new decimal(new int[] {
             100,
@@ -600,7 +600,7 @@
             this.nudFontSize.DecimalPlaces = 2;
             this.nudFontSize.Location = new System.Drawing.Point(130, 307);
             this.nudFontSize.Name = "nudFontSize";
-            this.nudFontSize.Size = new System.Drawing.Size(120, 20);
+            this.nudFontSize.Size = new System.Drawing.Size(120, 22);
             this.nudFontSize.TabIndex = 9;
             // 
             // chkEnableLogging
@@ -705,7 +705,7 @@
             0,
             0});
             this.nudMemoryMaxLines.Name = "nudMemoryMaxLines";
-            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 20);
+            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 22);
             this.nudMemoryMaxLines.TabIndex = 23;
             this.nudMemoryMaxLines.Value = new decimal(new int[] {
             40,
