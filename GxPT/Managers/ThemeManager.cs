@@ -175,8 +175,10 @@ namespace GxPT
                 // Leave a small margin so the bitmap fits within the button's (border-inset) content box.
                 int w = Math.Max(1, _btnAttach.Width - 8);
                 int h = Math.Max(1, _btnAttach.Height - 10);
-                // Match the theme's label/text color (dark blue under Office 2010, light under Sparkle).
-                Color color = KryptonThemeBridge.LabelTextColor();
+                // Match the menu/tab-glyph text color (dark blue under Office 2010, near-white under
+                // Sparkle dark) - the same source the tab +/x glyphs use, read from the live toolstrip
+                // color table so it's correct in both modes.
+                Color color = KryptonThemeBridge.MenuTextColor();
 
                 Bitmap bmp = new Bitmap(w, h); // 32bpp ARGB - starts fully transparent
                 using (Graphics g = Graphics.FromImage(bmp))
@@ -225,7 +227,7 @@ namespace GxPT
 
             float y1 = top + rU1;               // U1 top-bend centre (apex at the very top)
             float y2 = top + H - rU2;           // U2 bottom-bend centre (apex at the very bottom)
-            float y3 = top + rU3 + H * 0.05f;   // U3 top-bend centre (nudged down so it nests below U1)
+            float y3 = top + rU3 + H * 0.16f;   // U3 top-bend centre (dropped well below U1's top bend)
             float yaEnd = top + H * 0.86f;      // free end of the long outer-left tine
             float ycEnd = top + H * 0.60f;      // free end of the shorter inner tine
 
