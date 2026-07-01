@@ -422,24 +422,15 @@ namespace GxPT
             catch { }
         }
 
-        // Apply the active theme's content colors (the same UiBackground/UiForeground the transcript and
-        // input box use) to the sidebar list and its container/arrow panels, and repaint the open/close
-        // glyph in the themed color. Called on every theme apply and at startup.
+        // Paint the sidebar to match the themed KryptonForm chrome: the Krypton client background color
+        // (same as the composer/background panels) with the menu/label text color (same source as the
+        // open/close glyph and the tab +/x glyphs). Called on every theme apply and at startup.
         public void ApplyTheme()
         {
             try
             {
-                bool dark;
-                try
-                {
-                    string t = AppSettings.GetString("theme");
-                    dark = !string.IsNullOrEmpty(t) && t.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-                }
-                catch { dark = false; }
-
-                var colors = ThemeService.GetColors(dark);
-                Color bg = colors.UiBackground;
-                Color fg = colors.UiForeground;
+                Color bg = KryptonThemeBridge.FormBackColor();
+                Color fg = KryptonThemeBridge.MenuTextColor();
 
                 if (_splitContainer != null && _splitContainer.Panel1 != null)
                     _splitContainer.Panel1.BackColor = bg;
