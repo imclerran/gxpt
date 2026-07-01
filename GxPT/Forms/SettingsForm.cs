@@ -72,6 +72,19 @@ namespace GxPT
             // read correctly in both light and dark mode.
             try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); } catch { }
 
+            // The two tables that host NumericUpDowns must NOT be transparent: a transparent parent
+            // chain disrupts the KryptonNumericUpDown's edit painting (on activation it drops to the
+            // raw hosted control instead of Krypton's rendered text). Paint them the opaque group-box
+            // panel color instead - visually identical to the transparent look, so labels still read,
+            // but the NUDs no longer sit on a transparent parent.
+            try
+            {
+                Color panelBack = KryptonThemeBridge.PanelBackColor();
+                if (this.tblAppearance != null) this.tblAppearance.BackColor = panelBack;
+                if (this.tblMemory != null) this.tblMemory.BackColor = panelBack;
+            }
+            catch { }
+
             // The group boxes sit on the (light) navigator page but have dark panels.
             // The default caption straddles the top border, so half the caption text
             // lands on the light page behind it and is unreadable. Seat each caption

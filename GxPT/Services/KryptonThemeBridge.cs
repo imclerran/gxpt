@@ -149,6 +149,27 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0x3C, 0x46, 0x51) : SystemColors.Window;
         }
 
+        // The KryptonGroupBox panel background color, read from the active palette. Used to paint the
+        // NUD-hosting layout tables an OPAQUE color that matches the panel behind them - instead of
+        // BackColor=Transparent - so the labels stay readable AND the NumericUpDowns no longer sit on
+        // a transparent parent chain (which disrupts their Krypton edit painting, dropping the active
+        // edit to the raw hosted control). Visually identical to the transparent look; functionally
+        // opaque for the hosted edit's benefit.
+        public static Color PanelBackColor()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Color c = _palette.GetBackColor1(
+                        PaletteBackStyle.ControlGroupBox, PaletteState.Normal);
+                    if (Usable(c)) return c;
+                }
+            }
+            catch { }
+            return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
