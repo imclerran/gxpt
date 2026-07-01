@@ -451,7 +451,7 @@
             this.txtApiKey.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
                         | System.Windows.Forms.AnchorStyles.Right)));
             this.txtApiKey.Location = new System.Drawing.Point(127, 3);
-            this.txtApiKey.Margin = new System.Windows.Forms.Padding(0, 3, 14, 3);
+            this.txtApiKey.Margin = new System.Windows.Forms.Padding(0, 3, 6, 3);
             this.txtApiKey.Name = "txtApiKey";
             this.txtApiKey.Size = new System.Drawing.Size(463, 20);
             this.txtApiKey.TabIndex = 7;
@@ -462,7 +462,7 @@
             this.pnlModelsRow.Controls.Add(this.pnlModelsRight);
             this.pnlModelsRow.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlModelsRow.Location = new System.Drawing.Point(127, 26);
-            this.pnlModelsRow.Margin = new System.Windows.Forms.Padding(0, 0, 14, 0);
+            this.pnlModelsRow.Margin = new System.Windows.Forms.Padding(0, 0, 6, 0);
             this.pnlModelsRow.Name = "pnlModelsRow";
             this.pnlModelsRow.Size = new System.Drawing.Size(463, 122);
             this.pnlModelsRow.TabIndex = 20;
