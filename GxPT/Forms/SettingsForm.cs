@@ -78,16 +78,21 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // Keep the value left-justified like the surrounding controls (the example app's NUDs
-            // are default/left-aligned). The editing problems turned out to be the dirty-tracking
-            // snapshot forcing NumericUpDown.Value validation mid-edit, not the transparent parent,
-            // so the NUDs keep their normal (transparent-inheriting) Krypton theming.
+            // KryptonNumericUpDown paints its value with the palette font, but its hosted WinForms
+            // edit uses the ambient Font (the .NET default Microsoft Sans Serif 8.25pt, since this
+            // form sets none). The two fonts land the painted value and the caret/edit at different
+            // X positions - which is why, on the inactive->active flip, the value appears to shift and
+            // the raw edit shows. Assigning the palette's own input font makes Krypton's paint and the
+            // hosted edit resolve identical metrics (so it stays seamless like the example app) and
+            // keeps the NUDs matching the other themed inputs. TextAlign=Left as before.
             try
             {
+                Font nudFont = KryptonThemeBridge.InputContentFont();
                 foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
                     { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
                 {
                     if (nud == null) continue;
+                    if (nudFont != null) nud.Font = nudFont;
                     nud.TextAlign = HorizontalAlignment.Left;
                 }
             }

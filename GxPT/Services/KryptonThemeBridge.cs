@@ -105,6 +105,31 @@ namespace GxPT
             return ReadDark() ? Color.FromArgb(0x4D, 0x58, 0x64) : SystemColors.Control;
         }
 
+        // The exact font Krypton paints input-control text with, resolved through the active
+        // palette (so it reflects font substitution on the target OS - Segoe UI on modern Windows,
+        // a substitute on XP). KryptonNumericUpDown paints its value with this font, but its hosted
+        // WinForms edit uses the control's ambient Font (the .NET default, Microsoft Sans Serif
+        // 8.25pt, when nothing sets one). That mismatch offsets the painted value from the caret/
+        // edit and, on the inactive->active flip, exposes the raw edit. Assigning this font to a NUD
+        // makes both the Krypton paint and the hosted edit resolve identical metrics, and keeps the
+        // NUDs consistent with the other themed inputs. Returns a clone so the palette keeps its own.
+        public static Font InputContentFont()
+        {
+            try
+            {
+                if (_palette != null)
+                {
+                    Font f = _palette.GetContentShortTextFont(
+                        PaletteContentStyle.InputControlStandalone, PaletteState.Normal);
+                    if (f != null) return (Font)f.Clone();
+                }
+            }
+            catch { }
+            // XP-safe fallback matching the Krypton sample (which shows no offset).
+            try { return new Font("Tahoma", 8.25f, FontStyle.Regular, GraphicsUnit.Point); }
+            catch { return null; }
+        }
+
         public static void Apply(string accentId, bool dark)
         {
             lock (_lock)
