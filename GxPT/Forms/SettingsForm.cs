@@ -55,9 +55,9 @@ namespace GxPT
 
         // Agent effort-tier model pickers (low/medium/high), built in code into the Models groupbox. Narrow
         // owner-drawn combos that show just the model name while storing the full "author/model" id.
-        private ComboBox cmbEffortLow;
-        private ComboBox cmbEffortMedium;
-        private ComboBox cmbEffortHigh;
+        private KryptonComboBox cmbEffortLow;
+        private KryptonComboBox cmbEffortMedium;
+        private KryptonComboBox cmbEffortHigh;
 
         public SettingsForm()
         {
@@ -1576,30 +1576,31 @@ namespace GxPT
             return c;
         }
 
-        private ComboBox MakeEffortCombo()
+        private KryptonComboBox MakeEffortCombo()
         {
-            ComboBox c = new ComboBox();
+            KryptonComboBox c = new KryptonComboBox();
             c.Dock = DockStyle.Fill;
             c.Margin = new Padding(0, 2, 6, 2);
-            c.DropDownStyle = ComboBoxStyle.DropDownList;
-            c.DrawMode = DrawMode.OwnerDrawFixed;   // show just the model name; the item value stays the full id
-            // Left at stock (white) colors deliberately, even in dark mode.
+            c.DropDownStyle = ComboBoxStyle.DropDownList;   // Krypton draws its own drop-down arrow / chrome
+            c.DrawMode = DrawMode.OwnerDrawFixed;           // show just the model name; the item value stays the full id
             c.DrawItem += EffortCombo_DrawItem;
             c.DropDown += EffortCombo_DropDown;
             return c;
         }
 
         // Owner-draw via the shared helper so the effort pickers render the short model name exactly like
-        // the main window's model selector.
+        // the main window's model selector. The DrawItem sender is the KryptonComboBox; hand the shared
+        // helper its contained ComboBox (whose Items back the draw) since the helper works off a ComboBox.
         private void EffortCombo_DrawItem(object sender, DrawItemEventArgs e)
         {
-            MainForm.DrawModelComboItem(e, sender as ComboBox);
+            KryptonComboBox k = sender as KryptonComboBox;
+            MainForm.DrawModelComboItem(e, k != null ? k.ComboBox : sender as ComboBox);
         }
 
         // The box is narrow, so widen the dropdown to fit the longest (short) model name when it opens.
         private void EffortCombo_DropDown(object sender, EventArgs e)
         {
-            ComboBox combo = sender as ComboBox;
+            KryptonComboBox combo = sender as KryptonComboBox;
             if (combo == null) return;
             int w = combo.Width;
             try
@@ -1620,7 +1621,7 @@ namespace GxPT
 
         // Repopulate one effort combo from the model list, preserving (or seeding) its selection. A stored
         // value not in the list is still added so it stays visible/selectable (mirrors cmbDefaultModel).
-        private void SyncEffortCombo(ComboBox combo, IList<string> models, string selected)
+        private void SyncEffortCombo(KryptonComboBox combo, IList<string> models, string selected)
         {
             if (combo == null) return;
             combo.BeginUpdate();
@@ -1647,7 +1648,7 @@ namespace GxPT
 
         // The selected model id for an effort combo, or the fallback (the existing working value) when the
         // combo is empty - so capturing settings never silently clears a tier.
-        private static string EffortComboValue(ComboBox combo, string fallback)
+        private static string EffortComboValue(KryptonComboBox combo, string fallback)
         {
             if (combo == null) return fallback ?? string.Empty;
             string sel = combo.SelectedItem as string;
