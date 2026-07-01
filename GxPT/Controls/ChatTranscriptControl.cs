@@ -3830,9 +3830,18 @@ namespace GxPT
         {
             try
             {
-                int v = Math.Max(_vbar.Minimum, Math.Min(_vbar.Maximum, offset));
-                if (_vbar.Value != v) _vbar.Value = v;
-                _vbar.Invalidate();
+                int lo = _vbar.Minimum;
+                int hi = _vbar.Maximum;
+                int v = Math.Max(lo, Math.Min(hi, offset));
+                _vbar.Value = v;
+                // KryptonScrollBar repositions its thumb on mouse interaction but NOT on a programmatic
+                // Value change, so wheel/programmatic scrolls leave the thumb stale. Nudging Maximum
+                // (hi+1 -> hi) reruns its internal thumb reposition for the current Value.
+                if (hi > lo)
+                {
+                    _vbar.Maximum = hi + 1;
+                    _vbar.Maximum = hi;
+                }
             }
             catch { }
         }
@@ -3870,12 +3879,19 @@ namespace GxPT
             }
 
             _vbar.Minimum = 0;
-            _vbar.SmallChange = ScrollStep;
             // KryptonScrollBar's Value ranges over [Minimum, Maximum] (thumb bottom at Value == Maximum),
-            // so Maximum is the maximum scroll offset itself - NOT contentHeight-1. LargeChange is the
-            // viewport (page size) so the thumb reflects the visible fraction of the content.
+            // so Maximum is the maximum scroll offset itself - NOT contentHeight-1.
             _vbar.Maximum = maxScrollOffset;
-            _vbar.LargeChange = Math.Max(1, view);
+            // Its thumb size is largeChange/Maximum of the track. Use the proportional page size
+            // (maxScroll * viewport / content) so the thumb reflects the visible fraction and never fills
+            // the whole track (which would push it under the arrow buttons). SmallChange must be
+            // <= LargeChange, which can be small when the content only just overflows.
+            int page = (_contentHeight > 0)
+                ? (int)Math.Round((double)maxScrollOffset * view / _contentHeight)
+                : view;
+            page = Math.Max(2, Math.Min(Math.Max(2, maxScrollOffset), page));
+            _vbar.SmallChange = 1;
+            _vbar.LargeChange = page;
 
             _vbar.Enabled = maxScrollOffset > 0;
 

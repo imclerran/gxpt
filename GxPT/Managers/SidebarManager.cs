@@ -581,13 +581,28 @@ namespace GxPT
                 try
                 {
                     _sidebarScrollBar.Minimum = 0;
-                    _sidebarScrollBar.SmallChange = 1;
-                    _sidebarScrollBar.LargeChange = Math.Max(1, visibleRows);
                     // KryptonScrollBar's Value ranges over [Minimum, Maximum] (thumb bottom at Value ==
                     // Maximum), so Maximum IS the last first-displayed-row index - not maxFirst+LargeChange-1.
                     _sidebarScrollBar.Maximum = maxFirst;
-                    _sidebarScrollBar.Value = Math.Max(0, Math.Min(maxFirst, first));
-                    _sidebarScrollBar.Invalidate(); // repaint the thumb for programmatic (wheel) syncs
+                    // Thumb size is largeChange/Maximum of the track; the proportional page size
+                    // (maxFirst * visibleRows / rowCount) makes the thumb reflect the visible fraction and
+                    // keeps it off the arrow buttons.
+                    int page = (rowCount > 0)
+                        ? (int)Math.Round((double)maxFirst * visibleRows / rowCount)
+                        : visibleRows;
+                    page = Math.Max(2, Math.Min(Math.Max(2, maxFirst), page));
+                    _sidebarScrollBar.SmallChange = 1;
+                    _sidebarScrollBar.LargeChange = page;
+
+                    int v = Math.Max(0, Math.Min(maxFirst, first));
+                    _sidebarScrollBar.Value = v;
+                    // KryptonScrollBar doesn't reposition its thumb on a programmatic Value change; nudge
+                    // Maximum (maxFirst+1 -> maxFirst) to force the internal reposition for wheel syncs.
+                    if (maxFirst > 0)
+                    {
+                        _sidebarScrollBar.Maximum = maxFirst + 1;
+                        _sidebarScrollBar.Maximum = maxFirst;
+                    }
                 }
                 catch { }
                 finally { _syncingSidebarScroll = false; }
