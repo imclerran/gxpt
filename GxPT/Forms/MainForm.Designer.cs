@@ -512,11 +512,9 @@
             // tabControl1
             //
             this.tabControl1.Pages.Add(this.tabPage1);
-            // Show the navigator's built-in close and context buttons. The close button's action is
-            // rerouted through TabManager's CloseAction handler so it runs our close logic (recycle on
-            // last tab, sidebar untracking, pending-approval cleanup) instead of Krypton disposing the
-            // page directly. The context button's drop-down lists all open tabs.
-            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Logic;
+            // Hide the navigator's built-in close button (tab close is driven by the menu-strip x button
+            // and the tab context menu), but keep the context button - its drop-down lists all open tabs.
+            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
             this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Logic;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);

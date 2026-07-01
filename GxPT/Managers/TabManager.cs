@@ -132,9 +132,6 @@ namespace GxPT
                     _tabControl.MouseDown += tabControl1_MouseDown;
                     _tabControl.MouseUp -= tabControl1_MouseUp;
                     _tabControl.MouseUp += tabControl1_MouseUp;
-                    // Route the built-in per-tab close button through our own close logic.
-                    _tabControl.CloseAction -= tabControl1_CloseAction;
-                    _tabControl.CloseAction += tabControl1_CloseAction;
                 }
                 catch { }
             }
@@ -621,20 +618,6 @@ namespace GxPT
                 _miTabDelete.Enabled = hasTarget && ConversationHasSavedFile(_tabCtxTarget);
 
                 _tabCtxMenu.Show(_tabControl, e.Location);
-            }
-            catch { }
-        }
-
-        // The navigator's built-in close button fires this. Suppress Krypton's own remove/dispose
-        // (CloseButtonAction.None) and route through CloseConversationTab so the last tab recycles in
-        // place and the sidebar/approval/question cleanup runs - exactly like the menu-strip x button.
-        private void tabControl1_CloseAction(object sender, CloseActionEventArgs e)
-        {
-            try
-            {
-                if (e == null) return;
-                e.Action = CloseButtonAction.None;
-                if (e.Item != null) CloseConversationTab(e.Item);
             }
             catch { }
         }
