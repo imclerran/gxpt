@@ -512,11 +512,10 @@
             // tabControl1
             //
             this.tabControl1.Pages.Add(this.tabPage1);
-            // Hide the navigator's built-in context (drop-down) and close buttons in the tab bar's
-            // top-right corner - tab close/new is driven by the menu-strip +/x buttons and the tab
-            // context menu, matching the prior TabControl UX.
+            // Hide the navigator's built-in close button (tab close is driven by the menu-strip x button
+            // and the tab context menu), but keep the context button - its drop-down lists all open tabs.
             this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
-            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
+            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Logic;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
