@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 using Newtonsoft.Json;
 
 namespace GxPT
@@ -60,14 +61,14 @@ namespace GxPT
         // The button to focus once the panel is shown (the tier's default action). Focus is deferred to
         // after Visible = true: focusing while the panel is still hidden does nothing, so GotFocus never
         // fires and the initial blue focus border was missing until the user tabbed.
-        private Button _defaultButton;
+        private KryptonButton _defaultButton;
 
         // A small "Explain" affordance pinned to the panel's top-right corner, shown only while a
         // command-style tool (command__run or a discovered PowerShell tool) awaits approval. Clicking it
         // asks the host to open a fresh chat tab that explains the pending command - it does NOT resolve
         // the approval, which stays up for the user to Allow/Deny. The captured command + whether it's
         // PowerShell are remembered so the deferred click knows what to explain.
-        private readonly Button _explainButton;
+        private readonly KryptonButton _explainButton;
         private string _explainCommand;
         private bool _explainIsPowerShell;
 
@@ -140,7 +141,7 @@ namespace GxPT
             // The Explain affordance: a flat chrome button overlaid on the top-right corner (not docked),
             // shown only for command tools. AutoSize so it fits "Explain" at any font/DPI; positioned and
             // brought to the front in PositionExplainButton once a command prompt is shown.
-            _explainButton = new Button();
+            _explainButton = new KryptonButton();
             _explainButton.Text = "Explain";
             _explainButton.AutoSize = true;
             _explainButton.Visible = false;
@@ -150,8 +151,6 @@ namespace GxPT
             // _buttons strip that SetButtonTabOrder manages, so it needs its own high TabIndex.
             _explainButton.TabIndex = 1000;
             _explainButton.Click += OnExplainClicked;
-            _explainButton.GotFocus += OnButtonFocusChanged;
-            _explainButton.LostFocus += OnButtonFocusChanged;
 
             // Order added (Fill must be added before docked siblings to lay out correctly):
             this.Controls.Add(_diffPanel);
@@ -214,13 +213,13 @@ namespace GxPT
                     _buttons.BackColor = tc.AssistantBubbleBack;
                     foreach (Control c in _buttons.Controls)
                     {
-                        Button b = c as Button;
-                        if (b != null) ApplyButtonTheme(b, dark, tc);
+                        KryptonButton b = c as KryptonButton;
+                        if (b != null) StyleApprovalButton(b, dark);
                     }
                 }
 
-                // The overlaid Explain button shares the flat, theme-tinted button styling.
-                if (_explainButton != null) ApplyButtonTheme(_explainButton, dark, tc);
+                // The overlaid Explain button re-applies its (default) Krypton styling too.
+                if (_explainButton != null) StyleApprovalButton(_explainButton, dark);
 
                 // Re-tint the syntax-highlighted diff/preview when it's the visible details control, so a
                 // live theme switch updates it too (it was themed once at SetContent time).
@@ -232,50 +231,18 @@ namespace GxPT
             catch { }
         }
 
-        // Flat, theme-tinted buttons in both light and dark mode so the two themes match (a native
-        // visual-styles button ignores BackColor, so flat is the only way to tint it consistently).
-        // The Deny button is called out with a red (firebrick) border and text.
-        private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
+        // KryptonButtons theme themselves from the active palette; the only per-button override is the
+        // Deny button, whose caption is tinted red (the destructive-tier color) to call it out. Everything
+        // else inherits the palette default (Color.Empty clears any prior override).
+        private static void StyleApprovalButton(KryptonButton b, bool dark)
         {
-            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
-            Color red = TierColor(ToolTier.Destructive, dark);
-
-            b.FlatStyle = FlatStyle.Flat;
-            b.UseVisualStyleBackColor = false;
-            b.BackColor = tc.CodeBack;
-            b.ForeColor = isDeny ? red : tc.UiForeground;
-            try
-            {
-                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, tc);
-                b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
-                b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
-            }
-            catch { }
-        }
-
-        // The border color for a button in its current focus state: a focused non-Deny button gets a blue
-        // border so the keyboard default is obvious - the flat button's subtle panel border barely
-        // changed when focused. A fixed blue (lightened in dark mode) rather than the theme accent, since
-        // some themes' accent is red/orange. Deny stays red whether focused or not.
-        private static Color ButtonBorderColor(Button b, bool dark, ThemeColors tc)
-        {
-            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
-            if (isDeny) return TierColor(ToolTier.Destructive, dark);
-            if (!b.Focused) return tc.AssistantBubbleBorder;
-            return dark ? Color.FromArgb(120, 170, 255) : Color.FromArgb(0, 102, 204);
-        }
-
-        // Re-tint a button's border as it gains/loses focus (wired on every button), so the blue focus
-        // cue follows the keyboard default as the user tabs across the strip.
-        private void OnButtonFocusChanged(object sender, EventArgs e)
-        {
-            Button b = sender as Button;
             if (b == null) return;
+            bool isDeny = (b.Tag is ApprovalChoice) && ((ApprovalChoice)b.Tag == ApprovalChoice.Deny);
+            Color c = isDeny ? TierColor(ToolTier.Destructive, dark) : Color.Empty;
             try
             {
-                bool dark = IsDark();
-                b.FlatAppearance.BorderColor = ButtonBorderColor(b, dark, ThemeService.GetColors(dark));
-                b.Invalidate();
+                b.StateCommon.Content.ShortText.Color1 = c;
+                b.StateCommon.Content.ShortText.Color2 = c;
             }
             catch { }
         }
@@ -988,7 +955,7 @@ namespace GxPT
 
         private void AddButton(string text, ApprovalChoice choice, bool defaultFocus, string tooltip)
         {
-            Button b = new Button();
+            KryptonButton b = new KryptonButton();
             b.Text = text;
             b.AutoSize = true;
             b.Margin = new Padding(4, 4, 4, 4);
@@ -999,8 +966,7 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(choice);
             };
-            b.GotFocus += OnButtonFocusChanged;
-            b.LostFocus += OnButtonFocusChanged;
+            StyleApprovalButton(b, IsDark());
             // Insert at the front: the LeftToRight strip lays controls out in collection order, so
             // adding Deny first then prepending each later button keeps Deny right-most (and makes it
             // the first to wrap onto a new row when space runs out).
@@ -1016,7 +982,7 @@ namespace GxPT
 
         private void AddContinuationButton(string text, bool cont, bool defaultFocus)
         {
-            Button b = new Button();
+            KryptonButton b = new KryptonButton();
             b.Text = text;
             b.AutoSize = true;
             b.Margin = new Padding(4, 4, 4, 4);
@@ -1026,8 +992,6 @@ namespace GxPT
                 HidePanel();
                 if (cb != null) cb(cont);
             };
-            b.GotFocus += OnButtonFocusChanged;
-            b.LostFocus += OnButtonFocusChanged;
             // Front-insert (matching AddButton) so Stop stays right-most under the LeftToRight flow.
             _buttons.Controls.Add(b);
             _buttons.Controls.SetChildIndex(b, 0);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -20,8 +21,8 @@ namespace GxPT
         private readonly FlowLayoutPanel _options; // option rows (radios/checks + descriptions + Other)
         private readonly FlowLayoutPanel _buttons;  // Submit / Skip
         private readonly TextBox _otherText;
-        private readonly Button _submit;
-        private readonly Button _skip;
+        private readonly KryptonButton _submit;
+        private readonly KryptonButton _skip;
         private Font _headerFont;          // bold header font, rebuilt per show from the live UI font
         private Font _uiFont;              // panel-created UI font assigned to this.Font (NOT the inherited one)
 
@@ -101,13 +102,13 @@ namespace GxPT
             _buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             _buttons.MinimumSize = new Size(0, 34);
 
-            _submit = new Button();
+            _submit = new KryptonButton();
             _submit.Text = "Submit";
             _submit.AutoSize = true;
             _submit.Margin = new Padding(4);
             _submit.Click += OnSubmitClicked;
 
-            _skip = new Button();
+            _skip = new KryptonButton();
             _skip.Text = "Skip";
             _skip.AutoSize = true;
             _skip.Margin = new Padding(4);
@@ -170,8 +171,7 @@ namespace GxPT
                     _otherText.BackColor = tc.CodeBack;
                     _otherText.ForeColor = tc.UiForeground;
                 }
-                if (_submit != null) ApplyButtonTheme(_submit, dark, tc);
-                if (_skip != null) ApplyButtonTheme(_skip, dark, tc);
+                // _submit / _skip are KryptonButtons - they theme themselves from the active palette.
 
                 Invalidate(true);
             }
@@ -184,22 +184,6 @@ namespace GxPT
             // Blend halfway toward the panel background for a subtitle look.
             Color b = tc.AssistantBubbleBack;
             return Color.FromArgb((f.R + b.R) / 2, (f.G + b.G) / 2, (f.B + b.B) / 2);
-        }
-
-        // Flat, theme-tinted buttons (a visual-styles button ignores BackColor), matching ToolApprovalPanel.
-        private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
-        {
-            b.FlatStyle = FlatStyle.Flat;
-            b.UseVisualStyleBackColor = false;
-            b.BackColor = tc.CodeBack;
-            b.ForeColor = tc.UiForeground;
-            try
-            {
-                b.FlatAppearance.BorderColor = tc.AssistantBubbleBorder;
-                b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
-                b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
-            }
-            catch { }
         }
 
         // Populate + show for one question. answerCallback is invoked (on the UI thread) with the user's
