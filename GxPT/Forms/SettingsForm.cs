@@ -78,23 +78,16 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // KryptonNumericUpDown hosts a stock NumericUpDown, which does NOT support a transparent
-            // BackColor (its edit control renders and takes input incorrectly - misplaced caret,
-            // no selection, typing prepends and overflows to Maximum). Our NUDs sit on the layout
-            // panels that MakeLayoutContainersTransparent turns transparent, so they inherit
-            // BackColor=Transparent via ambient inheritance and break. Give each an explicit opaque,
-            // theme-appropriate BackColor so the internal control has a solid background again
-            // (Krypton still themes the visible chrome). This is why the example app - whose NUDs sit
-            // on an opaque group box - works while ours did not.
+            // Keep the value left-justified like the surrounding controls (the example app's NUDs
+            // are default/left-aligned). The editing problems turned out to be the dirty-tracking
+            // snapshot forcing NumericUpDown.Value validation mid-edit, not the transparent parent,
+            // so the NUDs keep their normal (transparent-inheriting) Krypton theming.
             try
             {
-                bool nudDark = KryptonThemeBridge.IsDarkMode();
-                Color nudBack = nudDark ? Color.FromArgb(0x3C, 0x46, 0x51) : SystemColors.Window;
                 foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
                     { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
                 {
                     if (nud == null) continue;
-                    nud.BackColor = nudBack;
                     nud.TextAlign = HorizontalAlignment.Left;
                 }
             }
