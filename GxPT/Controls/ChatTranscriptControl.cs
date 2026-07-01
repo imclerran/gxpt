@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -438,7 +439,7 @@ namespace GxPT
         // Cache for dynamically derived styled fonts based on a given base font (preserves size for headings)
         private readonly Dictionary<string, Font> _styledFontCache = new Dictionary<string, Font>();
 
-        private readonly VScrollBar _vbar;
+        private readonly KryptonScrollBar _vbar;
         private int _contentHeight;
         private int _scrollOffset;
         // Queue a deferred reflow to run after current layout (avoids stale viewport sizes)
@@ -669,10 +670,14 @@ namespace GxPT
 
             ApplyThemeFromSettings();
 
-            _vbar = new VScrollBar();
+            _vbar = new KryptonScrollBar();
+            _vbar.Orientation = ScrollBarOrientation.VERTICAL;
+            _vbar.Width = 17; // keep the docked band the width of a native vertical scrollbar
             _vbar.Dock = DockStyle.Right;
             _vbar.Visible = true;
-            _vbar.ValueChanged += delegate { _scrollOffset = _vbar.Value; Invalidate(); };
+            // KryptonScrollBar raises Scroll (not ValueChanged) on user interaction; every programmatic
+            // Value set already updates _scrollOffset alongside it, so wiring Scroll is sufficient.
+            _vbar.Scroll += delegate { _scrollOffset = _vbar.Value; Invalidate(); };
             Controls.Add(_vbar);
 
             _ctx = new ContextMenuStrip();
