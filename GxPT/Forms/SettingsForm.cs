@@ -332,10 +332,14 @@ namespace GxPT
                     sb.Append(c.Name).Append('=').Append(((ComboBox)c).Text).Append('\n');
                 else if (c is KryptonComboBox)
                     sb.Append(c.Name).Append('=').Append(((KryptonComboBox)c).Text).Append('\n');
+                // Use .Text, not .Value: reading NumericUpDown.Value forces ValidateEditText,
+                // which snaps the half-typed number into [Minimum,Maximum] and rewrites the display
+                // mid-edit (so typing a digit below the minimum jumps straight to the minimum). The
+                // text is all we need to detect an edit.
                 else if (c is NumericUpDown)
-                    sb.Append(c.Name).Append('=').Append(((NumericUpDown)c).Value).Append('\n');
+                    sb.Append(c.Name).Append('=').Append(((NumericUpDown)c).Text).Append('\n');
                 else if (c is KryptonNumericUpDown)
-                    sb.Append(c.Name).Append('=').Append(((KryptonNumericUpDown)c).Value).Append('\n');
+                    sb.Append(c.Name).Append('=').Append(((KryptonNumericUpDown)c).Text).Append('\n');
 
                 if (c.Controls.Count > 0) CollectTrackedSnapshot(c, sb);
             }
