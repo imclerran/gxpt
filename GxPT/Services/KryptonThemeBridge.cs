@@ -30,6 +30,13 @@ namespace GxPT
         private static KryptonManager _manager;
         private static readonly object _lock = new object();
 
+        // Last-applied (accent, dark) so a repeat apply of the same theme is a true no-op. Several calls
+        // apply the theme during startup (and the font-size path re-applies it as a no-op); without this
+        // each redundant call pays the full Krypton palette/toolstrip cost.
+        private static string _lastAccentId;
+        private static bool _lastDark;
+        private static bool _applied;
+
         // Apply the current theme selection (read from settings) to all Krypton
         // chrome in one action. Safe to call repeatedly; cheap when unchanged.
         public static void Apply()
@@ -231,26 +238,45 @@ namespace GxPT
         {
             lock (_lock)
             {
-                if (_manager == null) _manager = new KryptonManager();
+                if (_manager == null)
+                {
+                    _manager = new KryptonManager();
+                    // Install the Krypton toolstrip renderer ONCE. GlobalApplyToolstrips defaults to true,
+                    // but the renderer is only (re)built when it flips or when GlobalPaletteMode changes;
+                    // if the app happens to start in the palette that is already current, the first apply
+                    // below is a no-op and would leave the menu/strips unthemed. This one-time flip forces
+                    // the initial install. It is deliberately NOT repeated per apply.
+                    _manager.GlobalApplyToolstrips = false;
+                    _manager.GlobalApplyToolstrips = true;
+                }
 
-                // Render with the STOCK palette mode, exactly as the Krypton sample
-                // apps do (kryptonManager.GlobalPaletteMode = ...Office2010Blue): the
-                // whole window - title bar, menu, panels, strips - is the canonical
-                // Krypton theme, with no custom palette or overrides, so the chrome
-                // and menu bar match by construction. The accent selects the Sparkle
-                // variant in dark mode.
-                _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accentId)
+                // No-op when the theme hasn't actually changed. Reapplying the same palette still forced
+                // a full toolstrip-renderer rebuild and re-broadcast (the source of the slow launch and
+                // the progressively-slower theme toggles).
+                string accent = accentId ?? "blue";
+                if (_applied && _lastDark == dark &&
+                    string.Equals(_lastAccentId, accent, StringComparison.OrdinalIgnoreCase))
+                    return;
+                _applied = true;
+                _lastDark = dark;
+                _lastAccentId = accent;
+
+                // Render with the STOCK palette mode, exactly as the Krypton sample apps do
+                // (kryptonManager.GlobalPaletteMode = ...Office2010Blue): the whole window - title bar,
+                // menu, panels, strips - is the canonical Krypton theme, with no custom palette or
+                // overrides, so the chrome and menu bar match by construction. The accent selects the
+                // Sparkle variant in dark mode. KryptonManager.GlobalApplyToolstrips defaults to true and
+                // changing GlobalPaletteMode already re-themes the toolstrips (its setter calls
+                // UpdateToolStripManager), so we must NOT toggle GlobalApplyToolstrips here - that forced a
+                // redundant renderer teardown/rebuild on every apply.
+                _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accent)
                                                   : PaletteModeManager.Office2010Blue;
-                // Force the shared stock-toolstrip renderer to rebuild on every apply.
-                _manager.GlobalApplyToolstrips = false;
-                _manager.GlobalApplyToolstrips = true;
 
-                // A non-rendered "probe" palette kept in sync with the active mode.
-                // It is never assigned as the global palette; we only read resolved
-                // theme colors from it for the handful of custom-painted bits (the
-                // tab +/x glyph, the status strip) that aren't Krypton controls.
+                // A non-rendered "probe" palette kept in sync with the active mode. It is never assigned
+                // as the global palette; we only read resolved theme colors from it for the handful of
+                // custom-painted bits (the tab +/x glyph, the status strip) that aren't Krypton controls.
                 if (_palette == null) _palette = new KryptonPalette();
-                _palette.BasePaletteMode = dark ? DarkSparkleMode(accentId) : PaletteMode.Office2010Blue;
+                _palette.BasePaletteMode = dark ? DarkSparkleMode(accent) : PaletteMode.Office2010Blue;
             }
         }
 
