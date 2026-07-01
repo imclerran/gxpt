@@ -323,6 +323,7 @@
   <ItemGroup>
     <None Include="ClassDiagram1.cd" />
     <None Include="Resources\Images\AttatchGrey.png" />
+    <None Include="Resources\Images\AttatchGrey22.png" />
     <None Include="Resources\Icons\gxpt-document.ico" />
     <Content Include="Resources\Images\GxPT-banner-install.bmp">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

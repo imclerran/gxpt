@@ -402,7 +402,11 @@
             this.btnAttach.Name = "btnAttach";
             this.btnAttach.Size = new System.Drawing.Size(26, 52);
             this.btnAttach.TabIndex = 3;
-            this.btnAttach.Values.Image = global::GxPT.Properties.Resources.AttatchGrey;
+            // Krypton lays the image out inside the content rectangle and drops it if it doesn't fit
+            // (unlike stock Button, which center-clips). Zero the content padding and use a 22px icon so
+            // the paperclip fits this narrow 26px-wide button.
+            this.btnAttach.StateCommon.Content.Padding = new System.Windows.Forms.Padding(0);
+            this.btnAttach.Values.Image = global::GxPT.Properties.Resources.AttatchGrey22;
             this.btnAttach.Values.Text = "";
             // 
             // pnlModelRow
