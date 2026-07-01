@@ -78,16 +78,21 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // This Krypton fork leaves KryptonNumericUpDown.TextAlign unset in a state that paints
-            // the value centered while the embedded edit control stays left-aligned - so the caret
-            // lands off the text, selection fails and typing prepends digits. Force Left so the
-            // painted value and the editable control line up and editing works.
+            // KryptonNumericUpDown paints a flat Krypton representation of the value when the
+            // control is inactive and only swaps in the real editable control on activation. In
+            // this fork those two are offset, so clicks land the caret away from the visible text
+            // and editing (selection/typing) fails. AlwaysActive keeps the real editable control
+            // shown at all times so there's no inactive-paint-vs-edit mismatch to click through;
+            // TextAlign=Left keeps the value left-justified like the surrounding controls.
             try
             {
-                this.nudTranscriptMaxWidth.TextAlign = HorizontalAlignment.Left;
-                this.nudMessageMaxWidth.TextAlign = HorizontalAlignment.Left;
-                this.nudFontSize.TextAlign = HorizontalAlignment.Left;
-                this.nudMemoryMaxLines.TextAlign = HorizontalAlignment.Left;
+                foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
+                    { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
+                {
+                    if (nud == null) continue;
+                    nud.AlwaysActive = true;
+                    nud.TextAlign = HorizontalAlignment.Left;
+                }
             }
             catch { }
 
