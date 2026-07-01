@@ -6,6 +6,7 @@ using System.Linq;
 using System.IO;
 using System.Windows.Forms;
 using Krypton.Navigator;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -30,13 +31,13 @@ namespace GxPT
         private int _sidebarStartWidth;
 
         // UI components
-        private ListView _lvConversations;
+        private KryptonDataGridView _lvConversations;
         private Panel _sidebarArrowPanel;
-        private ImageList _lvRowHeightImages;
         private ContextMenuStrip _conversationContextMenu;
         private TextBox _renameTextBox;
         private Panel _renameHostPanel;
-        private ListViewItem _renamingItem;
+        private DataGridViewRow _renamingItem;
+        private int _sidebarRowHeight = 22;
 
         // Tooltip for the sidebar arrow clickable region
         private ToolTip _sidebarToolTip;
@@ -359,19 +360,35 @@ namespace GxPT
             {
                 if (_lvConversations != null) return;
 
-                _lvConversations = new ListView();
-                _lvConversations.View = View.Details;
-                _lvConversations.FullRowSelect = true;
-                _lvConversations.HideSelection = false;
-                _lvConversations.HeaderStyle = ColumnHeaderStyle.None;
-                _lvConversations.BorderStyle = BorderStyle.None;
-                _lvConversations.ShowItemToolTips = true;
-                _lvConversations.Dock = DockStyle.Left;
-                _lvConversations.Columns.Add("Conversation", 200, HorizontalAlignment.Left);
+                _lvConversations = new KryptonDataGridView();
+                _lvConversations.ColumnHeadersVisible = false;   // no top header row
+                _lvConversations.RowHeadersVisible = false;      // no left row-selector gutter
+                _lvConversations.AllowUserToAddRows = false;
+                _lvConversations.AllowUserToDeleteRows = false;
+                _lvConversations.AllowUserToResizeRows = false;
+                _lvConversations.AllowUserToResizeColumns = false;
+                _lvConversations.AllowUserToOrderColumns = false;
+                _lvConversations.ReadOnly = true;
+                _lvConversations.EditMode = DataGridViewEditMode.EditProgrammatically;
                 _lvConversations.MultiSelect = false;
-                _lvConversations.ItemActivate += LvConversations_ItemActivate;
-                _lvConversations.MouseUp += LvConversations_MouseUp;
-                _lvConversations.Click += LvConversations_Click;
+                _lvConversations.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+                _lvConversations.BorderStyle = BorderStyle.None;
+                _lvConversations.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+                _lvConversations.RowTemplate.Height = _sidebarRowHeight;
+                _lvConversations.ShowCellToolTips = true;
+                _lvConversations.Dock = DockStyle.Left;
+
+                // Single text column that fills the client width (no horizontal scroll).
+                var col = new DataGridViewTextBoxColumn();
+                col.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                col.SortMode = DataGridViewColumnSortMode.NotSortable;
+                col.Resizable = DataGridViewTriState.False;
+                col.DefaultCellStyle.Padding = new Padding(4, 0, 0, 0);
+                _lvConversations.Columns.Add(col);
+
+                _lvConversations.CellDoubleClick += LvConversations_CellDoubleClick;
+                _lvConversations.CellMouseUp += LvConversations_CellMouseUp;
+                _lvConversations.MouseDown += LvConversations_MouseDown;
 
                 // Create context menu but don't assign it directly
                 _conversationContextMenu = new ContextMenuStrip();
@@ -395,22 +412,8 @@ namespace GxPT
                 _conversationContextMenu.Items.Add(new ToolStripSeparator());
                 _conversationContextMenu.Items.Add(miDelete);
 
-                // No longer need to store in Tag
-
-                _lvConversations.BackColor = _splitContainer.Panel1.BackColor;
-                _lvConversations.OwnerDraw = false;
-
-                try
-                {
-                    if (_lvRowHeightImages == null)
-                    {
-                        _lvRowHeightImages = new ImageList();
-                        int rowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
-                        _lvRowHeightImages.ImageSize = new Size(1, rowHeight);
-                    }
-                    _lvConversations.SmallImageList = _lvRowHeightImages;
-                }
-                catch { }
+                _sidebarRowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
+                _lvConversations.RowTemplate.Height = _sidebarRowHeight;
 
                 _lvConversations.Resize += (s, e) => ResizeSidebarColumn();
                 _splitContainer.Panel1.Controls.Add(_lvConversations);
@@ -436,8 +439,21 @@ namespace GxPT
                     _splitContainer.Panel1.BackColor = bg;
                 if (_lvConversations != null)
                 {
+                    // A subtle themed row-selection highlight: lighten the background in dark mode,
+                    // darken it in light mode.
+                    bool dark = fg.GetBrightness() > bg.GetBrightness();
+                    Color sel = dark ? ControlPaint.Light(bg, 0.5f) : ControlPaint.Dark(bg, 0.05f);
+
                     _lvConversations.BackColor = bg;
                     _lvConversations.ForeColor = fg;
+                    _lvConversations.BackgroundColor = bg;          // area below the rows
+                    _lvConversations.GridColor = bg;                // hide gridlines by matching bg
+                    _lvConversations.CellBorderStyle = DataGridViewCellBorderStyle.None;
+                    var cs = _lvConversations.DefaultCellStyle;
+                    cs.BackColor = bg;
+                    cs.ForeColor = fg;
+                    cs.SelectionBackColor = sel;
+                    cs.SelectionForeColor = fg;
                 }
                 if (_sidebarArrowPanel != null)
                 {
@@ -460,23 +476,28 @@ namespace GxPT
             {
                 if (_lvConversations == null) return;
                 var items = ConversationStore.ListAll();
-                _lvConversations.BeginUpdate();
+                _lvConversations.SuspendLayout();
                 try
                 {
-                    _lvConversations.Items.Clear();
+                    _lvConversations.Rows.Clear();
                     foreach (var it in items)
                     {
                         string text = string.IsNullOrEmpty(it.Name) ? "New Conversation" : it.Name;
                         if (it.Zdr) text = MainForm.ZdrTitlePrefix + text;
-                        var lvi = new ListViewItem(text);
-                        lvi.Tag = it;
-                        _lvConversations.Items.Add(lvi);
+                        int idx = _lvConversations.Rows.Add(text);
+                        var row = _lvConversations.Rows[idx];
+                        row.Tag = it;
+                        row.Height = _sidebarRowHeight;
                     }
+                    // No auto-selection until the user clicks (mirrors the old ListView).
+                    _lvConversations.ClearSelection();
+                    try { _lvConversations.CurrentCell = null; }
+                    catch { }
                     ResizeSidebarColumn();
                 }
                 finally
                 {
-                    _lvConversations.EndUpdate();
+                    _lvConversations.ResumeLayout();
                 }
             }
             catch { }
@@ -496,59 +517,68 @@ namespace GxPT
             catch { }
         }
 
-        private void LvConversations_ItemActivate(object sender, EventArgs e)
+        // The currently-selected conversation row (or null). DataGridView keeps a CurrentRow even when
+        // the selection is cleared, so prefer an explicit selection and fall back to CurrentRow.
+        private DataGridViewRow GetSelectedRow()
         {
-            TryOpenSelectedConversation();
+            try
+            {
+                if (_lvConversations == null) return null;
+                if (_lvConversations.SelectedRows.Count > 0) return _lvConversations.SelectedRows[0];
+                if (_lvConversations.CurrentRow != null && _lvConversations.CurrentRow.Selected)
+                    return _lvConversations.CurrentRow;
+            }
+            catch { }
+            return null;
         }
 
-        private void LvConversations_Click(object sender, EventArgs e)
+        private void LvConversations_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            // If we're renaming and user clicks elsewhere, finish the rename
-            if (_renamingItem != null)
+            try
             {
-                var me = e as MouseEventArgs;
-                if (me != null)
-                {
-                    var hitTest = _lvConversations.HitTest(me.Location);
-                    // If clicking on a different item or empty space, finish rename
-                    if (hitTest.Item != _renamingItem)
-                    {
-                        FinishRename(true);
-                    }
-                }
+                if (e.RowIndex < 0) return;
+                _lvConversations.Rows[e.RowIndex].Selected = true;
+                TryOpenSelectedConversation();
             }
+            catch { }
         }
 
-        private void LvConversations_MouseUp(object sender, MouseEventArgs e)
+        private void LvConversations_MouseDown(object sender, MouseEventArgs e)
         {
-            // Only show context menu for right-clicks that hit an actual item
-            if (e.Button == MouseButtons.Right)
+            // If we're renaming and the user clicks a different row (or empty space), finish the rename.
+            if (_renamingItem == null) return;
+            try
             {
-                try
-                {
-                    var hitTest = _lvConversations.HitTest(e.Location);
-                    if (hitTest.Item != null)
-                    {
-                        // Select the item that was right-clicked
-                        hitTest.Item.Selected = true;
-
-                        // Show the context menu
-                        if (_conversationContextMenu != null)
-                        {
-                            _conversationContextMenu.Show(_lvConversations, e.Location);
-                        }
-                    }
-                }
-                catch { }
+                var hit = _lvConversations.HitTest(e.X, e.Y);
+                if (hit.RowIndex != _renamingItem.Index)
+                    FinishRename(true);
             }
+            catch { }
+        }
+
+        private void LvConversations_CellMouseUp(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            // Only show the context menu for right-clicks that hit an actual row.
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
+            try
+            {
+                _lvConversations.Rows[e.RowIndex].Selected = true;
+                if (_conversationContextMenu != null)
+                {
+                    // e.Location is cell-relative; offset to the cell's position for the menu anchor.
+                    Rectangle cr = _lvConversations.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+                    _conversationContextMenu.Show(_lvConversations, new Point(cr.X + e.X, cr.Y + e.Y));
+                }
+            }
+            catch { }
         }
 
         private void TryOpenSelectedConversation()
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -571,8 +601,8 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -596,8 +626,8 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -610,8 +640,8 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -624,7 +654,7 @@ namespace GxPT
                 _renameTextBox = new TextBox();
                 // Seed with the raw conversation name, not the displayed row text: the latter
                 // carries the "[zdr] " marker prefix, which must not become part of the name.
-                string editText = lvi.Text;
+                string editText = Convert.ToString(lvi.Cells[0].Value);
                 if (info.Zdr && editText != null && editText.StartsWith(MainForm.ZdrTitlePrefix))
                 {
                     editText = editText.Substring(MainForm.ZdrTitlePrefix.Length);
@@ -663,16 +693,16 @@ namespace GxPT
                 Rectangle labelRect;
                 try
                 {
-                    rowRect = _lvConversations.GetItemRect(lvi.Index, ItemBoundsPortion.Entire);
+                    rowRect = _lvConversations.GetRowDisplayRectangle(lvi.Index, false);
                 }
-                catch { rowRect = lvi.Bounds; }
+                catch { rowRect = Rectangle.Empty; }
                 try
                 {
-                    labelRect = _lvConversations.GetItemRect(lvi.Index, ItemBoundsPortion.Label);
+                    labelRect = _lvConversations.GetCellDisplayRectangle(0, lvi.Index, false);
                 }
-                catch { labelRect = lvi.Bounds; }
+                catch { labelRect = rowRect; }
 
-                int left = Math.Max(0, labelRect.X);
+                int left = Math.Max(0, labelRect.X + 4); // matches the cell's left content padding
                 int panelTop = Math.Max(0, rowRect.Y);
                 int panelHeight = Math.Max(1, rowRect.Height);
 
@@ -735,7 +765,7 @@ namespace GxPT
                 if (_renameTextBox == null || _renamingItem == null) return;
 
                 string newName = saveChanges ? _renameTextBox.Text.Trim() : null;
-                string originalName = _renamingItem.Text;
+                string originalName = Convert.ToString(_renamingItem.Cells[0].Value);
 
                 // Remove the textbox and its host panel
                 try
@@ -816,9 +846,8 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null || _lvConversations.Columns.Count == 0) return;
-                // Make the column fill the ListView's client width to avoid right-side gaps
-                int target = Math.Max(20, _lvConversations.ClientSize.Width);
-                _lvConversations.Columns[0].Width = target;
+                // The single column is AutoSizeMode=Fill, so it already tracks the client width; just
+                // refresh the truncation tooltips for the new width.
                 UpdateSidebarTooltips();
             }
             catch { }
@@ -831,15 +860,16 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null || _lvConversations.Columns.Count == 0) return;
-                // Available text width inside the column, leaving room for the
-                // padding/indent the ListView reserves on each row.
+                // Available text width inside the column, leaving room for the cell's left padding.
                 int available = _lvConversations.Columns[0].Width - 8;
-                foreach (ListViewItem lvi in _lvConversations.Items)
+                foreach (DataGridViewRow row in _lvConversations.Rows)
                 {
-                    if (lvi == null) continue;
-                    int textWidth = TextRenderer.MeasureText(lvi.Text, _lvConversations.Font).Width;
-                    string tip = (textWidth > available) ? lvi.Text : string.Empty;
-                    if (lvi.ToolTipText != tip) lvi.ToolTipText = tip;
+                    if (row == null || row.IsNewRow) continue;
+                    var cell = row.Cells[0];
+                    string text = Convert.ToString(cell.Value);
+                    int textWidth = TextRenderer.MeasureText(text, _lvConversations.Font).Width;
+                    string tip = (textWidth > available) ? text : string.Empty;
+                    if (cell.ToolTipText != tip) cell.ToolTipText = tip;
                 }
             }
             catch { }
@@ -912,17 +942,15 @@ namespace GxPT
                 try { _lvConversations.Font = new Font(_lvConversations.Font.FontFamily, size, _lvConversations.Font.Style); }
                 catch { }
 
-                if (_lvRowHeightImages == null)
-                    _lvRowHeightImages = new ImageList();
-
-                int rowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
-                _lvRowHeightImages.ImageSize = new Size(1, rowHeight);
-
+                _sidebarRowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
                 try
                 {
-                    var current = _lvConversations.SmallImageList;
-                    _lvConversations.SmallImageList = null;
-                    _lvConversations.SmallImageList = _lvRowHeightImages;
+                    _lvConversations.RowTemplate.Height = _sidebarRowHeight;
+                    foreach (DataGridViewRow row in _lvConversations.Rows)
+                    {
+                        if (row == null || row.IsNewRow) continue;
+                        row.Height = _sidebarRowHeight;
+                    }
                 }
                 catch { }
 
