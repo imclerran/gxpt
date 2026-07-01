@@ -184,8 +184,8 @@ namespace GxPT
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    // Draw the glyph at ~80% scale, centered, so it doesn't fill the button edge to edge.
-                    const float scale = 0.8f;
+                    // Draw the glyph at ~90% scale, centered, so it doesn't fill the button edge to edge.
+                    const float scale = 0.9f;
                     float gw = w * scale, gh = h * scale;
                     DrawPaperclip(g, new RectangleF((w - gw) / 2f, (h - gh) / 2f, gw, gh), color);
                 }
