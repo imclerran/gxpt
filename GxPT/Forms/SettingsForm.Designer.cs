@@ -485,7 +485,7 @@
             this.pnlModelsRight.Dock = System.Windows.Forms.DockStyle.Right;
             this.pnlModelsRight.Location = new System.Drawing.Point(274, 0);
             this.pnlModelsRight.Name = "pnlModelsRight";
-            this.pnlModelsRight.Padding = new System.Windows.Forms.Padding(4, 0, 0, 0);
+            this.pnlModelsRight.Padding = new System.Windows.Forms.Padding(12, 0, 0, 0);
             this.pnlModelsRight.Size = new System.Drawing.Size(189, 122);
             this.pnlModelsRight.TabIndex = 20;
             // 
