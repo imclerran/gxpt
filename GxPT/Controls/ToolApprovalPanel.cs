@@ -680,7 +680,7 @@ namespace GxPT
         // the just-shown panel settle so the focus reliably takes.
         private void FocusDefaultButton()
         {
-            Button b = _defaultButton;
+            KryptonButton b = _defaultButton;
             if (b == null) return;
             try
             {

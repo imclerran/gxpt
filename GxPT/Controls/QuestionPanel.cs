@@ -37,11 +37,11 @@ namespace GxPT
         // width plus the selector's left margin.
         private const int LabelIndent = 18;
 
-        // The option selectors in display order (RadioButton when single-select, CheckBox when multi);
+        // The option selectors in display order (KryptonRadioButton when single-select, KryptonCheckBox when multi);
         // Tag carries the option label. _otherSelector is the always-present free-text row's selector.
-        private readonly List<ButtonBase> _selectors = new List<ButtonBase>();
+        private readonly List<Control> _selectors = new List<Control>();
         private readonly List<Label> _descriptions = new List<Label>(); // width-managed on resize
-        private ButtonBase _otherSelector;
+        private Control _otherSelector;
 
         private Action<QuestionAnswer> _onAnswer;
         private bool _multi;
@@ -155,10 +155,12 @@ namespace GxPT
                 if (_options != null) _options.BackColor = tc.AssistantBubbleBack;
                 if (_buttons != null) _buttons.BackColor = tc.AssistantBubbleBack;
 
-                foreach (ButtonBase b in _selectors)
+                foreach (Control b in _selectors)
                 {
                     b.BackColor = tc.AssistantBubbleBack;
-                    b.ForeColor = tc.UiForeground;
+                    // Krypton check/radio captions are palette-driven; set the caption color explicitly so
+                    // it matches the panel's theme (and stays readable in dark mode).
+                    SetSelectorTextColor(b, tc.UiForeground);
                 }
                 // Description labels are dimmer than the option text (a subtitle), so derive a muted tone.
                 foreach (Label d in _descriptions)
@@ -226,7 +228,7 @@ namespace GxPT
                 {
                     QuestionOption opt = req.Options[i];
                     if (opt == null || string.IsNullOrEmpty(opt.Label)) continue;
-                    ButtonBase sel = MakeSelector(opt.Label);
+                    Control sel = MakeSelector(opt.Label);
                     sel.Tag = opt.Label;
                     _selectors.Add(sel);
                     _options.Controls.Add(sel);
@@ -271,20 +273,20 @@ namespace GxPT
             }
         }
 
-        // Build a selector for the current mode: a RadioButton (single-select; auto-grouped because all
-        // selectors share _options as their immediate parent) or a CheckBox (multi-select).
-        private ButtonBase MakeSelector(string text)
+        // Build a selector for the current mode: a KryptonRadioButton (single-select; auto-grouped because
+        // all selectors share _options as their immediate parent) or a KryptonCheckBox (multi-select).
+        private Control MakeSelector(string text)
         {
-            ButtonBase b;
+            Control b;
             if (_multi)
             {
-                CheckBox cb = new CheckBox();
+                KryptonCheckBox cb = new KryptonCheckBox();
                 cb.CheckedChanged += OnSelectionChanged;
                 b = cb;
             }
             else
             {
-                RadioButton rb = new RadioButton();
+                KryptonRadioButton rb = new KryptonRadioButton();
                 rb.CheckedChanged += OnSelectionChanged;
                 b = rb;
             }
@@ -292,6 +294,19 @@ namespace GxPT
             b.AutoSize = true;
             b.Margin = new Padding(2, 2, 2, 0);
             return b;
+        }
+
+        // Set a Krypton check/radio selector's caption color (palette-driven, so ForeColor is ignored).
+        private static void SetSelectorTextColor(Control b, Color c)
+        {
+            try
+            {
+                KryptonCheckBox cb = b as KryptonCheckBox;
+                if (cb != null) { cb.StateCommon.ShortText.Color1 = c; return; }
+                KryptonRadioButton rb = b as KryptonRadioButton;
+                if (rb != null) { rb.StateCommon.ShortText.Color1 = c; }
+            }
+            catch { }
         }
 
         private Label MakeDescription(string text)
@@ -304,19 +319,19 @@ namespace GxPT
             return d;
         }
 
-        private bool IsChecked(ButtonBase b)
+        private bool IsChecked(Control b)
         {
-            RadioButton rb = b as RadioButton;
+            KryptonRadioButton rb = b as KryptonRadioButton;
             if (rb != null) return rb.Checked;
-            CheckBox cb = b as CheckBox;
+            KryptonCheckBox cb = b as KryptonCheckBox;
             return cb != null && cb.Checked;
         }
 
-        private void SetChecked(ButtonBase b, bool value)
+        private void SetChecked(Control b, bool value)
         {
-            RadioButton rb = b as RadioButton;
+            KryptonRadioButton rb = b as KryptonRadioButton;
             if (rb != null) { rb.Checked = value; return; }
-            CheckBox cb = b as CheckBox;
+            KryptonCheckBox cb = b as KryptonCheckBox;
             if (cb != null) cb.Checked = value;
         }
 
@@ -390,7 +405,7 @@ namespace GxPT
             ans.Selected = new List<string>();
             for (int i = 0; i < _selectors.Count; i++)
             {
-                ButtonBase b = _selectors[i];
+                Control b = _selectors[i];
                 if (ReferenceEquals(b, _otherSelector)) continue;
                 if (IsChecked(b) && b.Tag is string) ans.Selected.Add((string)b.Tag);
             }
@@ -432,7 +447,7 @@ namespace GxPT
 
         private void FocusFirstSelector()
         {
-            ButtonBase first = _selectors.Count > 0 ? _selectors[0] : null;
+            Control first = _selectors.Count > 0 ? _selectors[0] : null;
             if (first == null) return;
             try
             {
