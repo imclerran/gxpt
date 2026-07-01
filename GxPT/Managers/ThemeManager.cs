@@ -189,7 +189,7 @@ namespace GxPT
                 using (Graphics g = Graphics.FromImage(scaled))
                 {
                     g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HalfPixel;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                     g.DrawImage(src, new Rectangle(0, 0, w, h));
                 }
 
