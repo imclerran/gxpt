@@ -78,14 +78,16 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
-            // The spin controls are stock NumericUpDowns (KryptonNumericUpDown mis-lays-out its
-            // embedded edit control here, breaking the caret/selection). Theme them for dark mode.
+            // This Krypton fork leaves KryptonNumericUpDown.TextAlign unset in a state that paints
+            // the value centered while the embedded edit control stays left-aligned - so the caret
+            // lands off the text, selection fails and typing prepends digits. Force Left so the
+            // painted value and the editable control line up and editing works.
             try
             {
-                KryptonThemeBridge.StyleNumericUpDown(this.nudTranscriptMaxWidth);
-                KryptonThemeBridge.StyleNumericUpDown(this.nudMessageMaxWidth);
-                KryptonThemeBridge.StyleNumericUpDown(this.nudFontSize);
-                KryptonThemeBridge.StyleNumericUpDown(this.nudMemoryMaxLines);
+                this.nudTranscriptMaxWidth.TextAlign = HorizontalAlignment.Left;
+                this.nudMessageMaxWidth.TextAlign = HorizontalAlignment.Left;
+                this.nudFontSize.TextAlign = HorizontalAlignment.Left;
+                this.nudMemoryMaxLines.TextAlign = HorizontalAlignment.Left;
             }
             catch { }
 

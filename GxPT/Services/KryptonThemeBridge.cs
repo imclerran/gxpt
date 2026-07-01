@@ -215,29 +215,6 @@ namespace GxPT
             catch { }
         }
 
-        // Theme a stock NumericUpDown for the active mode. These are used instead of
-        // KryptonNumericUpDown (whose embedded edit control mis-lays-out here - centered
-        // paint vs left edit, broken caret/selection). Give the edit a dark input color in
-        // dark mode so it matches the Krypton text boxes; leave the system look in light mode.
-        public static void StyleNumericUpDown(System.Windows.Forms.NumericUpDown nud)
-        {
-            if (nud == null) return;
-            try
-            {
-                if (ReadDark())
-                {
-                    nud.BackColor = Color.FromArgb(0x3C, 0x46, 0x51);
-                    nud.ForeColor = Color.FromArgb(0xE8, 0xEA, 0xED);
-                }
-                else
-                {
-                    nud.BackColor = SystemColors.Window;
-                    nud.ForeColor = SystemColors.WindowText;
-                }
-            }
-            catch { }
-        }
-
         // In Sparkle dark mode a KryptonCheckBox draws its caption noticeably dimmer
         // than a KryptonLabel sitting right next to it: the two controls resolve to
         // different label content styles and Sparkle colors them differently, and the
