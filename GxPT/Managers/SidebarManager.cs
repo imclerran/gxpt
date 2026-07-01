@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.IO;
 using System.Windows.Forms;
+using Krypton.Navigator;
 
 namespace GxPT
 {
@@ -41,7 +42,7 @@ namespace GxPT
         private ToolTip _sidebarToolTip;
 
         // Open conversations tracking
-        private readonly Dictionary<string, TabPage> _openConversationsById = new Dictionary<string, TabPage>();
+        private readonly Dictionary<string, KryptonPage> _openConversationsById = new Dictionary<string, KryptonPage>();
 
         public event Action SidebarToggled;
 
@@ -515,7 +516,7 @@ namespace GxPT
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
-                TabPage page;
+                KryptonPage page;
                 if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out page))
                 {
                     _mainForm.SelectTab(page);
@@ -539,7 +540,7 @@ namespace GxPT
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
-                TabPage openPage;
+                KryptonPage openPage;
                 if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out openPage))
                 {
                     _mainForm.CloseTab(openPage);
@@ -733,7 +734,7 @@ namespace GxPT
                         // be silently undone by the tab's next send, which saved the old in-memory
                         // name back over this one. Closed conversations still load from disk.
                         Conversation conversation = null;
-                        TabPage openPage = null;
+                        KryptonPage openPage = null;
                         if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out openPage))
                         {
                             var tm = _mainForm.GetTabManager();
@@ -841,7 +842,7 @@ namespace GxPT
             catch { }
         }
 
-        public void TrackOpenConversation(string conversationId, TabPage page)
+        public void TrackOpenConversation(string conversationId, KryptonPage page)
         {
             try
             {
@@ -851,7 +852,7 @@ namespace GxPT
             catch { }
         }
 
-        public void UntrackOpenConversation(TabPage page)
+        public void UntrackOpenConversation(KryptonPage page)
         {
             try
             {

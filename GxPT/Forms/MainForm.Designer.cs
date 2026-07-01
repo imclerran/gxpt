@@ -74,8 +74,8 @@
             this.lblNoApiKey = new System.Windows.Forms.Label();
             this.lnkOpenSettings = new System.Windows.Forms.LinkLabel();
             this.pnlAttachmentsBanner = new System.Windows.Forms.FlowLayoutPanel();
-            this.tabControl1 = new System.Windows.Forms.TabControl();
-            this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
+            this.tabPage1 = new Krypton.Navigator.KryptonPage();
             this.chatTranscript = new GxPT.ChatTranscriptControl();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.ssMain = new System.Windows.Forms.StatusStrip();
@@ -510,25 +510,27 @@
             this.pnlAttachmentsBanner.TabIndex = 2;
             // 
             // tabControl1
-            // 
-            this.tabControl1.Controls.Add(this.tabPage1);
+            //
+            this.tabControl1.Pages.Add(this.tabPage1);
+            // Hide the navigator's built-in context (drop-down) and close buttons in the tab bar's
+            // top-right corner - tab close/new is driven by the menu-strip +/x buttons and the tab
+            // context menu, matching the prior TabControl UX.
+            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
+            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(885, 646);
             this.tabControl1.TabIndex = 4;
-            // 
+            //
             // tabPage1
-            // 
+            //
             this.tabPage1.Controls.Add(this.chatTranscript);
-            this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Size = new System.Drawing.Size(877, 620);
-            this.tabPage1.TabIndex = 0;
+            this.tabPage1.Padding = new System.Windows.Forms.Padding(0);
             this.tabPage1.Text = "New Conversation";
-            this.tabPage1.UseVisualStyleBackColor = true;
-            // 
+            //
             // chatTranscript
             // 
             this.chatTranscript.AccessibleName = "Chat transcript";
@@ -777,8 +779,8 @@
         private System.Windows.Forms.LinkLabel lnkOpenSettings;
         private System.Windows.Forms.ToolStripMenuItem miNewConversation;
         private System.Windows.Forms.ToolStripMenuItem miOpenRecentWorkDir;
-        private System.Windows.Forms.TabControl tabControl1;
-        private System.Windows.Forms.TabPage tabPage1;
+        private Krypton.Navigator.KryptonNavigator tabControl1;
+        private Krypton.Navigator.KryptonPage tabPage1;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
         private System.Windows.Forms.ToolStripMenuItem miCloseConversation;
         private System.Windows.Forms.SplitContainer splitContainer1;

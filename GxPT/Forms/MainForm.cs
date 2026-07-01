@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows.Forms;
 using GxPT;
 using Krypton.Toolkit;
+using Krypton.Navigator;
 using System.IO;
 using Ionic.Zip;
 using System.Reflection;
@@ -365,7 +366,7 @@ namespace GxPT
             try
             {
                 if (this.tabControl1 == null) return list;
-                foreach (TabPage page in this.tabControl1.TabPages)
+                foreach (KryptonPage page in this.tabControl1.Pages)
                 {
                     try
                     {
@@ -457,14 +458,14 @@ namespace GxPT
                     string active = activeFromFile;
                     if (!string.IsNullOrEmpty(active) && this.tabControl1 != null && _tabManager != null)
                     {
-                        foreach (TabPage p in this.tabControl1.TabPages)
+                        foreach (KryptonPage p in this.tabControl1.Pages)
                         {
                             try
                             {
                                 var ctx = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                                 if (ctx != null && ctx.Conversation != null && string.Equals(ctx.Conversation.Id, active, StringComparison.Ordinal))
                                 {
-                                    this.tabControl1.SelectedTab = p;
+                                    this.tabControl1.SelectedPage = p;
                                     break;
                                 }
                             }
@@ -677,7 +678,7 @@ namespace GxPT
         }
 
         // Event handlers for manager events
-        private void OnTabSelected(TabPage selectedTab)
+        private void OnTabSelected(KryptonPage selectedTab)
         {
             // Build this tab's transcript if it was deferred at session restore (first time it's shown).
             // Skipped while the restore loop is still opening tabs — the visible one is built afterward.
@@ -1284,7 +1285,7 @@ namespace GxPT
 
         // Entry point for the tab context menu: set the working folder for a specific tab. Useful
         // when the strip has been dismissed (setting a folder re-shows it).
-        internal void SetWorkingFolderForTab(TabPage page)
+        internal void SetWorkingFolderForTab(KryptonPage page)
         {
             if (_tabManager == null || page == null) return;
             TabManager.ChatTabContext ctx;
@@ -1537,17 +1538,17 @@ namespace GxPT
             catch { }
         }
 
-        internal void SelectTab(TabPage page)
+        internal void SelectTab(KryptonPage page)
         {
             if (_tabManager != null) _tabManager.SelectTab(page);
         }
 
-        internal void CloseTab(TabPage page)
+        internal void CloseTab(KryptonPage page)
         {
             if (_tabManager != null) _tabManager.CloseConversationTab(page);
         }
 
-        internal void UntrackOpenConversation(TabPage page)
+        internal void UntrackOpenConversation(KryptonPage page)
         {
             if (_sidebarManager != null) _sidebarManager.UntrackOpenConversation(page);
         }
@@ -1867,7 +1868,7 @@ namespace GxPT
         {
             try
             {
-                var page = (this.tabControl1 != null ? this.tabControl1.SelectedTab : null);
+                var page = (this.tabControl1 != null ? this.tabControl1.SelectedPage : null);
                 string name = (page != null ? page.Text : null);
                 this.Text = string.IsNullOrEmpty(name) ? "GxPT" : ("GxPT - " + name);
             }
@@ -5896,7 +5897,7 @@ namespace GxPT
             {
                 if (this.tabControl1 != null && _tabManager != null)
                 {
-                    foreach (TabPage p in this.tabControl1.TabPages)
+                    foreach (KryptonPage p in this.tabControl1.Pages)
                     {
                         var ctxOpen = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                         if (ctxOpen != null && ctxOpen.Conversation != null && string.Equals(ctxOpen.Conversation.Id, HelpApiKeysId, StringComparison.Ordinal))
@@ -5981,7 +5982,7 @@ namespace GxPT
             {
                 if (this.tabControl1 != null && _tabManager != null)
                 {
-                    foreach (TabPage p in this.tabControl1.TabPages)
+                    foreach (KryptonPage p in this.tabControl1.Pages)
                     {
                         var ctxOpen = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                         if (ctxOpen != null && ctxOpen.Conversation != null && string.Equals(ctxOpen.Conversation.Id, HelpPrivacyId, StringComparison.Ordinal))
