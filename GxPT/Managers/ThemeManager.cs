@@ -225,11 +225,11 @@ namespace GxPT
             float rU2 = (xd - xb) / 2f;    // bottom bend
             float rU3 = (xc - xb) / 2f;    // narrowest top bend
 
-            float y1 = top + rU1;               // U1 top-bend centre (apex at the very top)
-            float y2 = top + H - rU2;           // U2 bottom-bend centre (apex at the very bottom)
-            float y3 = top + rU3 + H * 0.16f;   // U3 top-bend centre (dropped well below U1's top bend)
-            float yaEnd = top + H * 0.86f;      // free end of the long outer-left tine
-            float ycEnd = top + H * 0.60f;      // free end of the shorter inner tine
+            float y1 = top + rU1;                     // U1 top-bend centre (apex at the very top)
+            float y2 = top + H - rU2 - H * 0.07f;     // U2 bottom-bend centre (lifted for even top/bottom margins)
+            float y3 = top + rU3 + H * 0.16f;         // U3 top-bend centre (dropped well below U1's top bend)
+            float yaEnd = top + H * 0.84f;            // free end of the long outer-left tine
+            float ycEnd = top + H * 0.58f;            // free end of the shorter inner tine
 
             using (Pen pen = new Pen(color, thickness))
             {
