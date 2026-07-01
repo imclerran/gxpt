@@ -403,6 +403,7 @@
             this.btnAttach.Size = new System.Drawing.Size(26, 52);
             this.btnAttach.TabIndex = 3;
             this.btnAttach.Values.Image = global::GxPT.Properties.Resources.AttatchGrey;
+            this.btnAttach.Values.Text = "";
             // 
             // pnlModelRow
             // 
