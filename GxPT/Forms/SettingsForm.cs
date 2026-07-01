@@ -1576,25 +1576,41 @@ namespace GxPT
             return c;
         }
 
+        // Combo item that displays the short model name (author/ prefix stripped) while keeping the full
+        // id for saving. Used instead of owner-draw: KryptonComboBox paints its own closed box from
+        // ToString(), so owner-draw only reached the dropdown - this makes both show the short name.
+        private sealed class EffortModelItem
+        {
+            public readonly string Id;
+            public EffortModelItem(string id) { Id = id ?? string.Empty; }
+            public override string ToString() { return MainForm.ShortModelName(Id); }
+            public override bool Equals(object obj)
+            {
+                EffortModelItem o = obj as EffortModelItem;
+                return o != null && string.Equals(o.Id, Id, StringComparison.OrdinalIgnoreCase);
+            }
+            public override int GetHashCode()
+            {
+                return Id == null ? 0 : Id.ToLowerInvariant().GetHashCode();
+            }
+        }
+
+        // The selected model id for an effort combo (items are EffortModelItem), or null when none.
+        private static string EffortSelectedId(KryptonComboBox combo)
+        {
+            if (combo == null) return null;
+            EffortModelItem item = combo.SelectedItem as EffortModelItem;
+            return item != null ? item.Id : null;
+        }
+
         private KryptonComboBox MakeEffortCombo()
         {
             KryptonComboBox c = new KryptonComboBox();
             c.Dock = DockStyle.Fill;
             c.Margin = new Padding(0, 2, 6, 2);
             c.DropDownStyle = ComboBoxStyle.DropDownList;   // Krypton draws its own drop-down arrow / chrome
-            c.DrawMode = DrawMode.OwnerDrawFixed;           // show just the model name; the item value stays the full id
-            c.DrawItem += EffortCombo_DrawItem;
             c.DropDown += EffortCombo_DropDown;
             return c;
-        }
-
-        // Owner-draw via the shared helper so the effort pickers render the short model name exactly like
-        // the main window's model selector. The DrawItem sender is the KryptonComboBox; hand the shared
-        // helper its contained ComboBox (whose Items back the draw) since the helper works off a ComboBox.
-        private void EffortCombo_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            KryptonComboBox k = sender as KryptonComboBox;
-            MainForm.DrawModelComboItem(e, k != null ? k.ComboBox : sender as ComboBox);
         }
 
         // The box is narrow, so widen the dropdown to fit the longest (short) model name when it opens.
@@ -1629,11 +1645,13 @@ namespace GxPT
             {
                 combo.Items.Clear();
                 if (models != null)
-                    foreach (var m in models) combo.Items.Add(m);
+                    foreach (var m in models) combo.Items.Add(new EffortModelItem(m));
                 string sel = selected ?? string.Empty;
                 if (sel.Length > 0 && !ContainsOrdinalIgnoreCase(models, sel))
-                    combo.Items.Add(sel);
-                combo.SelectedItem = sel;
+                    combo.Items.Add(new EffortModelItem(sel));
+                // EffortModelItem.Equals matches on Id, so the setter resolves to the right item.
+                if (sel.Length > 0) combo.SelectedItem = new EffortModelItem(sel);
+                else combo.SelectedIndex = -1;
             }
             finally { combo.EndUpdate(); }
         }
@@ -1651,8 +1669,7 @@ namespace GxPT
         private static string EffortComboValue(KryptonComboBox combo, string fallback)
         {
             if (combo == null) return fallback ?? string.Empty;
-            string sel = combo.SelectedItem as string;
-            if (string.IsNullOrEmpty(sel)) sel = combo.Text;
+            string sel = EffortSelectedId(combo);
             return string.IsNullOrEmpty(sel) ? (fallback ?? string.Empty) : sel;
         }
 
@@ -1704,9 +1721,9 @@ namespace GxPT
             }
 
             // Keep the effort-tier pickers in step with the model list too, preserving each selection.
-            SyncEffortCombo(this.cmbEffortLow, models, this.cmbEffortLow != null ? this.cmbEffortLow.SelectedItem as string : null);
-            SyncEffortCombo(this.cmbEffortMedium, models, this.cmbEffortMedium != null ? this.cmbEffortMedium.SelectedItem as string : null);
-            SyncEffortCombo(this.cmbEffortHigh, models, this.cmbEffortHigh != null ? this.cmbEffortHigh.SelectedItem as string : null);
+            SyncEffortCombo(this.cmbEffortLow, models, EffortSelectedId(this.cmbEffortLow));
+            SyncEffortCombo(this.cmbEffortMedium, models, EffortSelectedId(this.cmbEffortMedium));
+            SyncEffortCombo(this.cmbEffortHigh, models, EffortSelectedId(this.cmbEffortHigh));
 
             UpdateRecommendedButtonStates();
         }
