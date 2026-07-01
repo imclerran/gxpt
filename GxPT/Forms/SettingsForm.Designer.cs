@@ -63,9 +63,9 @@
             this.btnUpdateModelInfo = new Krypton.Toolkit.KryptonButton();
             this.cmbDefaultModel = new Krypton.Toolkit.KryptonComboBox();
             this.cmbTheme = new Krypton.Toolkit.KryptonComboBox();
-            this.nudTranscriptMaxWidth = new Krypton.Toolkit.KryptonNumericUpDown();
-            this.nudMessageMaxWidth = new Krypton.Toolkit.KryptonNumericUpDown();
-            this.nudFontSize = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.nudTranscriptMaxWidth = new System.Windows.Forms.NumericUpDown();
+            this.nudMessageMaxWidth = new System.Windows.Forms.NumericUpDown();
+            this.nudFontSize = new System.Windows.Forms.NumericUpDown();
             this.chkEnableLogging = new Krypton.Toolkit.KryptonCheckBox();
             this.lblProviderDataCollection = new Krypton.Toolkit.KryptonLabel();
             this.chkZdr = new Krypton.Toolkit.KryptonCheckBox();
@@ -74,7 +74,7 @@
             this.lblMemoryEnabled = new Krypton.Toolkit.KryptonLabel();
             this.chkMemoryEnabled = new Krypton.Toolkit.KryptonCheckBox();
             this.lblMemoryMaxLines = new Krypton.Toolkit.KryptonLabel();
-            this.nudMemoryMaxLines = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.nudMemoryMaxLines = new System.Windows.Forms.NumericUpDown();
             this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
             this.tabVisual = new Krypton.Navigator.KryptonPage();
             this.tabJson = new Krypton.Navigator.KryptonPage();
@@ -565,7 +565,7 @@
             0,
             0});
             this.nudTranscriptMaxWidth.Name = "nudTranscriptMaxWidth";
-            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 22);
+            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 20);
             this.nudTranscriptMaxWidth.TabIndex = 13;
             this.nudTranscriptMaxWidth.Value = new decimal(new int[] {
             1000,
@@ -587,7 +587,7 @@
             0,
             0});
             this.nudMessageMaxWidth.Name = "nudMessageMaxWidth";
-            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 22);
+            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 20);
             this.nudMessageMaxWidth.TabIndex = 15;
             this.nudMessageMaxWidth.Value = new decimal(new int[] {
             100,
@@ -600,7 +600,7 @@
             this.nudFontSize.DecimalPlaces = 2;
             this.nudFontSize.Location = new System.Drawing.Point(130, 307);
             this.nudFontSize.Name = "nudFontSize";
-            this.nudFontSize.Size = new System.Drawing.Size(120, 22);
+            this.nudFontSize.Size = new System.Drawing.Size(120, 20);
             this.nudFontSize.TabIndex = 9;
             // 
             // chkEnableLogging
@@ -705,7 +705,7 @@
             0,
             0});
             this.nudMemoryMaxLines.Name = "nudMemoryMaxLines";
-            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 22);
+            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 20);
             this.nudMemoryMaxLines.TabIndex = 23;
             this.nudMemoryMaxLines.Value = new decimal(new int[] {
             40,
@@ -1100,19 +1100,19 @@
         private Krypton.Navigator.KryptonPage tabVisual;
         private Krypton.Navigator.KryptonPage tabJson;
         private Krypton.Toolkit.KryptonLabel lblFontSize;
-        private Krypton.Toolkit.KryptonNumericUpDown nudFontSize;
+        private System.Windows.Forms.NumericUpDown nudFontSize;
         private Krypton.Toolkit.KryptonLabel lblTheme;
         private Krypton.Toolkit.KryptonComboBox cmbTheme;
         private Krypton.Toolkit.KryptonLabel lblTranscriptMaxWidth;
-        private Krypton.Toolkit.KryptonNumericUpDown nudTranscriptMaxWidth;
+        private System.Windows.Forms.NumericUpDown nudTranscriptMaxWidth;
         private Krypton.Toolkit.KryptonLabel lblMessageMaxWidth;
-        private Krypton.Toolkit.KryptonNumericUpDown nudMessageMaxWidth;
+        private System.Windows.Forms.NumericUpDown nudMessageMaxWidth;
         private Krypton.Toolkit.KryptonLabel lblProviderDataCollection;
         private Krypton.Toolkit.KryptonCheckBox chkZdr;
         private Krypton.Toolkit.KryptonLabel lblMemoryEnabled;
         private Krypton.Toolkit.KryptonCheckBox chkMemoryEnabled;
         private Krypton.Toolkit.KryptonLabel lblMemoryMaxLines;
-        private Krypton.Toolkit.KryptonNumericUpDown nudMemoryMaxLines;
+        private System.Windows.Forms.NumericUpDown nudMemoryMaxLines;
         private Krypton.Toolkit.KryptonLabel lblColor;
         private Krypton.Toolkit.KryptonComboBox cmbColor;
         private Krypton.Navigator.KryptonPage tabMcp;

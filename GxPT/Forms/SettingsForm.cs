@@ -78,6 +78,17 @@ namespace GxPT
             // fully inside its own group area so it reads against the dark panel.
             try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
 
+            // The spin controls are stock NumericUpDowns (KryptonNumericUpDown mis-lays-out its
+            // embedded edit control here, breaking the caret/selection). Theme them for dark mode.
+            try
+            {
+                KryptonThemeBridge.StyleNumericUpDown(this.nudTranscriptMaxWidth);
+                KryptonThemeBridge.StyleNumericUpDown(this.nudMessageMaxWidth);
+                KryptonThemeBridge.StyleNumericUpDown(this.nudFontSize);
+                KryptonThemeBridge.StyleNumericUpDown(this.nudMemoryMaxLines);
+            }
+            catch { }
+
             // The navigator fills the client area except the bottom OK/Cancel/Apply strip, which
             // would otherwise show the unthemed form background. Paint it the themed chrome-bar color
             // (the same one the main window's status strip uses) so it matches the window chrome.
