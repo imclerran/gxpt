@@ -319,7 +319,10 @@ namespace GxPT
                 int cxRight = Math.Max(arrowW + 1, Math.Min(w - paddingRight, w));
                 int cxLeft = Math.Max(arrowW + 1, Math.Min(w - paddingRight, w));
 
-                using (var sb = new SolidBrush(Color.DimGray))
+                Color glyphColor;
+                try { glyphColor = KryptonThemeBridge.MenuTextColor(); }
+                catch { glyphColor = Color.DimGray; }
+                using (var sb = new SolidBrush(glyphColor))
                 {
                     var oldMode = e.Graphics.SmoothingMode;
                     e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -414,6 +417,48 @@ namespace GxPT
 
                 RefreshSidebarList();
                 LayoutSidebarChildren();
+                ApplyTheme(); // theme the freshly-created list immediately
+            }
+            catch { }
+        }
+
+        // Apply the active theme's content colors (the same UiBackground/UiForeground the transcript and
+        // input box use) to the sidebar list and its container/arrow panels, and repaint the open/close
+        // glyph in the themed color. Called on every theme apply and at startup.
+        public void ApplyTheme()
+        {
+            try
+            {
+                bool dark;
+                try
+                {
+                    string t = AppSettings.GetString("theme");
+                    dark = !string.IsNullOrEmpty(t) && t.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { dark = false; }
+
+                var colors = ThemeService.GetColors(dark);
+                Color bg = colors.UiBackground;
+                Color fg = colors.UiForeground;
+
+                if (_splitContainer != null && _splitContainer.Panel1 != null)
+                    _splitContainer.Panel1.BackColor = bg;
+                if (_lvConversations != null)
+                {
+                    _lvConversations.BackColor = bg;
+                    _lvConversations.ForeColor = fg;
+                }
+                if (_sidebarArrowPanel != null)
+                {
+                    _sidebarArrowPanel.BackColor = bg;
+                    _sidebarArrowPanel.Invalidate();
+                }
+                if (_renameHostPanel != null) _renameHostPanel.BackColor = bg;
+                if (_renameTextBox != null)
+                {
+                    _renameTextBox.BackColor = bg;
+                    _renameTextBox.ForeColor = fg;
+                }
             }
             catch { }
         }

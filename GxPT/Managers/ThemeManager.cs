@@ -165,6 +165,10 @@ namespace GxPT
             // Also apply matching background/foreground to the input textbox
             ApplyThemeToTextBox();
 
+            // Theme the sidebar (list colors + open/close glyph) to match.
+            var sidebarManager = _mainForm.GetSidebarManager();
+            if (sidebarManager != null) sidebarManager.ApplyTheme();
+
             // Swap the attach-button paperclip to the light/dark variant for the active theme.
             ApplyAttachIcon();
         }
