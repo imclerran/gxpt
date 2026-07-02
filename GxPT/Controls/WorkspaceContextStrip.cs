@@ -8,37 +8,20 @@ namespace GxPT
     // conversation's working folder (the MCP files/git/command sandbox root, GXPT_WORKDIR) with
     // links to set / change / clear it (and dismiss the strip when unset).
     //
-    // Styling note: the banner keeps its own green/cream identity rather than the palette's chrome
-    // colors, but it IS light/dark aware: in dark mode each state's banner/text pair is SWAPPED
-    // (dark-green banner with pale text, brown banner with cream text) so the strip stops glowing
-    // against the dark chrome. The links use the transcript theme's link color in both modes.
-    // MainForm re-applies via ApplyTheme() when the theme toggles.
+    // Styling note: this intentionally uses FIXED colors and does NOT follow the app's light/dark
+    // theme — it is meant to match the tab strip above it (which is also un-themed system chrome).
     internal sealed class WorkspaceContextStrip : Panel
     {
-        // Base palette; light mode uses these as-is, dark mode swaps each back/text pair.
+        // Fixed palette (does not follow the app theme).
         private static readonly Color SetBack = Color.FromArgb(237, 244, 237);   // subtle green-grey
         private static readonly Color UnsetBack = Color.FromArgb(252, 246, 220); // cream / warning
         private static readonly Color SetText = Color.FromArgb(27, 94, 47);      // dark green (matches set bg)
         private static readonly Color UnsetText = Color.FromArgb(120, 80, 20);   // brown (matches unset bg)
-        private static readonly Color LinkColor = Color.FromArgb(0, 90, 158);    // fallback only
-
-        private static bool Dark() { return KryptonThemeBridge.IsDarkMode(); }
-
-        // The banner background / text colors for the given state under the active theme: the light
-        // pair as designed, or swapped in dark mode (dark surface, light text).
-        private static Color BannerBack(bool has)
-        {
-            return has ? (Dark() ? SetText : SetBack) : (Dark() ? UnsetText : UnsetBack);
-        }
-
-        private static Color BannerText(bool has)
-        {
-            return has ? (Dark() ? SetBack : SetText) : (Dark() ? UnsetBack : UnsetText);
-        }
+        private static readonly Color LinkColor = Color.FromArgb(0, 90, 158);
 
         // Slightly darker shade of the set text/icon, shown while hovering the (clickable) workspace
         // path; this is a subtle press-affordance, NOT a link — no underline, no link color.
-        private static Color SetTextHover() { return Darken(BannerText(true), 0.80f); }
+        private static readonly Color SetTextHover = Darken(SetText, 0.80f);
 
         // Folder glyphs shown at the left of the strip; green when a folder is set, yellow when not.
         // Loaded once and shared across all strip instances (null if the resource is missing).
@@ -161,7 +144,6 @@ namespace GxPT
 
             this.Controls.Add(_root);
 
-            ApplyLinkColors();
             SetWorkingDir(null);
         }
 
@@ -171,43 +153,14 @@ namespace GxPT
             lnk.AutoSize = true;
             lnk.Text = text;
             lnk.TextAlign = ContentAlignment.MiddleLeft;
+            lnk.LinkColor = LinkColor;
+            lnk.ActiveLinkColor = LinkColor;
+            lnk.VisitedLinkColor = LinkColor;
             lnk.LinkBehavior = LinkBehavior.HoverUnderline;
             lnk.Margin = new Padding(10, 0, 0, 0);
             lnk.Anchor = AnchorStyles.None; // vertically centered in the flow panel
             lnk.LinkClicked += delegate { onClick(null, EventArgs.Empty); };
             return lnk;
-        }
-
-        // Color the strip's links with the transcript theme's link color (the same one chat links
-        // use), so they read correctly on both the light and the swapped dark banners.
-        private void ApplyLinkColors()
-        {
-            Color link;
-            try { link = ThemeService.GetColors(Dark()).Link; }
-            catch { link = LinkColor; }
-            LinkLabel[] links = { _change, _returnRoot, _clear, _dismiss };
-            for (int i = 0; i < links.Length; i++)
-            {
-                links[i].LinkColor = link;
-                links[i].ActiveLinkColor = link;
-                links[i].VisitedLinkColor = link;
-            }
-        }
-
-        // Re-resolve all state-dependent colors for the active theme. Called by MainForm when the
-        // light/dark theme toggles (the strip persists for the life of its tab). Re-running the
-        // state setters re-applies banner/text/link colors; the current-directory scope is restored
-        // afterwards because SetWorkingDir resets it.
-        public void ApplyTheme()
-        {
-            try
-            {
-                ApplyLinkColors();
-                string rel = _currentRel;
-                SetWorkingDir(_dir);
-                if (!string.IsNullOrEmpty(rel)) SetCurrentDir(rel);
-            }
-            catch { }
         }
 
         private void Raise(EventHandler h) { if (h != null) h(this, EventArgs.Empty); }
@@ -230,8 +183,8 @@ namespace GxPT
 
             if (has)
             {
-                this.BackColor = BannerBack(true);
-                _text.ForeColor = BannerText(true);
+                this.BackColor = SetBack;
+                _text.ForeColor = SetText;
                 _text.Text = "Workspace:  " + dir;
                 _change.Text = "Change...";
                 _clear.Visible = true;
@@ -245,8 +198,8 @@ namespace GxPT
             }
             else
             {
-                this.BackColor = BannerBack(false);
-                _text.ForeColor = BannerText(false);
+                this.BackColor = UnsetBack;
+                _text.ForeColor = UnsetText;
                 _text.Text = "No workspace: some tools are disabled for this conversation.";
                 _change.Text = "Set workspace...";
                 _clear.Visible = false;
@@ -281,7 +234,7 @@ namespace GxPT
             if (string.IsNullOrEmpty(_dir)) return;
             _hoverActive = on;
             _icon.Image = on ? (SetIconHover ?? SetIcon) : SetIcon;
-            _text.ForeColor = on ? SetTextHover() : BannerText(true);
+            _text.ForeColor = on ? SetTextHover : SetText;
             _text.Invalidate(); // repaint to add/remove the underline
         }
 
