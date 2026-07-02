@@ -66,16 +66,24 @@ namespace GxPT
 
         public MainForm()
         {
+            // TEMP startup-perf marks: deltas between consecutive STARTUP lines in the perf log
+            // localize where launch time goes. Remove together with PerfLog.
+            PerfLog.Mark("ctor begin");
             InitializeComponent();
+            PerfLog.Mark("InitializeComponent done (designer controls built)");
             InitializeManagers();
+            PerfLog.Mark("managers initialized");
             HookEvents();
             InitializeDragAndDrop();
             InitializeClient();
+            PerfLog.Mark("client initialized (models+theme+mcp rebuild)");
 
             // Setup initial tab context for the designer-created tab
             SetupInitialConversationTab();
+            PerfLog.Mark("initial tab set up");
             _inputManager.SetHintText();
             InitUsageStatusBar();
+            PerfLog.Mark("usage status bar ready");
 
             // Daily, non-blocking refresh of the model context-size catalog (the status bar's
             // context meter divides by it). The updated event lands on the fetch worker thread;
@@ -96,10 +104,12 @@ namespace GxPT
 
             this.Load += (s, e) =>
             {
+                PerfLog.Mark("Load begin");
                 UpdateApiKeyBanner();
                 MaybeShowModelUpdateBanner();
                 try { RestoreOpenTabsOnStartup(); }
                 catch { }
+                PerfLog.Mark("open tabs restored");
                 // The status bar synced in the constructor, before tabs were restored - and no
                 // OnTabSelected fires for the tab that is already selected, so without this the
                 // first visible tab shows empty usage stats until the user switches away and back.
@@ -120,7 +130,10 @@ namespace GxPT
                     }
                 }
                 catch { }
+                PerfLog.Mark("Load end");
             };
+            // First moment the window is actually on screen - the user-perceived launch time.
+            this.Shown += delegate { PerfLog.Mark("Shown (window visible)"); };
             this.FormClosing += MainForm_FormClosing_SaveOpenTabs;
 
             // Configure attachments banner container
@@ -1660,11 +1673,14 @@ namespace GxPT
             _client = new OpenRouterClient(apiKey, curlPath);
             // Populate models from settings and reflect configuration
             PopulateModelsFromSettings();
+            PerfLog.Mark("  client: models populated");
             UpdateApiKeyBanner();
             if (_themeManager != null) _themeManager.ApplyFontSizeSettingToAllUi();
+            PerfLog.Mark("  client: fonts applied");
             // Apply theme across existing transcripts and primary UI
             try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
             catch { }
+            PerfLog.Mark("  client: theme applied");
 
             // Sync Dark Mode menu checked state from settings
             try
@@ -1696,6 +1712,7 @@ namespace GxPT
             // (Re)build the MCP host from the current settings (toggles, web-search key, GitHub PAT,
             // and mcp.json custom servers). Connecting happens on a background thread.
             RebuildMcpHost();
+            PerfLog.Mark("  client: MCP host rebuilt");
         }
 
         // Assembles MCP server specs from settings and (re)starts the host. Safe to call repeatedly

@@ -13,6 +13,7 @@ namespace GxPT
         [STAThread]
         static void Main()
         {
+            PerfLog.Mark("Main enter");
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -29,6 +30,7 @@ namespace GxPT
             catch { }
             try { AppSettings.EnsureSeeded(); }
             catch { }
+            PerfLog.Mark("settings seeded");
 
             // Install global hover-to-scroll router (keeps focus where it is)
             try { HoverWheelRouter.Install(); }
@@ -63,6 +65,7 @@ namespace GxPT
             catch { }
 
             var mainForm = new MainForm();
+            PerfLog.Mark("MainForm constructed");
             if (!string.IsNullOrEmpty(fileArg))
             {
                 // Defer to after the form is shown so dialogs are parented correctly

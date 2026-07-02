@@ -25,6 +25,34 @@ namespace GxPT
             Write(message);
         }
 
+        // ---- Startup timeline -------------------------------------------------------------------
+        private static Stopwatch _startupClock;
+
+        // Stamps a startup milestone as "STARTUP +NNNNms label"; deltas between consecutive marks
+        // localize where launch time goes. The first call anchors the clock and also logs how long
+        // the process had already been alive (CLR startup + assembly loading) before reaching it.
+        public static void Mark(string label)
+        {
+            if (!Enabled) return;
+            lock (_lock)
+            {
+                if (_startupClock == null)
+                {
+                    _startupClock = Stopwatch.StartNew();
+                    long preMs = -1;
+                    try
+                    {
+                        preMs = (long)(DateTime.Now -
+                            System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalMilliseconds;
+                    }
+                    catch { }
+                    Write("STARTUP process alive " + (preMs >= 0 ? preMs + "ms" : "?") +
+                          " before first mark (CLR + assembly load)");
+                }
+            }
+            Write("STARTUP +" + _startupClock.ElapsedMilliseconds + "ms  " + label);
+        }
+
         // Marks the start of one logical toggle; returns a session that stage timings attach to.
         public static Session Begin(string label)
         {
