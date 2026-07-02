@@ -52,6 +52,13 @@ namespace GxPT
         public static void Log(string category, string message)
         {
             if (!IsEnabled()) return;
+            LogAlways(category, message);
+        }
+
+        // Writes regardless of the enable_logging gate. Reserved for short-lived diagnostics
+        // (e.g. the theme-toggle perf timings) that must land even when logging is off.
+        public static void LogAlways(string category, string message)
+        {
             EnsureInit();
             try
             {
