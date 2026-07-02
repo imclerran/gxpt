@@ -37,6 +37,11 @@ namespace GxPT
         // conversation marks its transcript for lazy build instead of building it immediately, so only
         // the visible tab is rendered up front (the rest hydrate when first selected).
         private bool _restoringTabs;
+
+        // Exposed so TabManager can skip selecting each newly created page during the restore loop
+        // (every selection forces a full navigator layout of that page; the saved active tab is
+        // selected once at the end of the restore instead).
+        internal bool IsRestoringTabs { get { return _restoringTabs; } }
         private const string HelpApiKeysId = "help:api_keys";
         private const string HelpPrivacyId = "help:privacy";
 
@@ -500,6 +505,11 @@ namespace GxPT
                 // Pre-warm MCP servers for the visible tab only (one reconcile, off the UI thread).
                 // Other tabs' servers launch lazily when they're sent to or first selected.
                 try { SyncMcpWorkingDirFromActiveTab(); }
+                catch { }
+
+                // OnTabsChanged was suppressed during the restore loop; bring the Skills MCP server
+                // into line with the now-active conversation once.
+                try { SlashRefreshSkillsServer(); }
                 catch { }
             }
             catch { }
@@ -1505,6 +1515,13 @@ namespace GxPT
 
         private void OnTabsChanged()
         {
+            // During session restore this fires once per restored tab; every piece below is
+            // active-tab/global work that the next iteration immediately redoes (and the sidebar
+            // refresh would pay the cold conversation-metadata disk scan inside the restore loop).
+            // The restore epilogue performs one MCP sync + skills refresh, and the sidebar's initial
+            // population is deferred to after Shown.
+            if (_restoringTabs) return;
+
             if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
             // A tab opening/closing changes which working folders are still in use; release the
             // scoped servers of any folder whose last tab just closed.
@@ -5781,8 +5798,6 @@ namespace GxPT
             // Replace the conversation and refresh transcript UI
             ctx.Conversation = convo;
             ctx.SelectedModel = string.IsNullOrEmpty(convo.SelectedModel) ? GetSelectedModel() : convo.SelectedModel;
-            try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
-            catch { }
             ConversationStore.EnsureConversationId(ctx.Conversation);
             if (_sidebarManager != null && ctx.Conversation != null)
                 _sidebarManager.TrackOpenConversation(ctx.Conversation.Id, ctx.Page);
@@ -5795,12 +5810,19 @@ namespace GxPT
             // Adopt the conversation's saved working folder.
             ApplyLoadedWorkingDir(ctx);
 
-            // Update tab title and window
-            try
-            {
-                ctx.Page.Text = ZdrTitle(convo, convo.Name);
-                UpdateWindowTitleFromActiveTab();
-            }
+            // Update tab title (window title follows below for the non-restore case).
+            try { ctx.Page.Text = ZdrTitle(convo, convo.Name); }
+            catch { }
+
+            // During session restore the new page is NOT selected (the saved active tab is selected
+            // once at the end, firing OnTabSelected which performs all of these syncs), so the
+            // active-tab-only updates below must be skipped: the visible tab is a DIFFERENT tab, and
+            // e.g. setting the model combo here would clobber its selection.
+            if (_restoringTabs) return;
+
+            try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
+            catch { }
+            try { UpdateWindowTitleFromActiveTab(); }
             catch { }
 
             // The tab was selected before the conversation was assigned, so re-sync the per-tab ZDR
@@ -5885,7 +5907,10 @@ namespace GxPT
                 SyncUsageStatusFromActiveTab();
 
                 if (_inputManager != null) _inputManager.FocusInputSoon();
-                if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
+                // Not during session restore: the sidebar's initial population is deferred to after
+                // Shown (it starts collapsed), and refreshing here would pay the full cold disk scan
+                // of every conversation's metadata inside the restore loop.
+                if (!_restoringTabs && _sidebarManager != null) _sidebarManager.RefreshSidebarList();
             }
             catch { }
         }

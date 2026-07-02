@@ -287,8 +287,15 @@ namespace GxPT
             _mainForm.AttachWorkspaceStrip(ctx);
 
             _tabControl.Pages.Add(page);
-            try { _tabControl.SelectedPage = page; }
-            catch { }
+            // Selecting a page forces the navigator to fully lay it out (and fires the whole
+            // OnTabSelected sync chain). During session restore each restored tab was selected in
+            // turn just to be replaced by the next, paying that cost N times; the restore loop
+            // selects the saved active tab once at the end instead.
+            if (!_mainForm.IsRestoringTabs)
+            {
+                try { _tabControl.SelectedPage = page; }
+                catch { }
+            }
 
             // Apply transcript/message width from settings for newly created transcript
             try { TranscriptWidthSettings.Resolve().ApplyTo(transcript); }

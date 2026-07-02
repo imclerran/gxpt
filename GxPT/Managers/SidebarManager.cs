@@ -434,7 +434,32 @@ namespace GxPT
                 _lvConversations.Resize += (s, e) => ResizeSidebarColumn();
                 _splitContainer.Panel1.Controls.Add(_lvConversations);
 
-                RefreshSidebarList();
+                // Defer the initial population: it reads every conversation file's metadata off disk
+                // (cold cache at launch), and the sidebar starts collapsed - nobody can see the rows
+                // until it is expanded, well after the window is up. Run it once the form has painted
+                // (Shown + BeginInvoke) so launch doesn't pay for it. Every later refresh (save,
+                // rename, delete, tab changes) still runs synchronously through RefreshSidebarList.
+                try
+                {
+                    _mainForm.Shown += delegate
+                    {
+                        try
+                        {
+                            _mainForm.BeginInvoke((MethodInvoker)delegate
+                            {
+                                try
+                                {
+                                    RefreshSidebarList();
+                                    UpdateSidebarScrollBar();
+                                }
+                                catch { }
+                            });
+                        }
+                        catch { }
+                    };
+                }
+                catch { RefreshSidebarList(); }
+
                 LayoutSidebarChildren();
                 ApplyTheme(); // theme the freshly-created list immediately
             }
