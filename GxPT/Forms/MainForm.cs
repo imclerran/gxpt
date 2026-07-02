@@ -417,6 +417,14 @@ namespace GxPT
         // the whole restore; now the user sees the window ~1s sooner and the tabs pop in.
         private void RestoreSessionAfterShown()
         {
+            // Build the MCP host first (its ~200ms was deferred out of the constructor): the restore
+            // epilogue pre-warms the visible tab's workdir servers and reconciles the skills server,
+            // both of which need a live host to act on.
+            _mcpHostStartupDeferred = false;
+            try { RebuildMcpHost(); }
+            catch { }
+            PerfLog.Mark("MCP host built (post-Shown)");
+
             PerfLog.Mark("restore begin (post-Shown)");
             try { RestoreOpenTabsOnStartup(); }
             catch { }
@@ -1766,17 +1774,28 @@ namespace GxPT
             }
             catch { }
 
-            // (Re)build the MCP host from the current settings (toggles, web-search key, GitHub PAT,
-            // and mcp.json custom servers). Connecting happens on a background thread.
-            RebuildMcpHost();
-            PerfLog.Mark("  client: MCP host rebuilt");
+            // The MCP host is NOT built here: assembling it takes ~200ms on the UI thread, and nothing
+            // can send a tool call before the window is even visible. RestoreSessionAfterShown builds
+            // it (post-Shown, before the tabs restore, so the visible tab's pre-warm finds a live
+            // host); until then RebuildMcpHost is gated - see _mcpHostStartupDeferred.
         }
+
+        // True until the post-Shown startup sequence builds the MCP host for the first time. Gates
+        // RebuildMcpHost rather than just moving its ctor call site, because other pre-Shown paths
+        // can reach it indirectly (the initial tab's TabsChanged -> SlashRefreshSkillsServer calls
+        // RebuildMcpHost when the active conversation has enabled skills) and would drag the ~200ms
+        // host assembly back onto the launch path.
+        private bool _mcpHostStartupDeferred = true;
 
         // Assembles MCP server specs from settings and (re)starts the host. Safe to call repeatedly
         // (e.g. after Settings is saved). Workdir-independent servers (web + GitHub + custom) connect
         // here; files/git/command are deferred until a working-directory UX exists.
         private void RebuildMcpHost()
         {
+            // No-op until RestoreSessionAfterShown lifts the gate and builds the host: every consumer
+            // of _mcpHost is null-tolerant, and the post-Shown build reads the same settings/skill
+            // enablement any gated early call would have.
+            if (_mcpHostStartupDeferred) return;
             try
             {
                 // Tear down any previous host (servers from the old settings).
