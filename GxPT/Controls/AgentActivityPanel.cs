@@ -80,21 +80,22 @@ namespace GxPT
             if (onStop != null) onStop();
         }
 
-        // Right-align the Stop button in the header row, sized to its label. The header text line is
-        // shorter than a comfortable button, so the button borrows the padding above it: top at
-        // Pad - 4 with height LineH() + 6 puts its bottom exactly at the first agent row's top
-        // (Pad + LineH() + 2) - vertically centered on the header without covering any row text.
+        // Right-align the Stop button in the header row, sized to its label. Kept deliberately short
+        // (LineH() + 2, top at Pad - 1): centered on the header text with its bottom a few pixels
+        // above the first agent row's top (Pad + LineH() + 2), so there's visible breathing room
+        // between the button and the first row's "View transcript" link. The label still fits - the
+        // button's content area at this height matches the text line exactly.
         private void LayoutStopButton()
         {
             if (_stopButton == null) return;
             try
             {
-                int btnH = LineH() + 6;
+                int btnH = LineH() + 2;
                 int btnW = TextRenderer.MeasureText(_stopButton.Text, this.Font, Size.Empty,
                     TextFormatFlags.NoPadding).Width + 24;
                 int x = this.ClientSize.Width - Pad - btnW;
                 if (x < Pad) x = Pad;
-                _stopButton.SetBounds(x, Pad - 4, btnW, btnH);
+                _stopButton.SetBounds(x, Pad - 1, btnW, btnH);
             }
             catch { }
         }
