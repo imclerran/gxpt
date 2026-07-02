@@ -885,7 +885,12 @@ namespace GxPT
                 int tbWidth = Math.Max(20, _lvConversations.ClientSize.Width - left);
                 _renameTextBox.Bounds = new Rectangle(left, tbTop, tbWidth, tbHeight);
 
-                // Wire up events
+                // Wire up events. The textbox is parented inside the DataGridView, which treats
+                // Enter/Escape as dialog keys (row navigation / cancel) and processes them BEFORE
+                // the textbox's KeyDown can see them - claiming them as input keys in PreviewKeyDown
+                // routes them to RenameTextBox_KeyDown instead. (The old ListView host never
+                // intercepted these, so plain KeyDown sufficed there.)
+                _renameTextBox.PreviewKeyDown += RenameTextBox_PreviewKeyDown;
                 _renameTextBox.KeyDown += RenameTextBox_KeyDown;
                 _renameTextBox.LostFocus += RenameTextBox_LostFocus;
 
@@ -898,6 +903,13 @@ namespace GxPT
                 _renameTextBox.Focus();
             }
             catch { }
+        }
+
+        private void RenameTextBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
+        {
+            // Keep commit/cancel keys in the textbox instead of the grid's dialog-key processing
+            // (Enter otherwise moves the selected row; Escape cancels into the grid).
+            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Escape) e.IsInputKey = true;
         }
 
         private void RenameTextBox_KeyDown(object sender, KeyEventArgs e)
@@ -1103,6 +1115,16 @@ namespace GxPT
                 float size = (float)Math.Max(6, Math.Min(48, fs));
 
                 try { _lvConversations.Font = new Font(_lvConversations.Font.FontFamily, size, _lvConversations.Font.Style); }
+                catch { }
+
+                // KryptonDataGridView paints cell text with the PALETTE's data-cell font, not the
+                // control Font set above (which only drives row-height math here) - so without these
+                // the rows stayed at the default size while e.g. the rename textbox scaled. Set the
+                // font on both the Krypton cell state and the grid's DefaultCellStyle so the drawn
+                // rows follow the setting whichever path resolves the style.
+                try { _lvConversations.StateCommon.DataCell.Content.Font = _lvConversations.Font; }
+                catch { }
+                try { _lvConversations.DefaultCellStyle.Font = _lvConversations.Font; }
                 catch { }
 
                 _sidebarRowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
