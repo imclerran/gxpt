@@ -913,7 +913,11 @@ namespace GxPT
                             // Still the active rename? (A fast Escape/click could have closed it.)
                             if (tb == null || !object.ReferenceEquals(tb, _renameTextBox)) return;
                             tb.SelectAll();
-                            tb.Focus();
+                            bool got = tb.Focus();
+                            // TEMP diagnostic for the dead-arrow-keys-on-first-rename bug.
+                            PerfLog.Note("rename: focus attempt ok=" + got +
+                                " focused=" + tb.Focused + " canFocus=" + tb.CanFocus +
+                                " gridFocused=" + (_lvConversations != null && _lvConversations.Focused));
                         }
                         catch { }
                     });
@@ -929,6 +933,8 @@ namespace GxPT
 
         private void RenameTextBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
         {
+            // TEMP diagnostic: does the key even reach the textbox's preprocessing?
+            PerfLog.Note("rename: previewKeyDown " + e.KeyCode);
             // Keep editing keys in the textbox instead of an ancestor's command/dialog-key
             // processing: the hosting DataGridView treats Enter (row navigation), Escape, and the
             // caret keys as navigation, and key preprocessing could swallow them before the
@@ -951,6 +957,8 @@ namespace GxPT
 
         private void RenameTextBox_KeyDown(object sender, KeyEventArgs e)
         {
+            // TEMP diagnostic: did the key survive preprocessing and reach KeyDown?
+            PerfLog.Note("rename: keyDown " + e.KeyCode);
             if (e.KeyCode == Keys.Enter)
             {
                 FinishRename(true);
@@ -967,11 +975,16 @@ namespace GxPT
 
         private void RenameTextBox_LostFocus(object sender, EventArgs e)
         {
+            // TEMP diagnostic (dead-arrow-keys bug).
+            PerfLog.Note("rename: lostFocus");
             FinishRename(true);
         }
 
         private void FinishRename(bool saveChanges)
         {
+            // TEMP diagnostic (dead-arrow-keys bug).
+            PerfLog.Note("rename: finish save=" + saveChanges +
+                " active=" + (_renameTextBox != null && _renamingItem != null));
             try
             {
                 if (_renameTextBox == null || _renamingItem == null) return;
