@@ -411,13 +411,15 @@ namespace GxPT
         }
 
         // The Sparkle palette variant for the chosen accent color, for the manager's GlobalPaletteMode.
-        // Sparkle ships Blue / Orange / Purple; red maps to Purple (no red variant exists).
+        // Sparkle ships Blue / Orange / Purple, matching the app's blue/orange/purple transcript
+        // themes one-to-one. Unknown ids - including "red", the retired theme purple replaced -
+        // fall through to the blue default, mirroring ThemeService's fallback.
         private static PaletteModeManager DarkSparkleModeManager(string accentId)
         {
             switch ((accentId ?? "blue").Trim().ToLowerInvariant())
             {
                 case "orange": return PaletteModeManager.SparkleOrange;
-                case "red": return PaletteModeManager.SparklePurple;
+                case "purple": return PaletteModeManager.SparklePurple;
                 case "blue":
                 default: return PaletteModeManager.SparkleBlue;
             }
@@ -431,7 +433,7 @@ namespace GxPT
             switch ((accentId ?? "blue").Trim().ToLowerInvariant())
             {
                 case "orange": return Color.FromArgb(0xE3, 0x9B, 0x3F);
-                case "red": return Color.FromArgb(0x8A, 0x70, 0xC8);
+                case "purple": return Color.FromArgb(0x8A, 0x70, 0xC8);
                 case "blue":
                 default: return Color.FromArgb(0x49, 0x86, 0xD6);
             }

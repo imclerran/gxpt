@@ -355,7 +355,7 @@
     <Content Include="Resources\Themes\orange.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\Themes\red.json">
+    <Content Include="Resources\Themes\purple.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Lib\libcurl.dll">
