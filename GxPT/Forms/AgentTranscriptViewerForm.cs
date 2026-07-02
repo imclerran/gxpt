@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -11,8 +12,9 @@ namespace GxPT
     //    chat uses (text deltas into an assistant bubble, tool calls/results as their own rows).
     // Pure UI: the child's activity is shown to the user, never fed back to any model (the context firewall,
     // A3/A7, holds). Reuses ChatTranscriptControl, which auto-themes from settings in its constructor. Code-
-    // only (no designer); hosts a single docked transcript control.
-    internal sealed class AgentTranscriptViewerForm : Form, IAgentLiveSink
+    // only (no designer); hosts a single docked transcript control. KryptonForm for the themed window
+    // chrome; the transcript covers the whole client, so the chrome is the only Krypton surface.
+    internal sealed class AgentTranscriptViewerForm : KryptonForm, IAgentLiveSink
     {
         private ChatTranscriptControl _transcript;   // set in Init() (a ctor helper), so not readonly
         private readonly AgentTranscript _data;     // static mode (null in live mode)
@@ -60,6 +62,11 @@ namespace GxPT
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            // Show the GxPT app icon in the title bar and taskbar (this window is unowned and shows
+            // in Alt-Tab, so without this it carries the generic WinForms icon). Clones the
+            // owner/MainForm icon, falling back to the exe's.
+            try { PluginImportExportManager.ApplyOwnerIcon(this); }
+            catch { }
             if (_stream != null)
             {
                 // Seed the persona + task first (the streamed events are the model's output only, not the
