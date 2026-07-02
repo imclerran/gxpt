@@ -16,11 +16,16 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Threading;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
-    public sealed class GraphImageViewerForm : Form
+    public sealed class GraphImageViewerForm : KryptonForm
     {
+        // Neutral slate canvas behind the graph, deliberately theme-independent so a white graph
+        // stands out in both modes. Painted explicitly in OnPaint: a KryptonForm draws its client
+        // background from the active palette, so plain BackColor would not stick.
+        private static readonly Color CanvasColor = Color.FromArgb(0x55, 0x57, 0x66);
         private Bitmap _image;          // owned by this form; swapped to a hi-res copy when ready
         private float _imageScale = 1f; // bitmap pixels per logical unit (1 = 96dpi, 2 = 192dpi)
         private readonly string _dot;   // DOT source (for Copy + hi-res re-render)
@@ -57,7 +62,6 @@ namespace GxPT
             Text = "Graph Viewer — " + eng;
             DoubleBuffered = true;
             KeyPreview = true;
-            BackColor = Color.FromArgb(0x55, 0x57, 0x66); // neutral slate so a white graph stands out
             StartPosition = FormStartPosition.CenterScreen;
 
             try
@@ -79,7 +83,9 @@ namespace GxPT
         {
             _toolStrip = new ToolStrip();
             _toolStrip.GripStyle = ToolStripGripStyle.Hidden;
-            _toolStrip.RenderMode = ToolStripRenderMode.System;
+            // No RenderMode override: the default (manager) renderer is Krypton's global toolstrip
+            // renderer, so the toolbar - fills, hover chrome, and item text - follows the active
+            // palette exactly like the main window's menu and status strips.
 
             var outBtn = new ToolStripButton("Zoom Out");
             outBtn.ToolTipText = "Zoom out (-)";
@@ -333,6 +339,15 @@ namespace GxPT
         {
             base.OnPaint(e);
             Graphics g = e.Graphics;
+
+            // Fill the canvas below the toolbar with the fixed slate (see CanvasColor).
+            try
+            {
+                using (var canvas = new SolidBrush(CanvasColor))
+                    g.FillRectangle(canvas, 0, TopInset, ClientSize.Width, Math.Max(0, ClientSize.Height - TopInset));
+            }
+            catch { }
+
             if (_image != null)
             {
                 float eff = EffScale();
