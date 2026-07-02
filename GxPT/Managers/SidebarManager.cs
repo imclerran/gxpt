@@ -894,22 +894,59 @@ namespace GxPT
                 _renameTextBox.KeyDown += RenameTextBox_KeyDown;
                 _renameTextBox.LostFocus += RenameTextBox_LostFocus;
 
-                // Add to host panel, then to ListView and focus
+                // Add to host panel, then to the grid, and focus. Focus/selection are DEFERRED
+                // (BeginInvoke) so they run after the context menu that launched the rename has
+                // fully closed: focusing synchronously races the menu's modal message filter
+                // teardown, which can leave the first rename of the session with a focused-looking
+                // textbox that doesn't receive caret keys.
                 _renameHostPanel.Controls.Add(_renameTextBox);
                 _lvConversations.Controls.Add(_renameHostPanel);
                 _renameHostPanel.BringToFront();
                 _renameTextBox.BringToFront();
-                _renameTextBox.SelectAll();
-                _renameTextBox.Focus();
+                try
+                {
+                    TextBox tb = _renameTextBox;
+                    _lvConversations.BeginInvoke((MethodInvoker)delegate
+                    {
+                        try
+                        {
+                            // Still the active rename? (A fast Escape/click could have closed it.)
+                            if (tb == null || !object.ReferenceEquals(tb, _renameTextBox)) return;
+                            tb.SelectAll();
+                            tb.Focus();
+                        }
+                        catch { }
+                    });
+                }
+                catch
+                {
+                    _renameTextBox.SelectAll();
+                    _renameTextBox.Focus();
+                }
             }
             catch { }
         }
 
         private void RenameTextBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
         {
-            // Keep commit/cancel keys in the textbox instead of the grid's dialog-key processing
-            // (Enter otherwise moves the selected row; Escape cancels into the grid).
-            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Escape) e.IsInputKey = true;
+            // Keep editing keys in the textbox instead of an ancestor's command/dialog-key
+            // processing: the hosting DataGridView treats Enter (row navigation), Escape, and the
+            // caret keys as navigation, and key preprocessing could swallow them before the
+            // textbox's KeyDown fires (observed: the first rename after launch lost arrow keys
+            // entirely). Claiming them as input keys delivers them to the textbox.
+            switch (e.KeyCode)
+            {
+                case Keys.Enter:
+                case Keys.Escape:
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.Up:
+                case Keys.Down:
+                case Keys.Home:
+                case Keys.End:
+                    e.IsInputKey = true;
+                    break;
+            }
         }
 
         private void RenameTextBox_KeyDown(object sender, KeyEventArgs e)
