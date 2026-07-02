@@ -813,8 +813,9 @@ namespace GxPT
 
                 _renamingItem = lvi;
 
-                // Create textbox for inline editing
-                _renameTextBox = new TextBox();
+                // Create textbox for inline editing (a subclass that keeps every key to itself -
+                // see RenameTextBoxControl for why a plain TextBox loses arrow keys here).
+                _renameTextBox = new RenameTextBoxControl();
                 // Seed with the raw conversation name, not the displayed row text: the latter
                 // carries the "[zdr] " marker prefix, which must not become part of the name.
                 string editText = Convert.ToString(lvi.Cells[0].Value);
@@ -929,6 +930,22 @@ namespace GxPT
                 }
             }
             catch { }
+        }
+
+        // The inline rename editor. A plain TextBox parented inside the DataGridView loses its
+        // navigation keys: after a key is delivered to a focused child, WinForms offers it up the
+        // parent chain via ProcessKeyPreview, and DataGridView's override consumes arrows/Home/End
+        // as grid navigation (Enter/Escape only while a real cell editor is active - which is why
+        // those reached KeyDown but arrows never did; the perf trace showed PreviewKeyDown firing
+        // with no KeyDown following). Overriding ProcessKeyMessage to skip the parent preview keeps
+        // every key local to the editor. (The pre-Krypton ListView host had no key preview, which
+        // is why this never happened before the migration.)
+        private sealed class RenameTextBoxControl : TextBox
+        {
+            protected override bool ProcessKeyMessage(ref Message m)
+            {
+                return ProcessKeyEventArgs(ref m);
+            }
         }
 
         private void RenameTextBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
