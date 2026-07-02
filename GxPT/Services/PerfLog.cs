@@ -1,14 +1,15 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 namespace GxPT
 {
-    // TEMPORARY diagnostic. Appends per-stage timings for the light/dark theme toggle to the
-    // main log (%AppData%\GxPT\gxpt.log, category [Perf]) so a non-locally-reproducible
-    // slowdown can be localized to the exact stage that grows across repeated toggles. Writes
-    // even when enable_logging is off. Safe to silence (Enabled=false) or delete entirely once
-    // the theme-toggle performance work is closed out - nothing depends on it.
+    // TEMPORARY diagnostic. Appends per-stage timings for the light/dark theme toggle to
+    //   %AppData%\GxPT\theme-perf.log
+    // so a non-locally-reproducible slowdown can be localized to the exact stage that grows
+    // across repeated toggles. Safe to leave off (Enabled=false) or delete entirely once the
+    // theme-toggle performance work is closed out - nothing depends on it.
     internal static class PerfLog
     {
         // Flip to false to silence without removing the call sites.
@@ -63,7 +64,14 @@ namespace GxPT
 
         private static void Write(string line)
         {
-            try { Logger.LogAlways("Perf", line); }
+            try
+            {
+                string dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "theme-perf.log"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + "  " + line + Environment.NewLine);
+            }
             catch { }
         }
     }
