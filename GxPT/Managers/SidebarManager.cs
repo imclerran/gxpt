@@ -43,6 +43,10 @@ namespace GxPT
         private const int SidebarScrollBarWidth = 17;
         private bool _syncingSidebarScroll;
 
+        // False until the deferred initial population runs (post-Shown); RefreshSidebarList is a
+        // no-op before then so startup paths can't trigger the cold conversation-metadata disk scan.
+        private bool _sidebarListReady;
+
         // Tooltip for the sidebar arrow clickable region
         private ToolTip _sidebarToolTip;
 
@@ -437,8 +441,10 @@ namespace GxPT
                 // Defer the initial population: it reads every conversation file's metadata off disk
                 // (cold cache at launch), and the sidebar starts collapsed - nobody can see the rows
                 // until it is expanded, well after the window is up. Run it once the form has painted
-                // (Shown + BeginInvoke) so launch doesn't pay for it. Every later refresh (save,
-                // rename, delete, tab changes) still runs synchronously through RefreshSidebarList.
+                // (Shown + BeginInvoke) so launch doesn't pay for it. Until then RefreshSidebarList is
+                // a no-op (gated by _sidebarListReady) - startup code paths reach it indirectly (e.g.
+                // the initial tab's TabsChanged), and any pre-Shown refresh would just re-trigger the
+                // same cold scan this defers. Every post-Shown refresh runs synchronously as before.
                 try
                 {
                     _mainForm.Shown += delegate
@@ -447,6 +453,7 @@ namespace GxPT
                         {
                             _mainForm.BeginInvoke((MethodInvoker)delegate
                             {
+                                _sidebarListReady = true;
                                 try
                                 {
                                     RefreshSidebarList();
@@ -458,7 +465,7 @@ namespace GxPT
                         catch { }
                     };
                 }
-                catch { RefreshSidebarList(); }
+                catch { _sidebarListReady = true; RefreshSidebarList(); }
 
                 LayoutSidebarChildren();
                 ApplyTheme(); // theme the freshly-created list immediately
@@ -520,6 +527,10 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null) return;
+                // No-op until the deferred initial population (post-Shown) has run: the list can't be
+                // seen before the window is up, and ListAll() on a cold cache is the launch's single
+                // most expensive disk scan. See EnsureSidebarList.
+                if (!_sidebarListReady) return;
                 var items = ConversationStore.ListAll();
                 _lvConversations.SuspendLayout();
                 try
