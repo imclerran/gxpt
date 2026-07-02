@@ -13,7 +13,6 @@ namespace GxPT
         [STAThread]
         static void Main()
         {
-            PerfLog.Mark("Main enter");
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -30,13 +29,10 @@ namespace GxPT
             catch { }
             try { AppSettings.EnsureSeeded(); }
             catch { }
-            PerfLog.Mark("settings seeded");
 
             // Install global hover-to-scroll router (keeps focus where it is)
             try { HoverWheelRouter.Install(); }
             catch { }
-            // The gap between this mark and "ctor begin" is MainForm type/assembly load (Krypton JIT).
-            PerfLog.Mark("hover router installed");
             // Handle shell-open: if launched with a .gxpt/.gxcv/.gxsk/.gxpl file, import it on startup
             string fileArg = null;
             try
@@ -67,7 +63,6 @@ namespace GxPT
             catch { }
 
             var mainForm = new MainForm();
-            PerfLog.Mark("MainForm constructed");
             if (!string.IsNullOrEmpty(fileArg))
             {
                 // Defer to after the form is shown so dialogs are parented correctly. Queued via

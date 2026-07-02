@@ -139,59 +139,38 @@ namespace GxPT
 
         public void ApplyThemeToAllTranscripts()
         {
-            // TEMP perf diagnostic: sub-stage timings so a growing-per-toggle cost can be pinned to the
-            // Krypton palette swap vs. our own post-processing.
-            PerfLog.Session __perf = PerfLog.Begin("  applyTranscripts");
-
             // Swap the Krypton global palette so all window chrome (forms,
             // buttons, inputs, headers, menu/status strips) re-themes in lockstep
             // with the transcript. Safe and self-contained: failures here never
             // affect the transcript theming below.
-            __perf.Stage("bridgeApply", delegate
-            {
-                try { KryptonThemeBridge.Apply(); }
-                catch { }
-            });
+            try { KryptonThemeBridge.Apply(); }
+            catch { }
 
             // Paint the stock WinForms composer/background panels with the themed client color so the
             // window has no default-grey gaps (behind the ZDR checkbox, above the send button, etc.).
-            __perf.Stage("chrome", delegate
-            {
-                try { _mainForm.ApplyThemedChrome(); }
-                catch { }
-            });
+            try { _mainForm.ApplyThemedChrome(); }
+            catch { }
 
-            __perf.Stage("primaryTranscript", delegate
+            try
             {
-                try
-                {
-                    if (_primaryTranscript != null)
-                        _primaryTranscript.RefreshTheme();
-                }
-                catch { }
-            });
+                if (_primaryTranscript != null)
+                    _primaryTranscript.RefreshTheme();
+            }
+            catch { }
 
             // Tab manager handles transcripts in tabs
-            __perf.Stage("tabTranscripts", delegate
-            {
-                var tabManager = _mainForm.GetTabManager();
-                if (tabManager != null) tabManager.ApplyThemeToAllTranscripts();
-            });
+            var tabManager = _mainForm.GetTabManager();
+            if (tabManager != null) tabManager.ApplyThemeToAllTranscripts();
 
             // Also apply matching background/foreground to the input textbox
-            __perf.Stage("textBox", delegate { ApplyThemeToTextBox(); });
+            ApplyThemeToTextBox();
 
             // Theme the sidebar (list colors + open/close glyph) to match.
-            __perf.Stage("sidebar", delegate
-            {
-                var sidebarManager = _mainForm.GetSidebarManager();
-                if (sidebarManager != null) sidebarManager.ApplyTheme();
-            });
+            var sidebarManager = _mainForm.GetSidebarManager();
+            if (sidebarManager != null) sidebarManager.ApplyTheme();
 
             // Swap the attach-button paperclip to the light/dark variant for the active theme.
-            __perf.Stage("attachIcon", delegate { ApplyAttachIcon(); });
-
-            __perf.End();
+            ApplyAttachIcon();
         }
 
         // Draw the attach button's paperclip glyph for the active theme, stroked in the theme's foreground

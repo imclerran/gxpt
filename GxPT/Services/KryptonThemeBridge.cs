@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Reflection;
-using System.Text;
 using System.Windows.Forms;
 using Krypton.Toolkit;
 
@@ -291,49 +290,41 @@ namespace GxPT
                 _manager.GlobalPaletteMode = dark ? DarkSparkleModeManager(accent)
                                                   : PaletteModeManager.Office2010Blue;
 
-                // TEMP diagnostic (see DescribeAndDedupeSubscribers): the per-toggle slowdown lives in
-                // the GlobalPaletteChanged broadcast above, which means its handler list is growing.
-                // Report who is subscribed and strip duplicate registrations so the list can't compound.
-                try { PerfLog.Note("  kryptonSubs" + DescribeAndDedupeSubscribers()); }
+                // This Krypton build re-adds duplicate handlers to its palette-change events on every
+                // palette swap (see DedupeKryptonSubscribers); strip them right after the swap so the
+                // broadcast list cannot compound and each toggle stays fast.
+                try { DedupeKryptonSubscribers(); }
                 catch { }
             }
         }
 
-        // ---- TEMP diagnostics/mitigation for the theme-toggle slowdown --------------------------
+        // ---- Krypton palette-change subscriber dedupe (permanent fix) ---------------------------
         //
-        // The measured per-toggle cost is inside the GlobalPaletteMode setter - i.e. the
-        // GlobalPaletteChanged broadcast - and it roughly doubles per toggle, which is the signature
-        // of handlers being ADDED to Krypton's event lists on every fire without being removed (a
-        // duplicate re-subscription bug in one of the toolkit's controls; our code never subscribes).
-        // This walks the delegate-backed event fields on KryptonManager (static) and on the stock
-        // palettes we render with, reports handler counts + a histogram of the owning control types
-        // (so the culprit is named in the perf log), and removes exact duplicate (target, method)
-        // registrations - semantically safe, since double-subscribing the same handler is never
-        // intentional, and it is what makes the list compound. Reflection-only, fully defensive.
-        // Delete together with PerfLog once the perf work is closed out.
-        public static string DescribeAndDedupeSubscribers()
+        // This build of Krypton re-subscribes STATIC handlers to KryptonManager.GlobalPaletteChanged
+        // (and to the stock palettes' PalettePaint) on every palette change without removing the old
+        // registrations, so the GlobalPaletteChanged broadcast roughly doubled with each light/dark
+        // toggle - measured toggles grew from ~50ms to ~9s within ten switches. After every palette
+        // swap, walk the delegate-backed event fields on KryptonManager (static) and on the stock
+        // palettes the app renders with, and drop exact duplicate (target, method) registrations.
+        // Semantically safe: double-subscribing the same handler to the same event is never
+        // intentional. Reflection-only and fully defensive - if any of it fails, Krypton just runs
+        // with its native (leaky) behavior.
+        private static void DedupeKryptonSubscribers()
         {
-            StringBuilder sb = new StringBuilder();
-            try
-            {
-                sb.Append(" forms=").Append(Application.OpenForms.Count);
-                DedupeAndReport(sb, typeof(KryptonManager), null, "KM");
+            DedupeDelegateFields(typeof(KryptonManager), null);
 
-                // The stock palettes the app renders with; per-control PalettePaint subscriptions
-                // migrate between them on every toggle, so stale entries can pool on either side.
-                try { IPalette p = KryptonManager.PaletteOffice2010Blue; DedupeAndReport(sb, p.GetType(), p, "O2010"); } catch { }
-                try { IPalette p = KryptonManager.PaletteSparkleBlue; DedupeAndReport(sb, p.GetType(), p, "SpkBlu"); } catch { }
-                try { IPalette p = KryptonManager.PaletteSparkleOrange; DedupeAndReport(sb, p.GetType(), p, "SpkOra"); } catch { }
-                try { IPalette p = KryptonManager.PaletteSparklePurple; DedupeAndReport(sb, p.GetType(), p, "SpkPur"); } catch { }
-            }
-            catch (Exception ex) { sb.Append(" err=").Append(ex.GetType().Name); }
-            return sb.ToString();
+            // The stock palettes the app renders with; per-control PalettePaint subscriptions
+            // migrate between them on every toggle, so stale entries can pool on either side.
+            try { IPalette p = KryptonManager.PaletteOffice2010Blue; DedupeDelegateFields(p.GetType(), p); } catch { }
+            try { IPalette p = KryptonManager.PaletteSparkleBlue; DedupeDelegateFields(p.GetType(), p); } catch { }
+            try { IPalette p = KryptonManager.PaletteSparkleOrange; DedupeDelegateFields(p.GetType(), p); } catch { }
+            try { IPalette p = KryptonManager.PaletteSparklePurple; DedupeDelegateFields(p.GetType(), p); } catch { }
         }
 
-        // Walks every delegate-typed field on the given type (and its bases), reports any with two or
-        // more handlers as "label.Field=N" (appending "->M" when duplicates were stripped), and for
-        // large lists appends a histogram of the handler owners' type names.
-        private static void DedupeAndReport(StringBuilder sb, Type type, object instance, string label)
+        // Walks every delegate-typed field on the given type (and its bases) and rewrites any whose
+        // invocation list contains duplicate (target, method) registrations, keeping only the first
+        // occurrence of each.
+        private static void DedupeDelegateFields(Type type, object instance)
         {
             BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly |
                                  (instance == null ? BindingFlags.Static : BindingFlags.Instance);
@@ -350,7 +341,7 @@ namespace GxPT
                         Delegate d = f.GetValue(instance) as Delegate;
                         if (d == null) continue;
                         Delegate[] list = d.GetInvocationList();
-                        if (list.Length < 2) continue; // singleton lists can't be the compounding cost
+                        if (list.Length < 2) continue; // singleton lists can't hold duplicates
 
                         // Keep only the FIRST occurrence of each (target, method) pair.
                         List<Delegate> kept = new List<Delegate>(list.Length);
@@ -371,43 +362,12 @@ namespace GxPT
                             kept.Add(item);
                         }
 
-                        sb.Append(' ').Append(label).Append('.').Append(f.Name).Append('=').Append(list.Length);
                         if (kept.Count != list.Length)
-                        {
-                            sb.Append("->").Append(kept.Count);
                             f.SetValue(instance, Delegate.Combine(kept.ToArray()));
-                        }
-                        if (list.Length >= 8) AppendTargetHistogram(sb, list);
                     }
                     catch { }
                 }
             }
-        }
-
-        // Appends "[TypeA xN, TypeB xM, ...]" for the four most frequent handler-owner types, naming
-        // which control class is accumulating subscriptions.
-        private static void AppendTargetHistogram(StringBuilder sb, Delegate[] list)
-        {
-            Dictionary<string, int> counts = new Dictionary<string, int>();
-            foreach (Delegate d in list)
-            {
-                string name = d.Target == null ? "(static)" : d.Target.GetType().Name;
-                int n;
-                counts.TryGetValue(name, out n);
-                counts[name] = n + 1;
-            }
-            List<KeyValuePair<string, int>> ordered = new List<KeyValuePair<string, int>>(counts);
-            ordered.Sort(delegate(KeyValuePair<string, int> a, KeyValuePair<string, int> b)
-            {
-                return b.Value.CompareTo(a.Value);
-            });
-            sb.Append('[');
-            for (int i = 0; i < ordered.Count && i < 4; i++)
-            {
-                if (i > 0) sb.Append(", ");
-                sb.Append(ordered[i].Key).Append(" x").Append(ordered[i].Value);
-            }
-            sb.Append(']');
         }
 
         // The Sparkle palette variant for the chosen accent color, for the manager's GlobalPaletteMode.

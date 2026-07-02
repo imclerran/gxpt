@@ -76,24 +76,16 @@ namespace GxPT
 
         public MainForm()
         {
-            // TEMP startup-perf marks: deltas between consecutive STARTUP lines in the perf log
-            // localize where launch time goes. Remove together with PerfLog.
-            PerfLog.Mark("ctor begin");
             InitializeComponent();
-            PerfLog.Mark("InitializeComponent done (designer controls built)");
             InitializeManagers();
-            PerfLog.Mark("managers initialized");
             HookEvents();
             InitializeDragAndDrop();
             InitializeClient();
-            PerfLog.Mark("client initialized (models+theme+mcp rebuild)");
 
             // Setup initial tab context for the designer-created tab
             SetupInitialConversationTab();
-            PerfLog.Mark("initial tab set up");
             _inputManager.SetHintText();
             InitUsageStatusBar();
-            PerfLog.Mark("usage status bar ready");
 
             // Daily, non-blocking refresh of the model context-size catalog (the status bar's
             // context meter divides by it). The updated event lands on the fetch worker thread;
@@ -114,10 +106,8 @@ namespace GxPT
 
             this.Load += (s, e) =>
             {
-                PerfLog.Mark("Load begin");
                 UpdateApiKeyBanner();
                 MaybeShowModelUpdateBanner();
-                PerfLog.Mark("Load end");
             };
             // First moment the window is actually on screen - the user-perceived launch time.
             // Session restore runs right AFTER this (queued so the first paint flushes): the window
@@ -125,7 +115,6 @@ namespace GxPT
             // the window staying invisible for the whole restore.
             this.Shown += delegate
             {
-                PerfLog.Mark("Shown (window visible)");
                 try { BeginInvoke((MethodInvoker)RestoreSessionAfterShown); }
                 catch { RestoreSessionAfterShown(); }
             };
@@ -423,13 +412,10 @@ namespace GxPT
             _mcpHostStartupDeferred = false;
             try { RebuildMcpHost(); }
             catch { }
-            PerfLog.Mark("MCP host built (post-Shown)");
 
-            PerfLog.Mark("restore begin (post-Shown)");
             try { RestoreOpenTabsOnStartup(); }
             catch { }
             _sessionRestoreCompleted = true;
-            PerfLog.Mark("open tabs restored");
             // The status bar synced in the constructor, before tabs were restored - and no
             // OnTabSelected fires for the tab that is already selected, so without this the
             // first visible tab shows empty usage stats until the user switches away and back.
@@ -454,7 +440,6 @@ namespace GxPT
             // are invisible until the user expands it, so nothing on screen is waiting for this.
             try { if (_sidebarManager != null) _sidebarManager.PopulateInitialList(); }
             catch { }
-            PerfLog.Mark("session restored (post-Shown)");
         }
 
         private void RestoreOpenTabsOnStartup()
@@ -494,7 +479,6 @@ namespace GxPT
                             string path = ConversationStore.GetPathForId(id);
                             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) continue;
                             var convo = ConversationStore.Load(_client, path);
-                            PerfLog.Mark("  restore: tab " + (i + 1) + " loaded from disk");
                             if (convo == null) continue;
 
                             if (!firstUsed)
@@ -504,12 +488,10 @@ namespace GxPT
                                 {
                                     OpenConversationInTab(blank, convo);
                                     firstUsed = true;
-                                    PerfLog.Mark("  restore: tab " + (i + 1) + " opened (visible tab)");
                                     continue;
                                 }
                             }
                             OpenConversationInNewTab(convo);
-                            PerfLog.Mark("  restore: tab " + (i + 1) + " opened");
                         }
                     }
                     catch { }
@@ -650,14 +632,11 @@ namespace GxPT
 
             // Initialize managers for UI concerns
             _sidebarManager = new SidebarManager(this, this.splitContainer1, this.miConversationHistory);
-            PerfLog.Mark("  managers: sidebar");
             _tabManager = new TabManager(this, this.tabControl1, this.msMain);
-            PerfLog.Mark("  managers: tabs");
             _themeManager = new ThemeManager(this, this.chatTranscript, this.txtMessage,
                 this.btnSend, this.btnAttach, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
             _inputManager = new InputManager(this, this.txtMessage, this.pnlInput,
                 this.btnSend, this.cmbModel, this.splitContainer1, this.pnlApiKeyBanner, this.pnlAttachmentsBanner);
-            PerfLog.Mark("  managers: theme+input");
 
             // Wire manager events
             if (_tabManager != null)
@@ -1738,14 +1717,11 @@ namespace GxPT
             _client = new OpenRouterClient(apiKey, curlPath);
             // Populate models from settings and reflect configuration
             PopulateModelsFromSettings();
-            PerfLog.Mark("  client: models populated");
             UpdateApiKeyBanner();
             if (_themeManager != null) _themeManager.ApplyFontSizeSettingToAllUi();
-            PerfLog.Mark("  client: fonts applied");
             // Apply theme across existing transcripts and primary UI
             try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
             catch { }
-            PerfLog.Mark("  client: theme applied");
 
             // Sync Dark Mode menu checked state from settings
             try
@@ -6237,30 +6213,22 @@ namespace GxPT
                 // Update menu checked state immediately
                 if (this.miDarkMode != null) this.miDarkMode.Checked = toDark;
 
-                // TEMP perf diagnostic: time each stage so a growing-per-toggle slowdown can be localized.
-                PerfLog.Session __perf = PerfLog.Begin(toDark ? "->dark" : "->light");
-
                 // Apply theme to all transcripts and relevant UI controls now
                 if (_themeManager != null)
                 {
-                    __perf.Stage("transcripts", delegate { _themeManager.ApplyThemeToAllTranscripts(); });
-                    __perf.Stage("fonts", delegate { _themeManager.ApplyFontSizeSettingToAllUi(); }); // keep fonts consistent; no-op for theme but safe
+                    _themeManager.ApplyThemeToAllTranscripts();
+                    _themeManager.ApplyFontSizeSettingToAllUi(); // keep fonts consistent; no-op for theme but safe
                 }
 
                 // Also refresh tab headers (font/color may rely on system colors)
-                __perf.Stage("tabsInvalidate", delegate
-                {
-                    try { if (this.tabControl1 != null) this.tabControl1.Invalidate(); }
-                    catch { }
-                });
+                try { if (this.tabControl1 != null) this.tabControl1.Invalidate(); }
+                catch { }
 
                 // Status bar follows the UI theme
-                __perf.Stage("statusBar", delegate { ApplyThemeToStatusBar(); });
+                ApplyThemeToStatusBar();
 
                 // Re-theme any open tool-approval prompts so they switch with the rest of the UI
-                __perf.Stage("approvalPanels", delegate { ApplyThemeToAllApprovalPanels(); });
-
-                __perf.End();
+                ApplyThemeToAllApprovalPanels();
             }
             catch { }
         }
