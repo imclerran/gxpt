@@ -63,7 +63,11 @@ namespace GxPT
             this.AutoSize = false;
             this.Height = 160;
             this.Padding = new Padding(8);
-            this.BorderStyle = BorderStyle.FixedSingle;
+            // No BorderStyle: FixedSingle is the SYSTEM single border (black in light mode). The
+            // border is drawn in OnPaint with the theme's assistant-bubble border color instead,
+            // matching the transcript's message bubbles and the sub-agents panel. ResizeRedraw keeps
+            // the drawn edges valid when the (docked) panel resizes.
+            this.SetStyle(ControlStyles.ResizeRedraw, true);
 
             _header = new Label();
             _header.Dock = DockStyle.Top;
@@ -193,6 +197,23 @@ namespace GxPT
             // Blend halfway toward the panel background for a subtitle look.
             Color b = tc.AssistantBubbleBack;
             return Color.FromArgb((f.R + b.R) / 2, (f.G + b.G) / 2, (f.B + b.B) / 2);
+        }
+
+        // 1px border in the theme's assistant-bubble border color, like the transcript's message
+        // bubbles and the sub-agents panel (the old FixedSingle BorderStyle drew the system black).
+        // Colors are read at paint time; ApplyTheme's Invalidate repaints it on a theme switch.
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            try
+            {
+                ThemeColors tc = ThemeService.GetColors(IsDark());
+                Rectangle border = this.ClientRectangle;
+                border.Width -= 1; border.Height -= 1;
+                using (Pen pen = new Pen(tc.AssistantBubbleBorder))
+                    e.Graphics.DrawRectangle(pen, border);
+            }
+            catch { }
         }
 
         // Populate + show for one question. answerCallback is invoked (on the UI thread) with the user's
