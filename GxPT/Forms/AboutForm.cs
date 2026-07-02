@@ -19,6 +19,19 @@ namespace GxPT
             // SettingsForm).
             try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); }
             catch { }
+            // In dark mode the palette draws the link in the classic dark blue, which has too little
+            // contrast against the dark panel. Use the transcript theme's dark-mode link color (the
+            // same one chat links use) for both link states.
+            try
+            {
+                if (KryptonThemeBridge.IsDarkMode())
+                {
+                    Color link = ThemeService.GetColors(true).Link;
+                    this.link3rdPartyLicenses.OverrideNotVisited.ShortText.Color1 = link;
+                    this.link3rdPartyLicenses.OverrideVisited.ShortText.Color1 = link;
+                }
+            }
+            catch { }
             this.Text = String.Format("About {0}", AssemblyTitle);
             this.labelProductName.Text = AssemblyProduct;
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);

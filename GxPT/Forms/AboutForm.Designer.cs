@@ -48,8 +48,11 @@ namespace GxPT
             // A KryptonForm themes only its border/caption; this panel gives the client area the
             // palette's panel color. The stock TableLayoutPanel above it is made transparent at
             // runtime (MakeLayoutContainersTransparent in the ctor) so the panel shows through.
+            // The 9px inset lives HERE (not as form Padding): a docked panel sits inside form
+            // padding, which left a ring of the raw grey form client showing around it.
             this.kpnlRoot.Controls.Add(this.tableLayoutPanel);
             this.kpnlRoot.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.kpnlRoot.Padding = new System.Windows.Forms.Padding(9);
             this.kpnlRoot.Name = "kpnlRoot";
             this.kpnlRoot.TabIndex = 0;
             //
@@ -183,7 +186,6 @@ namespace GxPT
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "AboutForm";
-            this.Padding = new System.Windows.Forms.Padding(9);
             this.ShowIcon = false;
             this.ShowInTaskbar = false;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
