@@ -5,14 +5,20 @@ using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
-    partial class AboutForm : Form
+    partial class AboutForm : KryptonForm
     {
         public AboutForm()
         {
             InitializeComponent();
+            // The stock TableLayoutPanel is layout-only; make it transparent so the KryptonPanel
+            // beneath shows through and the labels sit on the themed surface (same pattern as
+            // SettingsForm).
+            try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); }
+            catch { }
             this.Text = String.Format("About {0}", AssemblyTitle);
             this.labelProductName.Text = AssemblyProduct;
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);
