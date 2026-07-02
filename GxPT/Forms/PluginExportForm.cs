@@ -51,13 +51,16 @@ namespace GxPT
             KryptonLabel descLbl = MakeLabel("Description:", 12, 71);
             _description = MakeTextBox(90, 68, 350);
 
-            KryptonLabel skillsLbl = MakeLabel("Skills:", 12, 98);
+            // The section labels sit 4px higher than the old stock labels did: a KryptonLabel
+            // auto-sizes a little taller, and at the original y its bottom edge overlapped the
+            // checklist below, notching the list's top-left corner.
+            KryptonLabel skillsLbl = MakeLabel("Skills:", 12, 94);
             _skills = MakeCheckList(12, 116, 428, 140);
             for (int i = 0; i < _skillItems.Count; i++)
                 _skills.Items.Add(Describe(_skillItems[i].Slug,
                     _skillItems[i].Source == SkillSource.Project, _skillItems[i].Description));
 
-            KryptonLabel agentsLbl = MakeLabel("Agents:", 12, 262);
+            KryptonLabel agentsLbl = MakeLabel("Agents:", 12, 258);
             _agents = MakeCheckList(12, 280, 428, 140);
             for (int i = 0; i < _agentItems.Count; i++)
                 _agents.Items.Add(Describe(_agentItems[i].Slug,
