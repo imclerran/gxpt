@@ -37,8 +37,9 @@ namespace GxPT
 
         // The palette Krypton is currently rendering all chrome with. This is the authoritative source
         // for every resolved theme color/font we read; it tracks GlobalPaletteMode automatically, so we
-        // never have to keep (and repeatedly re-mode) a second palette instance.
-        private static PaletteBase Global()
+        // never have to keep (and repeatedly re-mode) a second palette instance. (In this Krypton build
+        // CurrentGlobalPalette is typed IPalette, which carries all the Get* query methods we use.)
+        private static IPalette Global()
         {
             try { return KryptonManager.CurrentGlobalPalette; }
             catch { return null; }
@@ -134,7 +135,7 @@ namespace GxPT
         {
             try
             {
-                PaletteBase p = Global();
+                IPalette p = Global();
                 if (p != null)
                 {
                     Font f = p.GetContentShortTextFont(
@@ -156,7 +157,7 @@ namespace GxPT
         {
             try
             {
-                PaletteBase p = Global();
+                IPalette p = Global();
                 if (p != null)
                 {
                     Color c = p.GetBackColor1(
@@ -178,7 +179,7 @@ namespace GxPT
         {
             try
             {
-                PaletteBase p = Global();
+                IPalette p = Global();
                 if (p != null)
                 {
                     Color c = p.GetBackColor1(
@@ -198,7 +199,7 @@ namespace GxPT
         {
             try
             {
-                PaletteBase p = Global();
+                IPalette p = Global();
                 if (p != null)
                 {
                     Color c = p.GetBackColor1(PaletteBackStyle.PanelClient, PaletteState.Normal);
@@ -404,7 +405,7 @@ namespace GxPT
         {
             Color best = Color.Empty;
             float bestLum = -1f;
-            PaletteBase p = Global();
+            IPalette p = Global();
             if (p != null)
             {
                 PaletteContentStyle[] styles =
