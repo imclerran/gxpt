@@ -20,6 +20,9 @@ namespace GxPT
         private const int StateCancelled = 3;
         private const int Pad = 8;
         private const int RowIndent = 14;
+        // Extra vertical gap between the header line (summary + Stop button) and the first agent
+        // row, so the button and the first row's "View transcript" link don't crowd each other.
+        private const int HeaderGap = 4;
 
         private string[] _slugs;
         private int[] _state;
@@ -192,8 +195,8 @@ namespace GxPT
             // the panel never actually exceeds it).
             int rowH = LineH() + 2;
             int lines = (_slugs != null) ? 1 + _slugs.Length : 1;
-            int ceiling = Pad * 2 + (1 + AgentDispatcher.MaxAgentsPerCall) * rowH;
-            this.Height = Math.Min(Pad * 2 + lines * rowH, ceiling);
+            int ceiling = Pad * 2 + HeaderGap + (1 + AgentDispatcher.MaxAgentsPerCall) * rowH;
+            this.Height = Math.Min(Pad * 2 + HeaderGap + lines * rowH, ceiling);
         }
 
         private Font BoldFont()
@@ -248,7 +251,7 @@ namespace GxPT
             TextRenderer.DrawText(g, header, BoldFont(), new Point(Pad, y), tc.UiForeground, TextFormatFlags.NoPadding);
             // (The Stop button is a real KryptonButton child, laid out by LayoutStopButton - not drawn here.)
 
-            y += lineH;
+            y += lineH + HeaderGap;
 
             for (int i = 0; i < _slugs.Length; i++)
             {
@@ -384,7 +387,7 @@ namespace GxPT
         {
             if (_slugs == null || _slugs.Length == 0) return -1;
             int lineH = LineH() + 2;
-            int first = Pad + lineH;            // y of the first agent row (header occupies one line)
+            int first = Pad + lineH + HeaderGap; // y of the first agent row (header line + gap)
             if (p.Y < first) return -1;
             int row = (p.Y - first) / lineH;
             return (row >= 0 && row < _slugs.Length) ? row : -1;

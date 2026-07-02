@@ -26,7 +26,11 @@ namespace GxPT
         private bool _agentsRunning;
 
         private const int PadX = 8;        // horizontal label padding, matching RetryBtnPadX
-        public const int ItemHeight = 15;  // tspGenProgress's height
+        // Two pixels taller than tspGenProgress (15), with the designer margins reduced to match
+        // (top 4->3, bottom 3->2), so both occupy the same 22px row band: the Krypton border chrome
+        // insets the button's visible face ~1px per edge, and at exactly 15px it read smaller than
+        // the bar sitting next to it.
+        public const int ItemHeight = 17;
 
         private const string StopText = "Stop";
         private const string AwaitingText = "Awaiting user...";
