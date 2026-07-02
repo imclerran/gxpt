@@ -42,6 +42,11 @@ namespace GxPT
         // (every selection forces a full navigator layout of that page; the saved active tab is
         // selected once at the end of the restore instead).
         internal bool IsRestoringTabs { get { return _restoringTabs; } }
+
+        // Set once the post-Shown session restore has run. Guards the FormClosing session save:
+        // restore now happens after the window is visible, so a close in that brief window would
+        // otherwise overwrite session.json with just the blank initial tab, losing the session.
+        private bool _sessionRestoreCompleted;
         private const string HelpApiKeysId = "help:api_keys";
         private const string HelpPrivacyId = "help:privacy";
 
@@ -112,33 +117,18 @@ namespace GxPT
                 PerfLog.Mark("Load begin");
                 UpdateApiKeyBanner();
                 MaybeShowModelUpdateBanner();
-                try { RestoreOpenTabsOnStartup(); }
-                catch { }
-                PerfLog.Mark("open tabs restored");
-                // The status bar synced in the constructor, before tabs were restored - and no
-                // OnTabSelected fires for the tab that is already selected, so without this the
-                // first visible tab shows empty usage stats until the user switches away and back.
-                try { SyncUsageStatusFromActiveTab(); }
-                catch { }
-                // Same for the tool/skill counts: the constructor's seed ran before the MCP servers
-                // connected (and registry events that fired before the handle existed were dropped),
-                // so re-derive them now that the form is live.
-                try { SyncGenerationIndicatorFromActiveTab(); }
-                catch { }
-                // After restoring tabs, if no API key is configured, open the API Keys Help tab and focus it
-                try
-                {
-                    string k = AppSettings.GetString("openrouter_api_key");
-                    if (k == null || k.Trim().Length == 0)
-                    {
-                        miApiKeysHelp_Click(this, EventArgs.Empty);
-                    }
-                }
-                catch { }
                 PerfLog.Mark("Load end");
             };
             // First moment the window is actually on screen - the user-perceived launch time.
-            this.Shown += delegate { PerfLog.Mark("Shown (window visible)"); };
+            // Session restore runs right AFTER this (queued so the first paint flushes): the window
+            // appears immediately with the blank initial tab, then the saved tabs pop in - instead of
+            // the window staying invisible for the whole restore.
+            this.Shown += delegate
+            {
+                PerfLog.Mark("Shown (window visible)");
+                try { BeginInvoke((MethodInvoker)RestoreSessionAfterShown); }
+                catch { RestoreSessionAfterShown(); }
+            };
             this.FormClosing += MainForm_FormClosing_SaveOpenTabs;
 
             // Configure attachments banner container
@@ -361,9 +351,14 @@ namespace GxPT
         {
             try
             {
-                var openIds = GetOpenConversationIdsInOrder();
-                string activeId = GetActiveConversationId();
-                SessionState.SaveOpenTabs(openIds, activeId);
+                // Only save the session once the post-Shown restore has actually run: a close in the
+                // brief window before it would capture just the blank initial tab and lose the session.
+                if (_sessionRestoreCompleted)
+                {
+                    var openIds = GetOpenConversationIdsInOrder();
+                    string activeId = GetActiveConversationId();
+                    SessionState.SaveOpenTabs(openIds, activeId);
+                }
             }
             catch { }
 
@@ -413,6 +408,45 @@ namespace GxPT
             }
             catch { }
             return null;
+        }
+
+        // Runs the session restore just after the window first appears (queued from Shown so the
+        // first paint has flushed). Ordering matters: tabs first, then the active-tab syncs that
+        // depend on them, then the sidebar's initial population (its list is hidden until expanded,
+        // so it goes last). Everything here used to run in Load, keeping the window invisible for
+        // the whole restore; now the user sees the window ~1s sooner and the tabs pop in.
+        private void RestoreSessionAfterShown()
+        {
+            PerfLog.Mark("restore begin (post-Shown)");
+            try { RestoreOpenTabsOnStartup(); }
+            catch { }
+            _sessionRestoreCompleted = true;
+            PerfLog.Mark("open tabs restored");
+            // The status bar synced in the constructor, before tabs were restored - and no
+            // OnTabSelected fires for the tab that is already selected, so without this the
+            // first visible tab shows empty usage stats until the user switches away and back.
+            try { SyncUsageStatusFromActiveTab(); }
+            catch { }
+            // Same for the tool/skill counts: the constructor's seed ran before the MCP servers
+            // connected (and registry events that fired before the handle existed were dropped),
+            // so re-derive them now that the form is live.
+            try { SyncGenerationIndicatorFromActiveTab(); }
+            catch { }
+            // After restoring tabs, if no API key is configured, open the API Keys Help tab and focus it
+            try
+            {
+                string k = AppSettings.GetString("openrouter_api_key");
+                if (k == null || k.Trim().Length == 0)
+                {
+                    miApiKeysHelp_Click(this, EventArgs.Empty);
+                }
+            }
+            catch { }
+            // Sidebar's initial population (the cold conversation-metadata scan) goes last: its rows
+            // are invisible until the user expands it, so nothing on screen is waiting for this.
+            try { if (_sidebarManager != null) _sidebarManager.PopulateInitialList(); }
+            catch { }
+            PerfLog.Mark("session restored (post-Shown)");
         }
 
         private void RestoreOpenTabsOnStartup()

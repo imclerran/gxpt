@@ -438,35 +438,12 @@ namespace GxPT
                 _lvConversations.Resize += (s, e) => ResizeSidebarColumn();
                 _splitContainer.Panel1.Controls.Add(_lvConversations);
 
-                // Defer the initial population: it reads every conversation file's metadata off disk
-                // (cold cache at launch), and the sidebar starts collapsed - nobody can see the rows
-                // until it is expanded, well after the window is up. Run it once the form has painted
-                // (Shown + BeginInvoke) so launch doesn't pay for it. Until then RefreshSidebarList is
-                // a no-op (gated by _sidebarListReady) - startup code paths reach it indirectly (e.g.
-                // the initial tab's TabsChanged), and any pre-Shown refresh would just re-trigger the
-                // same cold scan this defers. Every post-Shown refresh runs synchronously as before.
-                try
-                {
-                    _mainForm.Shown += delegate
-                    {
-                        try
-                        {
-                            _mainForm.BeginInvoke((MethodInvoker)delegate
-                            {
-                                _sidebarListReady = true;
-                                try
-                                {
-                                    RefreshSidebarList();
-                                    UpdateSidebarScrollBar();
-                                }
-                                catch { }
-                            });
-                        }
-                        catch { }
-                    };
-                }
-                catch { _sidebarListReady = true; RefreshSidebarList(); }
-
+                // The initial population is deferred: it reads every conversation file's metadata off
+                // disk (cold cache at launch), and the sidebar starts collapsed - nobody can see the
+                // rows until it is expanded, well after the window is up. MainForm calls
+                // PopulateInitialList() at the end of its post-Shown session restore (window first,
+                // then tabs, then this). Until then RefreshSidebarList is a no-op (gated by
+                // _sidebarListReady), so no startup code path can trigger the scan early.
                 LayoutSidebarChildren();
                 ApplyTheme(); // theme the freshly-created list immediately
             }
@@ -522,14 +499,28 @@ namespace GxPT
             catch { }
         }
 
+        // One-time initial population, called by MainForm at the end of its post-Shown session
+        // restore. Ungates RefreshSidebarList (a no-op until now, see EnsureSidebarList) and builds
+        // the rows for the first time.
+        public void PopulateInitialList()
+        {
+            _sidebarListReady = true;
+            try
+            {
+                RefreshSidebarList();
+                UpdateSidebarScrollBar();
+            }
+            catch { }
+        }
+
         public void RefreshSidebarList()
         {
             try
             {
                 if (_lvConversations == null) return;
-                // No-op until the deferred initial population (post-Shown) has run: the list can't be
-                // seen before the window is up, and ListAll() on a cold cache is the launch's single
-                // most expensive disk scan. See EnsureSidebarList.
+                // No-op until PopulateInitialList has run (post-Shown): the list can't be seen before
+                // the window is up, and ListAll() on a cold cache is the launch's single most
+                // expensive disk scan. See EnsureSidebarList.
                 if (!_sidebarListReady) return;
                 var items = ConversationStore.ListAll();
                 _lvConversations.SuspendLayout();

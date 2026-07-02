@@ -70,10 +70,20 @@ namespace GxPT
             PerfLog.Mark("MainForm constructed");
             if (!string.IsNullOrEmpty(fileArg))
             {
-                // Defer to after the form is shown so dialogs are parented correctly
+                // Defer to after the form is shown so dialogs are parented correctly. Queued via
+                // BeginInvoke so it runs AFTER the session restore (which MainForm queues from its
+                // own Shown handler, subscribed earlier) - the import should land on top of the
+                // restored session, not race it.
                 mainForm.Shown += (s, e) =>
                 {
-                    try { mainForm.ImportArchiveFromShell(fileArg); }
+                    try
+                    {
+                        mainForm.BeginInvoke((MethodInvoker)delegate
+                        {
+                            try { mainForm.ImportArchiveFromShell(fileArg); }
+                            catch { }
+                        });
+                    }
                     catch { }
                 };
             }

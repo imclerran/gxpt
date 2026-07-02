@@ -72,6 +72,7 @@
       <HintPath>..\src\Mcp35.Core\lib\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Configuration.Install" />
     <Reference Include="System.Web.Extensions">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
@@ -317,6 +318,7 @@
     <Compile Include="Services\TextFileAttachmentExtractor.cs" />
     <Compile Include="Services\ThemeService.cs" />
     <Compile Include="Services\KryptonThemeBridge.cs" />
+    <Compile Include="Services\NgenInstaller.cs" />
     <Compile Include="Services\PerfLog.cs" />
     <Compile Include="Utilities\FileSafe.cs" />
     <Compile Include="Utilities\ZipSafe.cs" />
