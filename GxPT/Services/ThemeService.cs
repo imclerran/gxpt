@@ -234,6 +234,10 @@ namespace GxPT
             try { themeName = AppSettings.GetString("color_theme"); }
             catch { themeName = null; }
             if (string.IsNullOrEmpty(themeName)) themeName = "blue"; // default
+            // "red" was retired in favor of purple (its dark chrome was already Sparkle Purple);
+            // a settings.json still carrying it gets the purple transcript so bubbles keep matching
+            // the purple chrome the bridge gives it.
+            if (themeName.Trim().Equals("red", StringComparison.OrdinalIgnoreCase)) themeName = "purple";
             ThemeDefinition def = null;
             lock (_lock) { _themes.TryGetValue(themeName, out def); }
             if (def == null) def = BuildBuiltinBlue();
