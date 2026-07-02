@@ -1042,6 +1042,10 @@ namespace GxPT
                         ctx.ApprovalPanel.ApplyTheme();
                     if (ctx != null && ctx.QuestionPanel != null)
                         ctx.QuestionPanel.ApplyTheme();
+                    // The workspace banner swaps its banner/text pair per theme and follows the
+                    // theme link color; re-resolve it alongside the other per-tab panels.
+                    if (ctx != null && ctx.WorkspaceStrip != null)
+                        ctx.WorkspaceStrip.ApplyTheme();
                 }
             }
             catch { }
