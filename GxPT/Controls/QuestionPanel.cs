@@ -107,6 +107,13 @@ namespace GxPT
             _submit.AutoSize = true;
             _submit.Margin = new Padding(4);
             _submit.Click += OnSubmitClicked;
+            // Draw with the accented "default button" chrome (the same look a form's AcceptButton
+            // gets). NotifyDefault is used instead of Form.AcceptButton because this panel lives in a
+            // tab page - the form's accept button is the composer's Send, and it must keep the Enter
+            // key. WinForms clears the default flag if this button is focused and then left (the form
+            // re-tracks its own default chain), so re-assert it when focus departs.
+            _submit.NotifyDefault(true);
+            _submit.LostFocus += delegate { try { _submit.NotifyDefault(true); } catch { } };
 
             _skip = new KryptonButton();
             _skip.Text = "Skip";
