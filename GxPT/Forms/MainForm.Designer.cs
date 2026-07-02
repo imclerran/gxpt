@@ -342,6 +342,10 @@
             // txtMessage
             // 
             this.txtMessage.AcceptsReturn = true;
+            // No border: the default Fixed3D frame's highlight edges read as a white outline around
+            // the input in dark mode, and in light mode the border was invisible against the white
+            // box anyway. The input's edge is defined by its themed BackColor against the composer.
+            this.txtMessage.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.txtMessage.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtMessage.Location = new System.Drawing.Point(0, 0);
             this.txtMessage.Margin = new System.Windows.Forms.Padding(0);
