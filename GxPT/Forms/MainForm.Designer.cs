@@ -333,6 +333,11 @@
             this.pnlInput.Controls.Add(this.txtMessage);
             this.pnlInput.Controls.Add(this.pnlInputRight);
             this.pnlInput.Dock = System.Windows.Forms.DockStyle.Bottom;
+            // The (borderless) message textbox docks Fill inside this panel; this padding leaves a
+            // ring of the panel visible around it, and the panel is painted the Krypton form/chrome
+            // background (ApplyThemedChrome) - i.e. the textbox's "border" is the form background
+            // color in both themes, replacing the Fixed3D frame that read white in dark mode.
+            this.pnlInput.Padding = new System.Windows.Forms.Padding(2);
             this.pnlInput.Location = new System.Drawing.Point(0, 21);
             this.pnlInput.MinimumSize = new System.Drawing.Size(0, 75);
             this.pnlInput.Name = "pnlInput";
