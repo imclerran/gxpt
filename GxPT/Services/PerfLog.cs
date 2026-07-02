@@ -18,6 +18,13 @@ namespace GxPT
         private static readonly object _lock = new object();
         private static int _toggleSeq;
 
+        // One-off diagnostic line outside a timed session (e.g. Krypton event-subscriber counts).
+        public static void Note(string message)
+        {
+            if (!Enabled) return;
+            Write(message);
+        }
+
         // Marks the start of one logical toggle; returns a session that stage timings attach to.
         public static Session Begin(string label)
         {
