@@ -447,6 +447,7 @@ namespace GxPT
                             string path = ConversationStore.GetPathForId(id);
                             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) continue;
                             var convo = ConversationStore.Load(_client, path);
+                            PerfLog.Mark("  restore: tab " + (i + 1) + " loaded from disk");
                             if (convo == null) continue;
 
                             if (!firstUsed)
@@ -456,10 +457,12 @@ namespace GxPT
                                 {
                                     OpenConversationInTab(blank, convo);
                                     firstUsed = true;
+                                    PerfLog.Mark("  restore: tab " + (i + 1) + " opened (visible tab)");
                                     continue;
                                 }
                             }
                             OpenConversationInNewTab(convo);
+                            PerfLog.Mark("  restore: tab " + (i + 1) + " opened");
                         }
                     }
                     catch { }
@@ -595,11 +598,14 @@ namespace GxPT
 
             // Initialize managers for UI concerns
             _sidebarManager = new SidebarManager(this, this.splitContainer1, this.miConversationHistory);
+            PerfLog.Mark("  managers: sidebar");
             _tabManager = new TabManager(this, this.tabControl1, this.msMain);
+            PerfLog.Mark("  managers: tabs");
             _themeManager = new ThemeManager(this, this.chatTranscript, this.txtMessage,
                 this.btnSend, this.btnAttach, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
             _inputManager = new InputManager(this, this.txtMessage, this.pnlInput,
                 this.btnSend, this.cmbModel, this.splitContainer1, this.pnlApiKeyBanner, this.pnlAttachmentsBanner);
+            PerfLog.Mark("  managers: theme+input");
 
             // Wire manager events
             if (_tabManager != null)

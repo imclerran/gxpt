@@ -35,6 +35,8 @@ namespace GxPT
             // Install global hover-to-scroll router (keeps focus where it is)
             try { HoverWheelRouter.Install(); }
             catch { }
+            // The gap between this mark and "ctor begin" is MainForm type/assembly load (Krypton JIT).
+            PerfLog.Mark("hover router installed");
             // Handle shell-open: if launched with a .gxpt/.gxcv/.gxsk/.gxpl file, import it on startup
             string fileArg = null;
             try
