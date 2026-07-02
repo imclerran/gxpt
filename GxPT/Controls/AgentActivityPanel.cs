@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -40,13 +41,12 @@ namespace GxPT
         private Rectangle[] _viewRects;
         private int _hoverView = -1;
 
-        // The "Stop" button: an owner-drawn region in the header that cancels the fan-out (trips the
-        // dispatcher's GroupCancellation via _onStop). _stopRect is recomputed each paint and hit-tested
-        // by the mouse handlers; _stopping latches after a click so the label reads "Stopping..." and
-        // further clicks are ignored until the fan-out ends.
+        // The "Stop agents" button: a real KryptonButton (themed by the global palette like every other
+        // chrome button), right-aligned in the header row. It cancels the fan-out (trips the
+        // dispatcher's GroupCancellation via _onStop); _stopping latches after a click so the label
+        // reads "Stopping..." and the button disables until the fan-out ends.
         private Action _onStop;
-        private Rectangle _stopRect;
-        private bool _stopHover;
+        private KryptonButton _stopButton;
         private bool _stopping;
 
         public AgentActivityPanel()
@@ -60,6 +60,49 @@ namespace GxPT
                 | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.ResizeRedraw
                 | ControlStyles.UserPaint, true);
+
+            _stopButton = new KryptonButton();
+            _stopButton.Text = "Stop agents";
+            _stopButton.Visible = false;
+            _stopButton.Click += StopButton_Click;
+            this.Controls.Add(_stopButton);
+        }
+
+        private void StopButton_Click(object sender, EventArgs e)
+        {
+            if (_stopping) return;
+            Action onStop = _onStop;
+            _stopping = true;              // latch: label -> "Stopping...", button disabled
+            _stopButton.Text = "Stopping...";
+            _stopButton.Enabled = false;
+            LayoutStopButton();
+            Invalidate();
+            if (onStop != null) onStop();
+        }
+
+        // Right-align the Stop button in the header row, sized to its label. The header text line is
+        // shorter than a comfortable button, so the button borrows the padding above it: top at
+        // Pad - 4 with height LineH() + 6 puts its bottom exactly at the first agent row's top
+        // (Pad + LineH() + 2) - vertically centered on the header without covering any row text.
+        private void LayoutStopButton()
+        {
+            if (_stopButton == null) return;
+            try
+            {
+                int btnH = LineH() + 6;
+                int btnW = TextRenderer.MeasureText(_stopButton.Text, this.Font, Size.Empty,
+                    TextFormatFlags.NoPadding).Width + 24;
+                int x = this.ClientSize.Width - Pad - btnW;
+                if (x < Pad) x = Pad;
+                _stopButton.SetBounds(x, Pad - 4, btnW, btnH);
+            }
+            catch { }
+        }
+
+        protected override void OnResize(EventArgs eventargs)
+        {
+            base.OnResize(eventargs);
+            LayoutStopButton();
         }
 
         // Start showing a fan-out of the given agents (in dispatch order), all queued. onStop (may be null)
@@ -84,12 +127,15 @@ namespace GxPT
             _onStop = onStop;
             _onViewTranscript = onViewTranscript;
             _stopping = false;
-            _stopHover = false;
             _hoverRow = -1;
             _hoverView = -1;
             // Match the theme background up front so there's no white flash before the first paint.
             try { this.BackColor = ThemeService.GetColors(IsDark()).AssistantBubbleBack; }
             catch { }
+            _stopButton.Text = "Stop agents";
+            _stopButton.Enabled = true;
+            _stopButton.Visible = _onStop != null && n > 0;
+            LayoutStopButton();
             RecalcHeight();
             this.Visible = n > 0;
             Invalidate();
@@ -121,7 +167,7 @@ namespace GxPT
             _onStop = null;
             _onViewTranscript = null;
             _stopping = false;
-            _stopHover = false;
+            _stopButton.Visible = false;
             _hoverRow = -1;
             _hoverView = -1;
             if (_tip != null) _tip.SetToolTip(this, string.Empty);
@@ -161,6 +207,7 @@ namespace GxPT
             base.OnFontChanged(e);
             if (_boldFont != null) { _boldFont.Dispose(); _boldFont = null; }
             RecalcHeight();
+            LayoutStopButton();
             Invalidate();
         }
 
@@ -177,7 +224,7 @@ namespace GxPT
             using (Pen pen = new Pen(tc.AssistantBubbleBorder))
                 g.DrawRectangle(pen, border);
 
-            if (_slugs == null || _slugs.Length == 0) { _stopRect = Rectangle.Empty; return; }
+            if (_slugs == null || _slugs.Length == 0) return;
 
             int lineH = LineH() + 2;
             int y = Pad;
@@ -198,24 +245,7 @@ namespace GxPT
             if (cancelled > 0) header += ", " + cancelled + " cancelled";
             header += " (" + _slugs.Length + " total)";
             TextRenderer.DrawText(g, header, BoldFont(), new Point(Pad, y), tc.UiForeground, TextFormatFlags.NoPadding);
-
-            // Stop button, right-aligned in the header row.
-            if (_onStop != null)
-            {
-                string btnText = _stopping ? "Stopping..." : "Stop agents";
-                int btnW = TextRenderer.MeasureText(g, btnText, this.Font, Size.Empty, TextFormatFlags.NoPadding).Width + 16;
-                int btnX = this.ClientRectangle.Width - Pad - btnW - 1;
-                if (btnX < Pad) btnX = Pad;
-                _stopRect = new Rectangle(btnX, y, btnW, lineH);
-
-                Color face = (_stopHover && !_stopping) ? tc.CopyHover : tc.CodeBack;
-                using (SolidBrush bb = new SolidBrush(face)) g.FillRectangle(bb, _stopRect);
-                Rectangle br = _stopRect; br.Width -= 1; br.Height -= 1;
-                using (Pen bp = new Pen(tc.AssistantBubbleBorder)) g.DrawRectangle(bp, br);
-                TextRenderer.DrawText(g, btnText, this.Font, _stopRect, _stopping ? cQueued : tc.UiForeground,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            }
-            else _stopRect = Rectangle.Empty;
+            // (The Stop button is a real KryptonButton child, laid out by LayoutStopButton - not drawn here.)
 
             y += lineH;
 
@@ -306,25 +336,19 @@ namespace GxPT
             return idx >= 0 && idx + 2 < name.Length ? name.Substring(idx + 2) : name;
         }
 
-        private bool OverStop(Point p)
-        {
-            return _onStop != null && !_stopping && _stopRect.Width > 0 && _stopRect.Contains(p);
-        }
-
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            bool overStop = OverStop(e.Location);
-            if (overStop != _stopHover) { _stopHover = overStop; Invalidate(_stopRect); }
-
-            int vrow = overStop ? -1 : ViewRowAt(e.Location);
+            // The Stop button is a real child control now - the mouse never reaches the panel while
+            // over it, so no Stop hit-testing is needed here.
+            int vrow = ViewRowAt(e.Location);
             if (vrow != _hoverView) { _hoverView = vrow; Invalidate(); }
 
-            this.Cursor = (overStop || vrow >= 0) ? Cursors.Hand : Cursors.Default;
+            this.Cursor = (vrow >= 0) ? Cursors.Hand : Cursors.Default;
 
-            // Retarget the task tooltip as the hovered row changes (over Stop -> clear; over a row, incl.
-            // its View link, shows that row's task).
-            int row = overStop ? -1 : RowAt(e.Location);
+            // Retarget the task tooltip as the hovered row changes (over a row, incl. its View link,
+            // shows that row's task).
+            int row = RowAt(e.Location);
             if (row != _hoverRow)
             {
                 _hoverRow = row;
@@ -345,12 +369,6 @@ namespace GxPT
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (_stopHover)
-            {
-                _stopHover = false;
-                this.Cursor = Cursors.Default;
-                Invalidate(_stopRect);
-            }
             if (_hoverView != -1) { _hoverView = -1; Invalidate(); }
             if (_hoverRow != -1)
             {
@@ -388,16 +406,6 @@ namespace GxPT
         {
             base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
-            if (OverStop(e.Location))
-            {
-                Action onStop = _onStop;
-                _stopping = true;          // latch: label -> "Stopping...", further clicks ignored
-                _stopHover = false;
-                this.Cursor = Cursors.Default;
-                Invalidate();
-                if (onStop != null) onStop();
-                return;
-            }
             int vrow = ViewRowAt(e.Location);
             if (vrow >= 0 && _onViewTranscript != null) _onViewTranscript(vrow);
         }

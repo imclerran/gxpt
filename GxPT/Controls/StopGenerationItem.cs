@@ -107,11 +107,13 @@ namespace GxPT
             Rectangle bounds = new Rectangle(0, 0, this.Width, this.Height);
 
             // Passive state (awaiting a prompt, or sub-agents running): a flat status label, no
-            // border/fill, so it reads as passive text rather than a clickable Stop button. Uses
-            // ControlText (like the strip's other labels) rather than the lighter GrayText.
+            // border/fill, so it reads as passive text rather than a clickable Stop button. Drawn in
+            // the same color Krypton paints the strip's other labels with (near-white under Sparkle
+            // dark, the chrome text color in light) - SystemColors.ControlText stayed black on the
+            // dark strip and was unreadable.
             if (Passive)
             {
-                TextRenderer.DrawText(g, this.Text, this.Font, bounds, SystemColors.ControlText,
+                TextRenderer.DrawText(g, this.Text, this.Font, bounds, KryptonThemeBridge.StatusStripTextColor(),
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
                 return;
