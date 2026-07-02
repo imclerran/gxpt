@@ -63,6 +63,13 @@ namespace GxPT
             DoubleBuffered = true;
             KeyPreview = true;
             StartPosition = FormStartPosition.CenterScreen;
+            // The Krypton toolstrip renderer "erases" the toolbar's rounded corners with the
+            // PARENT's BackColor property. A KryptonForm paints its client area from the palette,
+            // so its BackColor property still held the stock light color - which peeked through as
+            // white notches at the strip's corners. Set it to the themed chrome color so the corner
+            // erase matches what's actually painted around the strip.
+            try { BackColor = KryptonThemeBridge.FormBackColor(); }
+            catch { }
 
             try
             {
@@ -85,12 +92,10 @@ namespace GxPT
             _toolStrip.GripStyle = ToolStripGripStyle.Hidden;
             // No RenderMode override: the default (manager) renderer is Krypton's global toolstrip
             // renderer, so the toolbar - fills, hover chrome, and item text - follows the active
-            // palette exactly like the main window's menu and status strips.
-            // The renderer rounds the strip's corners; the pixels outside the rounding show the
-            // strip's own BackColor (a system white by default). Paint them the Krypton form/chrome
-            // background so the corners blend into the themed window instead of flashing white.
-            try { _toolStrip.BackColor = KryptonThemeBridge.FormBackColor(); }
-            catch { }
+            // palette exactly like the main window's menu and status strips. Do NOT set the strip's
+            // own BackColor: the renderer skips its gradient when it detects a custom BackColor and
+            // fills flat instead. The strip's rounded corners are "erased" by the renderer using the
+            // PARENT's BackColor - handled by setting the form's BackColor in the constructor.
 
             var outBtn = new ToolStripButton("Zoom Out");
             outBtn.ToolTipText = "Zoom out (-)";
