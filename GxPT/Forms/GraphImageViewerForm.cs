@@ -86,6 +86,11 @@ namespace GxPT
             // No RenderMode override: the default (manager) renderer is Krypton's global toolstrip
             // renderer, so the toolbar - fills, hover chrome, and item text - follows the active
             // palette exactly like the main window's menu and status strips.
+            // The renderer rounds the strip's corners; the pixels outside the rounding show the
+            // strip's own BackColor (a system white by default). Paint them the Krypton form/chrome
+            // background so the corners blend into the themed window instead of flashing white.
+            try { _toolStrip.BackColor = KryptonThemeBridge.FormBackColor(); }
+            catch { }
 
             var outBtn = new ToolStripButton("Zoom Out");
             outBtn.ToolTipText = "Zoom out (-)";
