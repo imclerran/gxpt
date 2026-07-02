@@ -314,7 +314,10 @@ namespace GxPT
                 if (_txtMessage != null)
                 {
                     var colors = ThemeService.GetColors(dark);
-                    _txtMessage.BackColor = colors.UiBackground;
+                    // The Krypton form/chrome background rather than the transcript's UiBackground:
+                    // the (borderless) input then blends into the composer panel around it instead
+                    // of sitting as a darker cut-out with a visible edge.
+                    _txtMessage.BackColor = KryptonThemeBridge.FormBackColor();
                     // Do not apply theme foreground color for hint text
                     if (_txtMessage.ForeColor != System.Drawing.Color.Gray || _txtMessage.Text == "")
                         _txtMessage.ForeColor = colors.UiForeground;
