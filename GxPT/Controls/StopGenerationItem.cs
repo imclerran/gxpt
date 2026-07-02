@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -9,15 +10,18 @@ namespace GxPT
     // tab's RequestCancellation so the in-flight curl process is killed (dropping the connection);
     // the streaming/orchestrator paths then finalize the turn cleanly and the indicator is hidden.
     //
-    // Owner-drawn ToolStripItem (like ContextMeterItem) styled after the transcript's Retry button
-    // (a flat fill, a 1px border, a text label) but in SYSTEM colors, not the transcript theme: the
-    // strip is system chrome, so the border and "Stop" label use the control foreground and the
-    // fills stay neutral (the strip's own Control color at rest, the tab glyph buttons' light-grey
-    // hover/press shades). Height matches tspGenProgress exactly so the pair reads as one row.
-    internal sealed class StopGenerationItem : ToolStripItem
+    // A ToolStripControlHost wrapping a real KryptonButton, so the button is themed by the global
+    // Krypton palette exactly like the rest of the chrome (it was previously owner-drawn in system
+    // colors, which read wrong against the themed strip). Either passive state (awaiting a tool
+    // approval, or sub-agents running) hides the button and instead draws a flat status label on the
+    // hosting panel, in the same color Krypton paints the strip's other labels. Height matches
+    // tspGenProgress exactly so the pair reads as one row.
+    internal sealed class StopGenerationItem : ToolStripControlHost
     {
-        private bool _hover;
-        private bool _pressed;
+        private readonly HostPanel _panel;
+        private readonly KryptonButton _button;
+        private readonly ToolTip _tip;
+
         private bool _awaiting;
         private bool _agentsRunning;
 
@@ -32,57 +36,82 @@ namespace GxPT
         private const string AwaitingTip = "Waiting for tool approval";
         private const string AgentsTip = "Sub-agents are running - use Stop in the panel above to cancel them";
 
-        // Either passive state drops the button chrome and shows a status label instead (the turn isn't
+        // Either passive state drops the button and shows a status label instead (the turn isn't
         // stopping from here: it's paused at a prompt, or its work is happening in sub-agents).
         private bool Passive { get { return _awaiting || _agentsRunning; } }
 
         public StopGenerationItem()
+            : base(new HostPanel())
         {
+            _panel = (HostPanel)this.Control;
+
+            _button = new KryptonButton();
+            _button.Text = StopText;
+            // The strip row is only ItemHeight tall; zero content padding so the label fits the
+            // slim button without clipping.
+            try { _button.StateCommon.Content.Padding = new Padding(0); }
+            catch { }
+            // Route the hosted control's click out through the ToolStripItem's own Click event, so
+            // the form's existing tsiStopGen.Click wiring keeps working unchanged.
+            _button.Click += delegate { try { this.PerformClick(); } catch { } };
+            _panel.Controls.Add(_button);
+
+            // Hosted controls eat the mouse, so the strip never shows the item's ToolTipText for
+            // them; drive a plain ToolTip on the hosted controls instead.
+            _tip = new ToolTip();
+
             this.AutoSize = false;
-            this.Text = StopText;
-            this.Size = new Size(PreferredWidth(), ItemHeight);
+            UpdateStateVisuals();
         }
 
         // While a tool-approval (or continuation) prompt awaits the user's decision, the turn is
-        // paused at the gate: there is nothing to "Stop", so this item drops its button chrome and
-        // shows a passive "awaiting user..." status label instead. The host pauses the marquee and
-        // ignores clicks on this item in that state.
+        // paused at the gate: there is nothing to "Stop", so this item drops its button and shows a
+        // passive "awaiting user..." status label instead. The host pauses the marquee and ignores
+        // clicks on this item in that state.
         public bool Awaiting
         {
             get { return _awaiting; }
-            set { if (_awaiting != value) { _awaiting = value; OnPassiveChanged(); } }
+            set { if (_awaiting != value) { _awaiting = value; UpdateStateVisuals(); } }
         }
 
-        // While a dispatch_agent fan-out runs, the turn is busy but the work is in the sub-agents (cancel
-        // them with the panel's Stop button); this item shows a passive "Sub-agents running..." label, the
-        // host keeps the marquee running, and clicks here are ignored.
+        // While a dispatch_agent fan-out runs, the turn is busy but the work is in the sub-agents
+        // (cancel them with the panel's Stop button); this item shows a passive "Sub-agents
+        // running..." label, the host keeps the marquee running, and clicks here are ignored.
         public bool AgentsRunning
         {
             get { return _agentsRunning; }
-            set { if (_agentsRunning != value) { _agentsRunning = value; OnPassiveChanged(); } }
+            set { if (_agentsRunning != value) { _agentsRunning = value; UpdateStateVisuals(); } }
         }
 
-        private void OnPassiveChanged()
+        // Reflect the current state onto the hosted controls: which of button/label shows, the text,
+        // the tooltip, and the item width (sized to the current text so nothing ever clips).
+        private void UpdateStateVisuals()
         {
-            _hover = false;
-            _pressed = false;
-            if (_awaiting) { this.Text = AwaitingText; this.ToolTipText = AwaitingTip; }
-            else if (_agentsRunning) { this.Text = AgentsText; this.ToolTipText = AgentsTip; }
-            else { this.Text = StopText; this.ToolTipText = StopTip; }
-            try { this.Width = PreferredWidth(); }
+            string text = _awaiting ? AwaitingText : (_agentsRunning ? AgentsText : StopText);
+            string tip = _awaiting ? AwaitingTip : (_agentsRunning ? AgentsTip : StopTip);
+
+            int w;
+            try { w = TextRenderer.MeasureText(text, this.Font).Width + 2 * PadX; }
+            catch { w = 44; }
+
+            _panel.Passive = Passive;
+            _panel.PassiveText = text;
+            _panel.Size = new Size(w, ItemHeight);
+
+            _button.Visible = !Passive;
+            _button.SetBounds(0, 0, w, ItemHeight);
+            _button.Text = StopText;
+
+            try
+            {
+                _tip.SetToolTip(_panel, tip);
+                _tip.SetToolTip(_button, tip);
+            }
             catch { }
-            Invalidate();
-        }
+            this.ToolTipText = tip;
 
-        protected override Size DefaultSize
-        {
-            get { return new Size(PreferredWidth(), ItemHeight); }
-        }
-
-        private int PreferredWidth()
-        {
-            try { return TextRenderer.MeasureText(this.Text, this.Font).Width + 2 * PadX; }
-            catch { return 44; }
+            this.Size = _panel.Size;
+            _panel.Invalidate();
         }
 
         // The strip's font can change after construction (it is inherited); keep the width fitting
@@ -90,47 +119,42 @@ namespace GxPT
         protected override void OnFontChanged(EventArgs e)
         {
             base.OnFontChanged(e);
-            try { this.Width = PreferredWidth(); }
-            catch { }
+            UpdateStateVisuals();
         }
 
-        protected override void OnMouseEnter(EventArgs e) { if (!Passive) { _hover = true; Invalidate(); } base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { _hover = false; _pressed = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { if (!Passive && e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); } base.OnMouseDown(e); }
-        protected override void OnMouseUp(MouseEventArgs e) { _pressed = false; Invalidate(); base.OnMouseUp(e); }
-
-        protected override void OnPaint(PaintEventArgs e)
+        protected override void Dispose(bool disposing)
         {
-            base.OnPaint(e);
-            Graphics g = e.Graphics;
+            if (disposing && _tip != null) _tip.Dispose();
+            base.Dispose(disposing); // disposes the hosted panel (and with it the button)
+        }
 
-            Rectangle bounds = new Rectangle(0, 0, this.Width, this.Height);
+        // The hosting panel: transparent over the strip so the themed strip background shows
+        // through, and the flat passive status label is drawn directly on it (in the same color
+        // Krypton paints the strip's other labels) when the button is hidden.
+        private sealed class HostPanel : Panel
+        {
+            public bool Passive;
+            public string PassiveText;
 
-            // Passive state (awaiting a prompt, or sub-agents running): a flat status label, no
-            // border/fill, so it reads as passive text rather than a clickable Stop button. Drawn in
-            // the same color Krypton paints the strip's other labels with (near-white under Sparkle
-            // dark, the chrome text color in light) - SystemColors.ControlText stayed black on the
-            // dark strip and was unreadable.
-            if (Passive)
+            public HostPanel()
             {
-                TextRenderer.DrawText(g, this.Text, this.Font, bounds, KryptonThemeBridge.StatusStripTextColor(),
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
-                return;
+                SetStyle(ControlStyles.AllPaintingInWmPaint
+                    | ControlStyles.OptimizedDoubleBuffer
+                    | ControlStyles.SupportsTransparentBackColor
+                    | ControlStyles.ResizeRedraw
+                    | ControlStyles.UserPaint, true);
+                BackColor = Color.Transparent;
             }
 
-            Rectangle border = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-
-            Color fill = _pressed ? Color.FromArgb(210, 210, 210)
-                : (_hover ? Color.FromArgb(230, 230, 230) : SystemColors.Control);
-            using (SolidBrush sb = new SolidBrush(fill))
-                g.FillRectangle(sb, bounds);
-            using (Pen pen = new Pen(SystemColors.ControlText))
-                g.DrawRectangle(pen, border);
-
-            TextRenderer.DrawText(g, this.Text, this.Font, bounds, SystemColors.ControlText,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                if (!Passive || string.IsNullOrEmpty(PassiveText)) return;
+                TextRenderer.DrawText(e.Graphics, PassiveText, this.Font, this.ClientRectangle,
+                    KryptonThemeBridge.StatusStripTextColor(),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            }
         }
     }
 }
