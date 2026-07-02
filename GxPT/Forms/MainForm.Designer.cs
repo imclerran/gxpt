@@ -603,10 +603,11 @@
             //
             // tsiStopGen
             //
-            // One pixel less top/bottom margin than tspGenProgress (4,3): the item is 17px to the
-            // bar's 15px (Krypton's border chrome insets the button face ~1px per edge, so at equal
-            // heights the button read smaller), and both then occupy the same 22px row band.
-            this.tsiStopGen.Margin = new System.Windows.Forms.Padding(2, 3, 0, 2);
+            // Two pixels less top/bottom margin than tspGenProgress (4,3): the item is 19px to the
+            // bar's 15px (Krypton's border chrome insets the button face ~1px per edge, and the
+            // remaining extra height is a deliberate visual choice), keeping both centered on the
+            // same 22px row band.
+            this.tsiStopGen.Margin = new System.Windows.Forms.Padding(2, 2, 0, 1);
             this.tsiStopGen.Name = "tsiStopGen";
             this.tsiStopGen.ToolTipText = "Stop generating";
             this.tsiStopGen.Visible = false;
