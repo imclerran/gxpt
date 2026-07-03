@@ -357,6 +357,12 @@ namespace GxPT
                     sb.Append(c.Name).Append('=').Append(((KryptonCheckBox)c).Checked).Append('\n');
                 else if (c is ComboBox)
                     sb.Append(c.Name).Append('=').Append(((ComboBox)c).Text).Append('\n');
+                // ModelComboBox must be snapshotted by its FULL id, not .Text: the displayed text is
+                // the short model name (author prefix stripped), so two models differing only by
+                // author would snapshot identically and switching between them would never mark the
+                // form dirty - while the save path persists the full SelectedModelId.
+                else if (c is ModelComboBox)
+                    sb.Append(c.Name).Append('=').Append(((ModelComboBox)c).SelectedModelId ?? string.Empty).Append('\n');
                 else if (c is KryptonComboBox)
                     sb.Append(c.Name).Append('=').Append(((KryptonComboBox)c).Text).Append('\n');
                 // Use .Text, not .Value: reading NumericUpDown.Value forces ValidateEditText,
@@ -1554,9 +1560,11 @@ namespace GxPT
             _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
                 + "dispatch_agent) can ask for low/medium/high without naming a model.");
 
-            this.cmbEffortLow = MakeEffortCombo();
-            this.cmbEffortMedium = MakeEffortCombo();
-            this.cmbEffortHigh = MakeEffortCombo();
+            // Named so the dirty-tracking snapshot lines are distinct per tier (an unnamed control
+            // snapshots as "=value", making the three tiers ambiguous with each other).
+            this.cmbEffortLow = MakeEffortCombo("cmbEffortLow");
+            this.cmbEffortMedium = MakeEffortCombo("cmbEffortMedium");
+            this.cmbEffortHigh = MakeEffortCombo("cmbEffortHigh");
 
             grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
             grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
@@ -1581,9 +1589,10 @@ namespace GxPT
             return c;
         }
 
-        private ModelComboBox MakeEffortCombo()
+        private ModelComboBox MakeEffortCombo(string name)
         {
             ModelComboBox c = new ModelComboBox();   // short display name + full id, Krypton chrome, self-sizing dropdown
+            c.Name = name;
             c.Dock = DockStyle.Fill;
             c.Margin = new Padding(0, 2, 6, 2);
             return c;

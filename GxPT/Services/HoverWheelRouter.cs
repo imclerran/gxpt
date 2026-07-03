@@ -85,14 +85,17 @@ namespace GxPT
                     catch { }
                 }
 
-                // 2) Otherwise forward to ListView or TextBoxBase in the ancestry
+                // 2) Otherwise forward to a scrollable control in the ancestry. DataGridView is in
+                // the list for the conversation-history sidebar (a KryptonDataGridView since the
+                // Krypton migration): its native scrollbars are off and it scrolls via its own
+                // MouseWheel handler, which only fires if this router forwards hover wheel to it.
                 try
                 {
                     Control cur = hit;
                     int guard = 0;
                     while (cur != null && guard++ < 10)
                     {
-                        if ((cur is ListView || cur is TextBoxBase || cur is ComboBox || cur is UpDownBase) && cur.Visible)
+                        if ((cur is ListView || cur is TextBoxBase || cur is ComboBox || cur is UpDownBase || cur is DataGridView) && cur.Visible)
                         {
                             SendMessage(cur.Handle, WM_MOUSEWHEEL, m.WParam, m.LParam);
                             return true;

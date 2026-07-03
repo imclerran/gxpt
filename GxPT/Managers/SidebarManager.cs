@@ -368,7 +368,9 @@ namespace GxPT
             {
                 if (_lvConversations != null) return;
 
-                _lvConversations = new KryptonDataGridView();
+                ConversationGridView grid = new ConversationGridView();
+                grid.EnterActivated += delegate { TryOpenSelectedConversation(); };
+                _lvConversations = grid;
                 _lvConversations.ColumnHeadersVisible = false;   // no top header row
                 _lvConversations.RowHeadersVisible = false;      // no left row-selector gutter
                 _lvConversations.AllowUserToAddRows = false;
@@ -655,6 +657,12 @@ namespace GxPT
             catch { }
         }
 
+        // Carries fractional wheel notches between events: precision touchpads and free-spin wheels
+        // send deltas well under the classic 120 per notch, which plain integer division would
+        // discard every time, leaving the sidebar wheel-dead on those devices. (Same pattern as
+        // ChatTranscriptControl's _wheelRemainderY.)
+        private int _sidebarWheelRemainder;
+
         // The grid's native wheel scrolling is off (ScrollBars=None), so scroll it here and resync the bar.
         private void LvConversations_MouseWheel(object sender, MouseEventArgs e)
         {
@@ -671,8 +679,15 @@ namespace GxPT
 
                 int lines = SystemInformation.MouseWheelScrollLines;
                 if (lines <= 0) lines = 3;
+
+                // Accumulate sub-notch deltas so precision devices scroll once enough has built up.
+                int total = e.Delta + _sidebarWheelRemainder;
+                int notches = total / 120;
+                _sidebarWheelRemainder = total - notches * 120;
+                if (notches == 0) return;
+
                 int first = Math.Max(0, _lvConversations.FirstDisplayedScrollingRowIndex);
-                int target = Math.Max(0, Math.Min(maxFirst, first - (e.Delta / 120) * lines));
+                int target = Math.Max(0, Math.Min(maxFirst, first - notches * lines));
                 try { _lvConversations.FirstDisplayedScrollingRowIndex = target; }
                 catch { }
                 UpdateSidebarScrollBar();
@@ -926,6 +941,27 @@ namespace GxPT
                 }
             }
             catch { }
+        }
+
+        // The conversation grid. The old ListView's ItemActivate fired on BOTH double-click and the
+        // Enter key; DataGridView instead consumes Enter as row navigation inside its dialog-key
+        // processing - before any KeyDown handler could see it - so keyboard users lost the ability
+        // to open a conversation. Intercept Enter there and surface it as an activation event
+        // (double-click stays on CellDoubleClick).
+        private sealed class ConversationGridView : KryptonDataGridView
+        {
+            public event EventHandler EnterActivated;
+
+            protected override bool ProcessDialogKey(Keys keyData)
+            {
+                if ((keyData & Keys.KeyCode) == Keys.Enter && !IsCurrentCellInEditMode)
+                {
+                    EventHandler h = EnterActivated;
+                    if (h != null) h(this, EventArgs.Empty);
+                    return true; // consumed: don't also move the selection down a row
+                }
+                return base.ProcessDialogKey(keyData);
+            }
         }
 
         // The inline rename editor. A plain TextBox parented inside the DataGridView loses its

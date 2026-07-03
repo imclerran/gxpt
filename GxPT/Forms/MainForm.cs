@@ -417,16 +417,21 @@ namespace GxPT
         // the whole restore; now the user sees the window ~1s sooner and the tabs pop in.
         private void RestoreSessionAfterShown()
         {
-            // Build the MCP host first (its ~200ms was deferred out of the constructor): the restore
-            // epilogue pre-warms the visible tab's workdir servers and reconciles the skills server,
-            // both of which need a live host to act on.
-            _mcpHostStartupDeferred = false;
-            try { RebuildMcpHost(); }
-            catch { }
-
+            // Tabs first, MCP host second. The host build reads the ACTIVE conversation's skill
+            // enablement (and pre-warms its workdir servers itself), so building it before the
+            // restore would evaluate the blank initial tab - and whenever the restored active
+            // conversation's enablement differed, the restore epilogue's skills reconcile would
+            // dispose and rebuild the entire host a second time, killing servers mid-connect.
+            // While the gate is still up, any RebuildMcpHost reached from inside the restore
+            // (OnTabsChanged is suppressed, but the epilogue's SlashRefreshSkillsServer isn't)
+            // stays a no-op.
             try { RestoreOpenTabsOnStartup(); }
             catch { }
             _sessionRestoreCompleted = true;
+
+            _mcpHostStartupDeferred = false;
+            try { RebuildMcpHost(); }
+            catch { }
             // The status bar synced in the constructor, before tabs were restored - and no
             // OnTabSelected fires for the tab that is already selected, so without this the
             // first visible tab shows empty usage stats until the user switches away and back.
@@ -537,13 +542,12 @@ namespace GxPT
                 try { HydrateTabIfNeeded(_tabManager != null ? _tabManager.GetActiveContext() : null); }
                 catch { }
 
-                // Pre-warm MCP servers for the visible tab only (one reconcile, off the UI thread).
-                // Other tabs' servers launch lazily when they're sent to or first selected.
+                // At STARTUP both calls below are no-ops: the MCP host doesn't exist yet (it is
+                // built right after this restore returns, in RestoreSessionAfterShown, evaluating
+                // this now-active conversation's skills and pre-warming its workdir itself). They
+                // stay for defense in depth should this method ever run with a live host.
                 try { SyncMcpWorkingDirFromActiveTab(); }
                 catch { }
-
-                // OnTabsChanged was suppressed during the restore loop; bring the Skills MCP server
-                // into line with the now-active conversation once.
                 try { SlashRefreshSkillsServer(); }
                 catch { }
             }
