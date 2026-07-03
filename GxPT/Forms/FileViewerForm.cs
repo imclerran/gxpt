@@ -8,10 +8,15 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
-    public partial class FileViewerForm : Form
+    // KryptonForm: themed window chrome matching the rest of the app. The client area is fully
+    // covered by the RichTextBox (text mode) or PictureBox (image mode), which keep their own
+    // transcript-theme colors, so no other Krypton controls are involved. The copy context menu is
+    // themed by Krypton's global toolstrip renderer automatically.
+    public partial class FileViewerForm : KryptonForm
     {
         // Created programmatically for image attachments; null for text-only mode.
         private PictureBox _pictureBox;

@@ -5,6 +5,8 @@ using System.Drawing;
 using System.Linq;
 using System.IO;
 using System.Windows.Forms;
+using Krypton.Navigator;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -29,19 +31,27 @@ namespace GxPT
         private int _sidebarStartWidth;
 
         // UI components
-        private ListView _lvConversations;
+        private KryptonDataGridView _lvConversations;
         private Panel _sidebarArrowPanel;
-        private ImageList _lvRowHeightImages;
         private ContextMenuStrip _conversationContextMenu;
         private TextBox _renameTextBox;
         private Panel _renameHostPanel;
-        private ListViewItem _renamingItem;
+        private DataGridViewRow _renamingItem;
+        private int _sidebarRowHeight = 22;
+        // Themed vertical scrollbar overlaid on the conversation grid (whose native scrollbars are off).
+        private KryptonScrollBar _sidebarScrollBar;
+        private const int SidebarScrollBarWidth = 17;
+        private bool _syncingSidebarScroll;
+
+        // False until the deferred initial population runs (post-Shown); RefreshSidebarList is a
+        // no-op before then so startup paths can't trigger the cold conversation-metadata disk scan.
+        private bool _sidebarListReady;
 
         // Tooltip for the sidebar arrow clickable region
         private ToolTip _sidebarToolTip;
 
         // Open conversations tracking
-        private readonly Dictionary<string, TabPage> _openConversationsById = new Dictionary<string, TabPage>();
+        private readonly Dictionary<string, KryptonPage> _openConversationsById = new Dictionary<string, KryptonPage>();
 
         public event Action SidebarToggled;
 
@@ -318,7 +328,10 @@ namespace GxPT
                 int cxRight = Math.Max(arrowW + 1, Math.Min(w - paddingRight, w));
                 int cxLeft = Math.Max(arrowW + 1, Math.Min(w - paddingRight, w));
 
-                using (var sb = new SolidBrush(Color.DimGray))
+                Color glyphColor;
+                try { glyphColor = KryptonThemeBridge.MenuTextColor(); }
+                catch { glyphColor = Color.DimGray; }
+                using (var sb = new SolidBrush(glyphColor))
                 {
                     var oldMode = e.Graphics.SmoothingMode;
                     e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -355,19 +368,49 @@ namespace GxPT
             {
                 if (_lvConversations != null) return;
 
-                _lvConversations = new ListView();
-                _lvConversations.View = View.Details;
-                _lvConversations.FullRowSelect = true;
-                _lvConversations.HideSelection = false;
-                _lvConversations.HeaderStyle = ColumnHeaderStyle.None;
-                _lvConversations.BorderStyle = BorderStyle.None;
-                _lvConversations.ShowItemToolTips = true;
-                _lvConversations.Dock = DockStyle.Left;
-                _lvConversations.Columns.Add("Conversation", 200, HorizontalAlignment.Left);
+                ConversationGridView grid = new ConversationGridView();
+                grid.EnterActivated += delegate { TryOpenSelectedConversation(); };
+                _lvConversations = grid;
+                _lvConversations.ColumnHeadersVisible = false;   // no top header row
+                _lvConversations.RowHeadersVisible = false;      // no left row-selector gutter
+                _lvConversations.AllowUserToAddRows = false;
+                _lvConversations.AllowUserToDeleteRows = false;
+                _lvConversations.AllowUserToResizeRows = false;
+                _lvConversations.AllowUserToResizeColumns = false;
+                _lvConversations.AllowUserToOrderColumns = false;
+                _lvConversations.ReadOnly = true;
+                _lvConversations.EditMode = DataGridViewEditMode.EditProgrammatically;
                 _lvConversations.MultiSelect = false;
-                _lvConversations.ItemActivate += LvConversations_ItemActivate;
-                _lvConversations.MouseUp += LvConversations_MouseUp;
-                _lvConversations.Click += LvConversations_Click;
+                _lvConversations.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+                _lvConversations.BorderStyle = BorderStyle.None;
+                _lvConversations.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+                _lvConversations.RowTemplate.Height = _sidebarRowHeight;
+                _lvConversations.ShowCellToolTips = true;
+                _lvConversations.ScrollBars = ScrollBars.None; // scrolling is driven by the KryptonScrollBar
+                _lvConversations.Dock = DockStyle.Left;
+
+                // Single text column that fills the client width (no horizontal scroll).
+                var col = new DataGridViewTextBoxColumn();
+                col.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                col.SortMode = DataGridViewColumnSortMode.NotSortable;
+                col.Resizable = DataGridViewTriState.False;
+                col.DefaultCellStyle.Padding = new Padding(4, 0, 0, 0);
+                _lvConversations.Columns.Add(col);
+
+                _lvConversations.CellDoubleClick += LvConversations_CellDoubleClick;
+                _lvConversations.CellMouseUp += LvConversations_CellMouseUp;
+                _lvConversations.MouseDown += LvConversations_MouseDown;
+                _lvConversations.MouseWheel += LvConversations_MouseWheel;
+                _lvConversations.SelectionChanged += delegate { UpdateSidebarScrollBar(); };
+                _lvConversations.RowsAdded += delegate { UpdateSidebarScrollBar(); };
+                _lvConversations.RowsRemoved += delegate { UpdateSidebarScrollBar(); };
+
+                // Themed scrollbar overlaid in the reserved gutter to the left of the collapse arrow.
+                _sidebarScrollBar = new KryptonScrollBar();
+                _sidebarScrollBar.Orientation = ScrollBarOrientation.VERTICAL;
+                _sidebarScrollBar.Width = SidebarScrollBarWidth;
+                _sidebarScrollBar.Scroll += SidebarScrollBar_Scroll;
+                _splitContainer.Panel1.Controls.Add(_sidebarScrollBar);
 
                 // Create context menu but don't assign it directly
                 _conversationContextMenu = new ContextMenuStrip();
@@ -391,28 +434,83 @@ namespace GxPT
                 _conversationContextMenu.Items.Add(new ToolStripSeparator());
                 _conversationContextMenu.Items.Add(miDelete);
 
-                // No longer need to store in Tag
-
-                _lvConversations.BackColor = _splitContainer.Panel1.BackColor;
-                _lvConversations.OwnerDraw = false;
-
-                try
-                {
-                    if (_lvRowHeightImages == null)
-                    {
-                        _lvRowHeightImages = new ImageList();
-                        int rowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
-                        _lvRowHeightImages.ImageSize = new Size(1, rowHeight);
-                    }
-                    _lvConversations.SmallImageList = _lvRowHeightImages;
-                }
-                catch { }
+                _sidebarRowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
+                _lvConversations.RowTemplate.Height = _sidebarRowHeight;
 
                 _lvConversations.Resize += (s, e) => ResizeSidebarColumn();
                 _splitContainer.Panel1.Controls.Add(_lvConversations);
 
-                RefreshSidebarList();
+                // The initial population is deferred: it reads every conversation file's metadata off
+                // disk (cold cache at launch), and the sidebar starts collapsed - nobody can see the
+                // rows until it is expanded, well after the window is up. MainForm calls
+                // PopulateInitialList() at the end of its post-Shown session restore (window first,
+                // then tabs, then this). Until then RefreshSidebarList is a no-op (gated by
+                // _sidebarListReady), so no startup code path can trigger the scan early.
                 LayoutSidebarChildren();
+                ApplyTheme(); // theme the freshly-created list immediately
+            }
+            catch { }
+        }
+
+        // Paint the sidebar to match the themed KryptonForm chrome: the Krypton client background color
+        // (same as the composer/background panels) with the menu/label text color (same source as the
+        // open/close glyph and the tab +/x glyphs). Called on every theme apply and at startup.
+        public void ApplyTheme()
+        {
+            try
+            {
+                Color bg = KryptonThemeBridge.FormBackColor();
+                Color fg = KryptonThemeBridge.MenuTextColor();
+
+                if (_splitContainer != null && _splitContainer.Panel1 != null)
+                    _splitContainer.Panel1.BackColor = bg;
+                if (_lvConversations != null)
+                {
+                    // A subtle themed row-selection highlight: lighten the background in dark mode,
+                    // darken it in light mode.
+                    bool dark = fg.GetBrightness() > bg.GetBrightness();
+                    Color sel = dark ? ControlPaint.Light(bg, 0.5f) : ControlPaint.Dark(bg, 0.05f);
+
+                    _lvConversations.BackColor = bg;
+                    _lvConversations.ForeColor = fg;
+                    _lvConversations.BackgroundColor = bg;          // area below the rows
+                    _lvConversations.GridColor = bg;                // hide gridlines by matching bg
+                    _lvConversations.CellBorderStyle = DataGridViewCellBorderStyle.None;
+                    // KryptonDataGridView draws its own palette cell borders on top of the above; turn them
+                    // off so the conversation rows have no outlines.
+                    try { _lvConversations.StateCommon.DataCell.Border.DrawBorders = PaletteDrawBorders.None; }
+                    catch { }
+                    var cs = _lvConversations.DefaultCellStyle;
+                    cs.BackColor = bg;
+                    cs.ForeColor = fg;
+                    cs.SelectionBackColor = sel;
+                    cs.SelectionForeColor = fg;
+                }
+                if (_sidebarArrowPanel != null)
+                {
+                    _sidebarArrowPanel.BackColor = bg;
+                    _sidebarArrowPanel.Invalidate();
+                }
+                if (_renameHostPanel != null) _renameHostPanel.BackColor = bg;
+                if (_renameTextBox != null)
+                {
+                    _renameTextBox.BackColor = bg;
+                    _renameTextBox.ForeColor = fg;
+                }
+            }
+            catch { }
+        }
+
+        // One-time initial population, called by MainForm at the end of its post-Shown session
+        // restore. Ungates RefreshSidebarList (a no-op until now, see EnsureSidebarList) and builds
+        // the rows for the first time.
+        public void PopulateInitialList()
+        {
+            _sidebarListReady = true;
+            try
+            {
+                RefreshSidebarList();
+                UpdateSidebarScrollBar();
             }
             catch { }
         }
@@ -422,24 +520,33 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null) return;
+                // No-op until PopulateInitialList has run (post-Shown): the list can't be seen before
+                // the window is up, and ListAll() on a cold cache is the launch's single most
+                // expensive disk scan. See EnsureSidebarList.
+                if (!_sidebarListReady) return;
                 var items = ConversationStore.ListAll();
-                _lvConversations.BeginUpdate();
+                _lvConversations.SuspendLayout();
                 try
                 {
-                    _lvConversations.Items.Clear();
+                    _lvConversations.Rows.Clear();
                     foreach (var it in items)
                     {
                         string text = string.IsNullOrEmpty(it.Name) ? "New Conversation" : it.Name;
                         if (it.Zdr) text = MainForm.ZdrTitlePrefix + text;
-                        var lvi = new ListViewItem(text);
-                        lvi.Tag = it;
-                        _lvConversations.Items.Add(lvi);
+                        int idx = _lvConversations.Rows.Add(text);
+                        var row = _lvConversations.Rows[idx];
+                        row.Tag = it;
+                        row.Height = _sidebarRowHeight;
                     }
+                    // No auto-selection until the user clicks (mirrors the old ListView).
+                    _lvConversations.ClearSelection();
+                    try { _lvConversations.CurrentCell = null; }
+                    catch { }
                     ResizeSidebarColumn();
                 }
                 finally
                 {
-                    _lvConversations.EndUpdate();
+                    _lvConversations.ResumeLayout();
                 }
             }
             catch { }
@@ -451,71 +558,218 @@ namespace GxPT
             {
                 if (_splitContainer == null || _lvConversations == null) return;
                 int arrowW = (_sidebarArrowPanel != null ? _sidebarArrowPanel.Width : 0);
+                int sbW = (_sidebarScrollBar != null ? SidebarScrollBarWidth : 0);
                 int panelW = _splitContainer.Panel1.ClientSize.Width;
-                int targetW = Math.Max(0, panelW - arrowW);
+                int panelH = _splitContainer.Panel1.ClientSize.Height;
+                // Reserve a fixed gutter for the scrollbar between the list and the collapse arrow.
+                int targetW = Math.Max(0, panelW - arrowW - sbW);
                 if (_lvConversations.Dock != DockStyle.Left) _lvConversations.Dock = DockStyle.Left;
                 if (_lvConversations.Width != targetW) _lvConversations.Width = targetW;
+
+                if (_sidebarScrollBar != null)
+                {
+                    _sidebarScrollBar.Bounds = new Rectangle(targetW, 0, sbW, panelH);
+                    _sidebarScrollBar.BringToFront();
+                }
+                UpdateSidebarScrollBar();
             }
             catch { }
         }
 
-        private void LvConversations_ItemActivate(object sender, EventArgs e)
+        // Reflect the grid's vertical scroll state onto the KryptonScrollBar (row-based): show/enable it
+        // only when the rows overflow the viewport, and size the thumb by the number of visible rows.
+        private void UpdateSidebarScrollBar()
         {
-            TryOpenSelectedConversation();
-        }
-
-        private void LvConversations_Click(object sender, EventArgs e)
-        {
-            // If we're renaming and user clicks elsewhere, finish the rename
-            if (_renamingItem != null)
+            if (_syncingSidebarScroll) return;
+            try
             {
-                var me = e as MouseEventArgs;
-                if (me != null)
+                if (_lvConversations == null || _sidebarScrollBar == null) return;
+
+                // Never show the scrollbar while the sidebar is collapsed or animating - it would sit over
+                // the collapse-arrow strip and make it un-clickable to reopen.
+                if (!_sidebarExpanded || _sidebarAnimating)
                 {
-                    var hitTest = _lvConversations.HitTest(me.Location);
-                    // If clicking on a different item or empty space, finish rename
-                    if (hitTest.Item != _renamingItem)
-                    {
-                        FinishRename(true);
-                    }
+                    try { _sidebarScrollBar.Visible = false; }
+                    catch { }
+                    return;
                 }
-            }
-        }
 
-        private void LvConversations_MouseUp(object sender, MouseEventArgs e)
-        {
-            // Only show context menu for right-clicks that hit an actual item
-            if (e.Button == MouseButtons.Right)
-            {
+                int rowCount = _lvConversations.Rows.Count;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                bool needed = rowCount > visibleRows;
+
+                _sidebarScrollBar.Visible = needed;
+                _sidebarScrollBar.Enabled = needed;
+                if (!needed) return;
+
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                int first = 0;
+                try { first = Math.Max(0, _lvConversations.FirstDisplayedScrollingRowIndex); }
+                catch { }
+                first = Math.Min(first, maxFirst);
+
+                _syncingSidebarScroll = true;
                 try
                 {
-                    var hitTest = _lvConversations.HitTest(e.Location);
-                    if (hitTest.Item != null)
-                    {
-                        // Select the item that was right-clicked
-                        hitTest.Item.Selected = true;
+                    _sidebarScrollBar.Minimum = 0;
+                    // KryptonScrollBar's Value ranges over [Minimum, Maximum] (thumb bottom at Value ==
+                    // Maximum), so Maximum IS the last first-displayed-row index - not maxFirst+LargeChange-1.
+                    _sidebarScrollBar.Maximum = maxFirst;
+                    // Thumb size is largeChange/Maximum of the track; the proportional page size
+                    // (maxFirst * visibleRows / rowCount) makes the thumb reflect the visible fraction and
+                    // keeps it off the arrow buttons.
+                    int page = (rowCount > 0)
+                        ? (int)Math.Round((double)maxFirst * visibleRows / rowCount)
+                        : visibleRows;
+                    page = Math.Max(2, Math.Min(Math.Max(2, maxFirst), page));
+                    _sidebarScrollBar.SmallChange = 1;
+                    _sidebarScrollBar.LargeChange = page;
 
-                        // Show the context menu
-                        if (_conversationContextMenu != null)
-                        {
-                            _conversationContextMenu.Show(_lvConversations, e.Location);
-                        }
-                    }
+                    // KryptonScrollBar doesn't reposition its thumb on a programmatic Value change; the
+                    // bridge writes the backing value and forces the reposition so wheel syncs the thumb.
+                    KryptonThemeBridge.SetScrollBarValue(_sidebarScrollBar, Math.Max(0, Math.Min(maxFirst, first)));
                 }
                 catch { }
+                finally { _syncingSidebarScroll = false; }
             }
+            catch { }
+        }
+
+        // Drive the grid from the scrollbar: set the first displayed row to the (clamped) scrollbar value.
+        private void SidebarScrollBar_Scroll(object sender, ScrollEventArgs e)
+        {
+            if (_syncingSidebarScroll) return;
+            try
+            {
+                if (_lvConversations == null) return;
+                int rowCount = _lvConversations.Rows.Count;
+                if (rowCount == 0) return;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                int target = Math.Max(0, Math.Min(maxFirst, _sidebarScrollBar.Value));
+                try { _lvConversations.FirstDisplayedScrollingRowIndex = target; }
+                catch { }
+            }
+            catch { }
+        }
+
+        // Carries fractional wheel notches between events: precision touchpads and free-spin wheels
+        // send deltas well under the classic 120 per notch, which plain integer division would
+        // discard every time, leaving the sidebar wheel-dead on those devices. (Same pattern as
+        // ChatTranscriptControl's _wheelRemainderY.)
+        private int _sidebarWheelRemainder;
+
+        // The grid's native wheel scrolling is off (ScrollBars=None), so scroll it here and resync the bar.
+        private void LvConversations_MouseWheel(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (_lvConversations == null) return;
+                int rowCount = _lvConversations.Rows.Count;
+                if (rowCount == 0) return;
+                int viewport = Math.Max(0, _lvConversations.ClientSize.Height);
+                int rowH = Math.Max(1, _sidebarRowHeight);
+                int visibleRows = Math.Max(1, viewport / rowH);
+                int maxFirst = Math.Max(0, rowCount - visibleRows);
+                if (maxFirst <= 0) return;
+
+                int lines = SystemInformation.MouseWheelScrollLines;
+                if (lines <= 0) lines = 3;
+
+                // Accumulate sub-notch deltas so precision devices scroll once enough has built up.
+                int total = e.Delta + _sidebarWheelRemainder;
+                int notches = total / 120;
+                _sidebarWheelRemainder = total - notches * 120;
+                if (notches == 0) return;
+
+                int first = Math.Max(0, _lvConversations.FirstDisplayedScrollingRowIndex);
+                int target = Math.Max(0, Math.Min(maxFirst, first - notches * lines));
+                try { _lvConversations.FirstDisplayedScrollingRowIndex = target; }
+                catch { }
+                UpdateSidebarScrollBar();
+            }
+            catch { }
+        }
+
+        // The currently-selected conversation row (or null). DataGridView keeps a CurrentRow even when
+        // the selection is cleared, so prefer an explicit selection and fall back to CurrentRow.
+        private DataGridViewRow GetSelectedRow()
+        {
+            try
+            {
+                if (_lvConversations == null) return null;
+                if (_lvConversations.SelectedRows.Count > 0) return _lvConversations.SelectedRows[0];
+                if (_lvConversations.CurrentRow != null && _lvConversations.CurrentRow.Selected)
+                    return _lvConversations.CurrentRow;
+            }
+            catch { }
+            return null;
+        }
+
+        private void LvConversations_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            try
+            {
+                if (e.RowIndex < 0) return;
+                _lvConversations.Rows[e.RowIndex].Selected = true;
+                TryOpenSelectedConversation();
+            }
+            catch { }
+        }
+
+        private void LvConversations_MouseDown(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                var hit = _lvConversations.HitTest(e.X, e.Y);
+
+                // If we're renaming and the user clicks a different row (or empty space), finish the rename.
+                if (_renamingItem != null && hit.RowIndex != _renamingItem.Index)
+                    FinishRename(true);
+
+                // Clicking the empty area below the rows deselects, matching the old ListView - a
+                // DataGridView otherwise offers no mouse gesture that clears the selection at all.
+                if (e.Button == MouseButtons.Left && hit.Type == DataGridViewHitTestType.None)
+                {
+                    _lvConversations.ClearSelection();
+                    try { _lvConversations.CurrentCell = null; }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        private void LvConversations_CellMouseUp(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            // Only show the context menu for right-clicks that hit an actual row.
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0) return;
+            try
+            {
+                _lvConversations.Rows[e.RowIndex].Selected = true;
+                if (_conversationContextMenu != null)
+                {
+                    // e.Location is cell-relative; offset to the cell's position for the menu anchor.
+                    Rectangle cr = _lvConversations.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+                    _conversationContextMenu.Show(_lvConversations, new Point(cr.X + e.X, cr.Y + e.Y));
+                }
+            }
+            catch { }
         }
 
         private void TryOpenSelectedConversation()
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
-                TabPage page;
+                KryptonPage page;
                 if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out page))
                 {
                     _mainForm.SelectTab(page);
@@ -534,12 +788,12 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
-                TabPage openPage;
+                KryptonPage openPage;
                 if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out openPage))
                 {
                     _mainForm.CloseTab(openPage);
@@ -559,8 +813,8 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -573,8 +827,8 @@ namespace GxPT
         {
             try
             {
-                if (_lvConversations == null || _lvConversations.SelectedItems.Count == 0) return;
-                var lvi = _lvConversations.SelectedItems[0];
+                var lvi = GetSelectedRow();
+                if (lvi == null) return;
                 var info = lvi.Tag as ConversationStore.ConversationListItem;
                 if (info == null) return;
 
@@ -583,11 +837,12 @@ namespace GxPT
 
                 _renamingItem = lvi;
 
-                // Create textbox for inline editing
-                _renameTextBox = new TextBox();
+                // Create textbox for inline editing (a subclass that keeps every key to itself -
+                // see RenameTextBoxControl for why a plain TextBox loses arrow keys here).
+                _renameTextBox = new RenameTextBoxControl();
                 // Seed with the raw conversation name, not the displayed row text: the latter
                 // carries the "[zdr] " marker prefix, which must not become part of the name.
-                string editText = lvi.Text;
+                string editText = Convert.ToString(lvi.Cells[0].Value);
                 if (info.Zdr && editText != null && editText.StartsWith(MainForm.ZdrTitlePrefix))
                 {
                     editText = editText.Substring(MainForm.ZdrTitlePrefix.Length);
@@ -626,16 +881,16 @@ namespace GxPT
                 Rectangle labelRect;
                 try
                 {
-                    rowRect = _lvConversations.GetItemRect(lvi.Index, ItemBoundsPortion.Entire);
+                    rowRect = _lvConversations.GetRowDisplayRectangle(lvi.Index, false);
                 }
-                catch { rowRect = lvi.Bounds; }
+                catch { rowRect = Rectangle.Empty; }
                 try
                 {
-                    labelRect = _lvConversations.GetItemRect(lvi.Index, ItemBoundsPortion.Label);
+                    labelRect = _lvConversations.GetCellDisplayRectangle(0, lvi.Index, false);
                 }
-                catch { labelRect = lvi.Bounds; }
+                catch { labelRect = rowRect; }
 
-                int left = Math.Max(0, labelRect.X);
+                int left = Math.Max(0, labelRect.X + 4); // matches the cell's left content padding
                 int panelTop = Math.Max(0, rowRect.Y);
                 int panelHeight = Math.Max(1, rowRect.Height);
 
@@ -655,19 +910,105 @@ namespace GxPT
                 int tbWidth = Math.Max(20, _lvConversations.ClientSize.Width - left);
                 _renameTextBox.Bounds = new Rectangle(left, tbTop, tbWidth, tbHeight);
 
-                // Wire up events
+                // Wire up events. The textbox is parented inside the DataGridView, which treats
+                // Enter/Escape as dialog keys (row navigation / cancel) and processes them BEFORE
+                // the textbox's KeyDown can see them - claiming them as input keys in PreviewKeyDown
+                // routes them to RenameTextBox_KeyDown instead. (The old ListView host never
+                // intercepted these, so plain KeyDown sufficed there.)
+                _renameTextBox.PreviewKeyDown += RenameTextBox_PreviewKeyDown;
                 _renameTextBox.KeyDown += RenameTextBox_KeyDown;
                 _renameTextBox.LostFocus += RenameTextBox_LostFocus;
 
-                // Add to host panel, then to ListView and focus
+                // Add to host panel, then to the grid, and focus. Focus/selection are DEFERRED
+                // (BeginInvoke) so they run after the context menu that launched the rename has
+                // fully closed: focusing synchronously races the menu's modal message filter
+                // teardown, which can leave the first rename of the session with a focused-looking
+                // textbox that doesn't receive caret keys.
                 _renameHostPanel.Controls.Add(_renameTextBox);
                 _lvConversations.Controls.Add(_renameHostPanel);
                 _renameHostPanel.BringToFront();
                 _renameTextBox.BringToFront();
-                _renameTextBox.SelectAll();
-                _renameTextBox.Focus();
+                try
+                {
+                    TextBox tb = _renameTextBox;
+                    _lvConversations.BeginInvoke((MethodInvoker)delegate
+                    {
+                        try
+                        {
+                            // Still the active rename? (A fast Escape/click could have closed it.)
+                            if (tb == null || !object.ReferenceEquals(tb, _renameTextBox)) return;
+                            tb.SelectAll();
+                            tb.Focus();
+                        }
+                        catch { }
+                    });
+                }
+                catch
+                {
+                    _renameTextBox.SelectAll();
+                    _renameTextBox.Focus();
+                }
             }
             catch { }
+        }
+
+        // The conversation grid. The old ListView's ItemActivate fired on BOTH double-click and the
+        // Enter key; DataGridView instead consumes Enter as row navigation inside its dialog-key
+        // processing - before any KeyDown handler could see it - so keyboard users lost the ability
+        // to open a conversation. Intercept Enter there and surface it as an activation event
+        // (double-click stays on CellDoubleClick).
+        private sealed class ConversationGridView : KryptonDataGridView
+        {
+            public event EventHandler EnterActivated;
+
+            protected override bool ProcessDialogKey(Keys keyData)
+            {
+                if ((keyData & Keys.KeyCode) == Keys.Enter && !IsCurrentCellInEditMode)
+                {
+                    EventHandler h = EnterActivated;
+                    if (h != null) h(this, EventArgs.Empty);
+                    return true; // consumed: don't also move the selection down a row
+                }
+                return base.ProcessDialogKey(keyData);
+            }
+        }
+
+        // The inline rename editor. A plain TextBox parented inside the DataGridView loses its
+        // navigation keys: after a key is delivered to a focused child, WinForms offers it up the
+        // parent chain via ProcessKeyPreview, and DataGridView's override consumes arrows/Home/End
+        // as grid navigation (Enter/Escape only while a real cell editor is active - which is why
+        // those reached KeyDown but arrows never did; the perf trace showed PreviewKeyDown firing
+        // with no KeyDown following). Overriding ProcessKeyMessage to skip the parent preview keeps
+        // every key local to the editor. (The pre-Krypton ListView host had no key preview, which
+        // is why this never happened before the migration.)
+        private sealed class RenameTextBoxControl : TextBox
+        {
+            protected override bool ProcessKeyMessage(ref Message m)
+            {
+                return ProcessKeyEventArgs(ref m);
+            }
+        }
+
+        private void RenameTextBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
+        {
+            // Keep editing keys in the textbox instead of an ancestor's command/dialog-key
+            // processing: the hosting DataGridView treats Enter (row navigation), Escape, and the
+            // caret keys as navigation, and key preprocessing could swallow them before the
+            // textbox's KeyDown fires (observed: the first rename after launch lost arrow keys
+            // entirely). Claiming them as input keys delivers them to the textbox.
+            switch (e.KeyCode)
+            {
+                case Keys.Enter:
+                case Keys.Escape:
+                case Keys.Left:
+                case Keys.Right:
+                case Keys.Up:
+                case Keys.Down:
+                case Keys.Home:
+                case Keys.End:
+                    e.IsInputKey = true;
+                    break;
+            }
         }
 
         private void RenameTextBox_KeyDown(object sender, KeyEventArgs e)
@@ -698,7 +1039,7 @@ namespace GxPT
                 if (_renameTextBox == null || _renamingItem == null) return;
 
                 string newName = saveChanges ? _renameTextBox.Text.Trim() : null;
-                string originalName = _renamingItem.Text;
+                string originalName = Convert.ToString(_renamingItem.Cells[0].Value);
 
                 // Remove the textbox and its host panel
                 try
@@ -733,7 +1074,7 @@ namespace GxPT
                         // be silently undone by the tab's next send, which saved the old in-memory
                         // name back over this one. Closed conversations still load from disk.
                         Conversation conversation = null;
-                        TabPage openPage = null;
+                        KryptonPage openPage = null;
                         if (!string.IsNullOrEmpty(info.Id) && _openConversationsById.TryGetValue(info.Id, out openPage))
                         {
                             var tm = _mainForm.GetTabManager();
@@ -779,9 +1120,8 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null || _lvConversations.Columns.Count == 0) return;
-                // Make the column fill the ListView's client width to avoid right-side gaps
-                int target = Math.Max(20, _lvConversations.ClientSize.Width);
-                _lvConversations.Columns[0].Width = target;
+                // The single column is AutoSizeMode=Fill, so it already tracks the client width; just
+                // refresh the truncation tooltips for the new width.
                 UpdateSidebarTooltips();
             }
             catch { }
@@ -794,15 +1134,16 @@ namespace GxPT
             try
             {
                 if (_lvConversations == null || _lvConversations.Columns.Count == 0) return;
-                // Available text width inside the column, leaving room for the
-                // padding/indent the ListView reserves on each row.
+                // Available text width inside the column, leaving room for the cell's left padding.
                 int available = _lvConversations.Columns[0].Width - 8;
-                foreach (ListViewItem lvi in _lvConversations.Items)
+                foreach (DataGridViewRow row in _lvConversations.Rows)
                 {
-                    if (lvi == null) continue;
-                    int textWidth = TextRenderer.MeasureText(lvi.Text, _lvConversations.Font).Width;
-                    string tip = (textWidth > available) ? lvi.Text : string.Empty;
-                    if (lvi.ToolTipText != tip) lvi.ToolTipText = tip;
+                    if (row == null || row.IsNewRow) continue;
+                    var cell = row.Cells[0];
+                    string text = Convert.ToString(cell.Value);
+                    int textWidth = TextRenderer.MeasureText(text, _lvConversations.Font).Width;
+                    string tip = (textWidth > available) ? text : string.Empty;
+                    if (cell.ToolTipText != tip) cell.ToolTipText = tip;
                 }
             }
             catch { }
@@ -841,7 +1182,7 @@ namespace GxPT
             catch { }
         }
 
-        public void TrackOpenConversation(string conversationId, TabPage page)
+        public void TrackOpenConversation(string conversationId, KryptonPage page)
         {
             try
             {
@@ -851,7 +1192,7 @@ namespace GxPT
             catch { }
         }
 
-        public void UntrackOpenConversation(TabPage page)
+        public void UntrackOpenConversation(KryptonPage page)
         {
             try
             {
@@ -875,17 +1216,25 @@ namespace GxPT
                 try { _lvConversations.Font = new Font(_lvConversations.Font.FontFamily, size, _lvConversations.Font.Style); }
                 catch { }
 
-                if (_lvRowHeightImages == null)
-                    _lvRowHeightImages = new ImageList();
+                // KryptonDataGridView paints cell text with the PALETTE's data-cell font, not the
+                // control Font set above (which only drives row-height math here) - so without these
+                // the rows stayed at the default size while e.g. the rename textbox scaled. Set the
+                // font on both the Krypton cell state and the grid's DefaultCellStyle so the drawn
+                // rows follow the setting whichever path resolves the style.
+                try { _lvConversations.StateCommon.DataCell.Content.Font = _lvConversations.Font; }
+                catch { }
+                try { _lvConversations.DefaultCellStyle.Font = _lvConversations.Font; }
+                catch { }
 
-                int rowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
-                _lvRowHeightImages.ImageSize = new Size(1, rowHeight);
-
+                _sidebarRowHeight = Math.Max(_lvConversations.Font.Height + 8, 22);
                 try
                 {
-                    var current = _lvConversations.SmallImageList;
-                    _lvConversations.SmallImageList = null;
-                    _lvConversations.SmallImageList = _lvRowHeightImages;
+                    _lvConversations.RowTemplate.Height = _sidebarRowHeight;
+                    foreach (DataGridViewRow row in _lvConversations.Rows)
+                    {
+                        if (row == null || row.IsNewRow) continue;
+                        row.Height = _sidebarRowHeight;
+                    }
                 }
                 catch { }
 
@@ -905,6 +1254,8 @@ namespace GxPT
                 catch { }
 
                 try { ResizeSidebarColumn(); }
+                catch { }
+                try { UpdateSidebarScrollBar(); } // row height changed -> recompute visible rows / thumb
                 catch { }
                 try { _lvConversations.Invalidate(); _lvConversations.Update(); }
                 catch { }

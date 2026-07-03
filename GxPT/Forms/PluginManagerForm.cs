@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -9,14 +10,17 @@ namespace GxPT
     // from a checklist) buttons - so this one dialog is the whole plugin UI. State is read live from the
     // plugin registry; the actions delegate to PluginImportExportManager (which reports via MessageBox) and
     // the list reloads after each. Built in code, like the app's other small dialogs. XP / .NET 3.5 friendly.
-    internal sealed class PluginManagerForm : Form
+    internal sealed class PluginManagerForm : KryptonForm
     {
         private readonly string _workingDir;
-        private readonly ListView _list;
-        private readonly Button _toggle;
-        private readonly Button _export;
-        private readonly Button _uninstall;
-        private readonly Button _details;
+        // KryptonDataGridView is Krypton's columned data control (KryptonListView
+        // can't do a Details/columns view). It themes fully - cells AND column
+        // headers - from the active palette. Used read-only, one row per plugin.
+        private readonly KryptonDataGridView _list;
+        private readonly KryptonButton _toggle;
+        private readonly KryptonButton _export;
+        private readonly KryptonButton _uninstall;
+        private readonly KryptonButton _details;
         private readonly ContextMenuStrip _menu;
         private readonly ToolStripMenuItem _miToggle;
         private readonly ToolStripMenuItem _miExport;
@@ -36,25 +40,44 @@ namespace GxPT
             ClientSize = new Size(660, 360);
             MinimumSize = new Size(620, 300);
 
-            _list = new ListView();
-            _list.SetBounds(12, 12, 636, 302);
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
+            _list = new KryptonDataGridView();
+            // KryptonDataGridView defaults AutoSize on, which shrinks the control to
+            // its content (header + rows). Turn it off so it fills its container (the
+            // header group's panel) instead of collapsing to its rows.
+            _list.AutoSize = false;
+            _list.Dock = DockStyle.Fill;
+            // Read-only, full-row single selection, no row-header gutter, and no
+            // user editing/adding - it's a display list, not an editable grid.
+            _list.ReadOnly = true;
+            _list.EditMode = DataGridViewEditMode.EditProgrammatically;
+            _list.AllowUserToAddRows = false;
+            _list.AllowUserToDeleteRows = false;
+            _list.AllowUserToResizeRows = false;
+            _list.AllowUserToOrderColumns = false;
+            _list.RowHeadersVisible = false;
             _list.MultiSelect = false;
-            _list.HideSelection = false;
-            _list.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _list.Columns.Add("Plugin", 200);
-            _list.Columns.Add("Version", 80);
-            _list.Columns.Add("State", 90);
-            _list.Columns.Add("Skills", 70);
-            _list.Columns.Add("Agents", 70);
-            _list.SelectedIndexChanged += new EventHandler(OnSelectionChanged);
-            _list.MouseDown += new MouseEventHandler(OnListMouseDown);
+            _list.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            _list.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            _list.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            AddColumn("Plugin", 200);
+            AddColumn("Version", 80);
+            AddColumn("State", 90);
+            AddColumn("Skills", 70);
+            AddColumn("Agents", 70);
+            // Let the name column absorb any leftover width so the columns fill the
+            // grid horizontally without the user having to drag them.
+            _list.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            _list.SelectionChanged += new EventHandler(OnSelectionChanged);
+            _list.CellMouseDown += new DataGridViewCellMouseEventHandler(OnGridCellMouseDown);
+            _list.MouseDown += new MouseEventHandler(OnGridMouseDown);
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
+            // KryptonDataGridView themes its chrome but leaves cell interiors white;
+            // fill cell/header/background/selection colors from the active palette.
+            KryptonThemeBridge.StyleDataGrid(_list);
 
             // Global actions (no selection needed): install a .gxpl, or author a new one from a checklist.
-            Button install = MakeButton("&Install...", 12, OnInstall);
-            Button newPlugin = MakeButton("Ne&w...", 90, OnNew);
+            KryptonButton install = MakeButton("&Install...", 12, OnInstall);
+            KryptonButton newPlugin = MakeButton("Ne&w...", 90, OnNew);
 
             // Per-row actions, set off from the global group by a wider gap. The toggle reads "Enable" or
             // "Disable" for the selection (see UpdateButtons).
@@ -63,7 +86,7 @@ namespace GxPT
             _uninstall = MakeButton("&Uninstall", 342, OnUninstall);
             _details = MakeButton("De&tails...", 420, OnDetails);
 
-            Button close = new Button();
+            KryptonButton close = new KryptonButton();
             close.Text = "&Close";
             close.SetBounds(572, 322, 76, 26);
             close.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
@@ -78,14 +101,38 @@ namespace GxPT
             _menu.Opening += new System.ComponentModel.CancelEventHandler(OnMenuOpening);
             _list.ContextMenuStrip = _menu;
 
-            Controls.Add(_list);
-            Controls.Add(install);
-            Controls.Add(newPlugin);
-            Controls.Add(_toggle);
-            Controls.Add(_export);
-            Controls.Add(_uninstall);
-            Controls.Add(_details);
-            Controls.Add(close);
+            // Wrap the grid in a captioned KryptonHeaderGroup ("Installed Plugins"),
+            // the same styled header bar the Krypton sample apps show above a grid.
+            // The grid (docked Fill) lives in the group's content panel.
+            KryptonHeaderGroup group = new KryptonHeaderGroup();
+            group.SetBounds(12, 12, 636, 302);
+            group.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            group.HeaderVisibleSecondary = false; // single caption bar only
+            group.ValuesPrimary.Heading = "Installed Plugins";
+            group.ValuesPrimary.Image = null;     // no default icon
+            group.ValuesPrimary.Description = string.Empty;
+            group.Panel.Controls.Add(_list);
+
+            // A KryptonForm themes only its border/caption; its client area is a
+            // plain Form surface (system grey). Host the controls on a KryptonPanel
+            // docked to fill, so the area around the list takes the palette's panel
+            // color (Sparkle blue-grey in dark mode) and blends with the chrome.
+            KryptonPanel root = new KryptonPanel();
+            // Size the panel to the client area BEFORE adding the anchored children
+            // so their Anchor math is computed against the final size. Otherwise the
+            // bottom-anchored buttons land off-screen and the grid is mis-sized,
+            // because a freshly-created panel starts at its small default size.
+            root.Size = this.ClientSize;
+            root.Dock = DockStyle.Fill;
+            root.Controls.Add(group);
+            root.Controls.Add(install);
+            root.Controls.Add(newPlugin);
+            root.Controls.Add(_toggle);
+            root.Controls.Add(_export);
+            root.Controls.Add(_uninstall);
+            root.Controls.Add(_details);
+            root.Controls.Add(close);
+            Controls.Add(root);
 
             AcceptButton = close;
             CancelButton = close;
@@ -100,9 +147,9 @@ namespace GxPT
             PluginImportExportManager.ApplyOwnerIcon(this);
         }
 
-        private Button MakeButton(string text, int x, EventHandler onClick)
+        private KryptonButton MakeButton(string text, int x, EventHandler onClick)
         {
-            Button b = new Button();
+            KryptonButton b = new KryptonButton();
             b.Text = text;
             b.SetBounds(x, 322, 76, 26);
             b.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
@@ -118,6 +165,18 @@ namespace GxPT
             return mi;
         }
 
+        // A fixed-width, read-only, non-sortable text column.
+        private void AddColumn(string header, int width)
+        {
+            KryptonDataGridViewTextBoxColumn col = new KryptonDataGridViewTextBoxColumn();
+            col.HeaderText = header;
+            col.Width = width;
+            col.ReadOnly = true;
+            col.SortMode = DataGridViewColumnSortMode.NotSortable;
+            col.Resizable = DataGridViewTriState.True;
+            _list.Columns.Add(col);
+        }
+
         // Reads the registry fresh and repopulates the list, preserving no transient UI state but the
         // current selection's plugin name where possible.
         private void Reload()
@@ -126,10 +185,10 @@ namespace GxPT
             PluginManifest sel = Selected();
             if (sel != null) keep = sel.Name;
 
-            _list.BeginUpdate();
+            _list.SuspendLayout();
             try
             {
-                _list.Items.Clear();
+                _list.Rows.Clear();
                 System.Collections.Generic.IList<PluginManifest> plugins =
                     new PluginRegistry(PluginRoots.UserRoot()).ListInstalled();
                 for (int i = 0; i < plugins.Count; i++)
@@ -137,29 +196,47 @@ namespace GxPT
                     PluginManifest m = plugins[i];
                     // Show the plugin's original name (e.g. "TPRM"); the slug is its on-disk identity, not
                     // its label.
-                    ListViewItem lvi = new ListViewItem(m.Name);
-                    lvi.SubItems.Add(m.Version ?? string.Empty);
-                    lvi.SubItems.Add(m.Enabled ? "Enabled" : "Disabled");
-                    lvi.SubItems.Add(m.Skills.Count.ToString());
-                    lvi.SubItems.Add(m.Agents.Count.ToString());
-                    lvi.Tag = m;
-                    if (keep != null && string.Equals(m.Name, keep, StringComparison.OrdinalIgnoreCase))
-                        lvi.Selected = true;
-                    _list.Items.Add(lvi);
+                    int idx = _list.Rows.Add(
+                        m.Name,
+                        m.Version ?? string.Empty,
+                        m.Enabled ? "Enabled" : "Disabled",
+                        m.Skills.Count.ToString(),
+                        m.Agents.Count.ToString());
+                    _list.Rows[idx].Tag = m;
                 }
             }
-            finally { _list.EndUpdate(); }
+            finally { _list.ResumeLayout(); }
+
+            // DataGridView auto-selects the first row; clear that, then restore the
+            // prior selection by plugin name if it still exists (matching the old
+            // ListView's "no selection unless restored" behavior).
+            _list.ClearSelection();
+            if (keep != null)
+            {
+                for (int i = 0; i < _list.Rows.Count; i++)
+                {
+                    PluginManifest m = _list.Rows[i].Tag as PluginManifest;
+                    if (m != null && string.Equals(m.Name, keep, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _list.Rows[i].Selected = true;
+                        break;
+                    }
+                }
+            }
             UpdateButtons();
         }
 
         private PluginManifest Selected()
         {
-            if (_list == null || _list.SelectedItems.Count == 0) return null;
-            return _list.SelectedItems[0].Tag as PluginManifest;
+            if (_list == null || _list.SelectedRows.Count == 0) return null;
+            return _list.SelectedRows[0].Tag as PluginManifest;
         }
 
         private void UpdateButtons()
         {
+            // DataGridView can raise SelectionChanged during construction, before
+            // the action buttons exist; ignore until they're wired up.
+            if (_toggle == null) return;
             PluginManifest m = Selected();
             bool has = m != null;
             // The toggle reads the action it will perform on the selection: "Disable" an enabled plugin,
@@ -173,12 +250,34 @@ namespace GxPT
 
         private void OnSelectionChanged(object sender, EventArgs e) { UpdateButtons(); }
 
-        // Right-clicking selects the row under the cursor so the context menu acts on it.
-        private void OnListMouseDown(object sender, MouseEventArgs e)
+        // Right-clicking a row selects it so the context menu acts on it. (The grid
+        // selects on left-click already, but not on right-click.)
+        private void OnGridCellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right) return;
-            ListViewItem hit = _list.GetItemAt(e.X, e.Y);
-            if (hit != null) hit.Selected = true;
+            if (e.RowIndex < 0 || e.RowIndex >= _list.Rows.Count) return;
+            _list.ClearSelection();
+            _list.Rows[e.RowIndex].Selected = true;
+            try { _list.CurrentCell = _list.Rows[e.RowIndex].Cells[0]; }
+            catch { }
+        }
+
+        // Clicking the empty area below the rows deselects, matching the old ListView - a
+        // DataGridView otherwise offers no mouse gesture that clears the selection at all.
+        private void OnGridMouseDown(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (e.Button != MouseButtons.Left) return;
+                DataGridView.HitTestInfo hit = _list.HitTest(e.X, e.Y);
+                if (hit.Type == DataGridViewHitTestType.None)
+                {
+                    _list.ClearSelection();
+                    try { _list.CurrentCell = null; }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         private void OnMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)

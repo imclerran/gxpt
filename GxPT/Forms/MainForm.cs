@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using GxPT;
+using Krypton.Toolkit;
+using Krypton.Navigator;
 using System.IO;
 using Ionic.Zip;
 using System.Reflection;
@@ -15,7 +17,7 @@ using Parser = iTextSharp.text.pdf.parser;
 
 namespace GxPT
 {
-    public partial class MainForm : Form
+    public partial class MainForm : KryptonForm
     {
         private OpenRouterClient _client;
         private McpHost _mcpHost;
@@ -35,6 +37,16 @@ namespace GxPT
         // conversation marks its transcript for lazy build instead of building it immediately, so only
         // the visible tab is rendered up front (the rest hydrate when first selected).
         private bool _restoringTabs;
+
+        // Exposed so TabManager can skip selecting each newly created page during the restore loop
+        // (every selection forces a full navigator layout of that page; the saved active tab is
+        // selected once at the end of the restore instead).
+        internal bool IsRestoringTabs { get { return _restoringTabs; } }
+
+        // Set once the post-Shown session restore has run. Guards the FormClosing session save:
+        // restore now happens after the window is visible, so a close in that brief window would
+        // otherwise overwrite session.json with just the blank initial tab, losing the session.
+        private bool _sessionRestoreCompleted;
         private const string HelpApiKeysId = "help:api_keys";
         private const string HelpPrivacyId = "help:privacy";
 
@@ -65,6 +77,17 @@ namespace GxPT
         public MainForm()
         {
             InitializeComponent();
+            // Send keeps the accented default-button look WITHOUT being the form's AcceptButton
+            // (which routed Enter from any non-consuming focused control - the question panel's
+            // Other textbox, the model combo, the ZDR checkbox - into a surprise Send of the
+            // composer draft). Same approach as QuestionPanel's Submit; re-asserted on LostFocus
+            // because WinForms clears the flag after the button is focused and left.
+            try
+            {
+                this.btnSend.NotifyDefault(true);
+                this.btnSend.LostFocus += delegate { try { this.btnSend.NotifyDefault(true); } catch { } };
+            }
+            catch { }
             InitializeManagers();
             HookEvents();
             InitializeDragAndDrop();
@@ -96,28 +119,15 @@ namespace GxPT
             {
                 UpdateApiKeyBanner();
                 MaybeShowModelUpdateBanner();
-                try { RestoreOpenTabsOnStartup(); }
-                catch { }
-                // The status bar synced in the constructor, before tabs were restored - and no
-                // OnTabSelected fires for the tab that is already selected, so without this the
-                // first visible tab shows empty usage stats until the user switches away and back.
-                try { SyncUsageStatusFromActiveTab(); }
-                catch { }
-                // Same for the tool/skill counts: the constructor's seed ran before the MCP servers
-                // connected (and registry events that fired before the handle existed were dropped),
-                // so re-derive them now that the form is live.
-                try { SyncGenerationIndicatorFromActiveTab(); }
-                catch { }
-                // After restoring tabs, if no API key is configured, open the API Keys Help tab and focus it
-                try
-                {
-                    string k = AppSettings.GetString("openrouter_api_key");
-                    if (k == null || k.Trim().Length == 0)
-                    {
-                        miApiKeysHelp_Click(this, EventArgs.Empty);
-                    }
-                }
-                catch { }
+            };
+            // First moment the window is actually on screen - the user-perceived launch time.
+            // Session restore runs right AFTER this (queued so the first paint flushes): the window
+            // appears immediately with the blank initial tab, then the saved tabs pop in - instead of
+            // the window staying invisible for the whole restore.
+            this.Shown += delegate
+            {
+                try { BeginInvoke((MethodInvoker)RestoreSessionAfterShown); }
+                catch { RestoreSessionAfterShown(); }
             };
             this.FormClosing += MainForm_FormClosing_SaveOpenTabs;
 
@@ -341,9 +351,14 @@ namespace GxPT
         {
             try
             {
-                var openIds = GetOpenConversationIdsInOrder();
-                string activeId = GetActiveConversationId();
-                SessionState.SaveOpenTabs(openIds, activeId);
+                // Only save the session once the post-Shown restore has actually run: a close in the
+                // brief window before it would capture just the blank initial tab and lose the session.
+                if (_sessionRestoreCompleted)
+                {
+                    var openIds = GetOpenConversationIdsInOrder();
+                    string activeId = GetActiveConversationId();
+                    SessionState.SaveOpenTabs(openIds, activeId);
+                }
             }
             catch { }
 
@@ -364,7 +379,7 @@ namespace GxPT
             try
             {
                 if (this.tabControl1 == null) return list;
-                foreach (TabPage page in this.tabControl1.TabPages)
+                foreach (KryptonPage page in this.tabControl1.Pages)
                 {
                     try
                     {
@@ -393,6 +408,54 @@ namespace GxPT
             }
             catch { }
             return null;
+        }
+
+        // Runs the session restore just after the window first appears (queued from Shown so the
+        // first paint has flushed). Ordering matters: tabs first, then the active-tab syncs that
+        // depend on them, then the sidebar's initial population (its list is hidden until expanded,
+        // so it goes last). Everything here used to run in Load, keeping the window invisible for
+        // the whole restore; now the user sees the window ~1s sooner and the tabs pop in.
+        private void RestoreSessionAfterShown()
+        {
+            // Tabs first, MCP host second. The host build reads the ACTIVE conversation's skill
+            // enablement (and pre-warms its workdir servers itself), so building it before the
+            // restore would evaluate the blank initial tab - and whenever the restored active
+            // conversation's enablement differed, the restore epilogue's skills reconcile would
+            // dispose and rebuild the entire host a second time, killing servers mid-connect.
+            // While the gate is still up, any RebuildMcpHost reached from inside the restore
+            // (OnTabsChanged is suppressed, but the epilogue's SlashRefreshSkillsServer isn't)
+            // stays a no-op.
+            try { RestoreOpenTabsOnStartup(); }
+            catch { }
+            _sessionRestoreCompleted = true;
+
+            _mcpHostStartupDeferred = false;
+            try { RebuildMcpHost(); }
+            catch { }
+            // The status bar synced in the constructor, before tabs were restored - and no
+            // OnTabSelected fires for the tab that is already selected, so without this the
+            // first visible tab shows empty usage stats until the user switches away and back.
+            try { SyncUsageStatusFromActiveTab(); }
+            catch { }
+            // Same for the tool/skill counts: the constructor's seed ran before the MCP servers
+            // connected (and registry events that fired before the handle existed were dropped),
+            // so re-derive them now that the form is live.
+            try { SyncGenerationIndicatorFromActiveTab(); }
+            catch { }
+            // After restoring tabs, if no API key is configured, open the API Keys Help tab and focus it
+            try
+            {
+                string k = AppSettings.GetString("openrouter_api_key");
+                if (k == null || k.Trim().Length == 0)
+                {
+                    miApiKeysHelp_Click(this, EventArgs.Empty);
+                }
+            }
+            catch { }
+            // Sidebar's initial population (the cold conversation-metadata scan) goes last: its rows
+            // are invisible until the user expands it, so nothing on screen is waiting for this.
+            try { if (_sidebarManager != null) _sidebarManager.PopulateInitialList(); }
+            catch { }
         }
 
         private void RestoreOpenTabsOnStartup()
@@ -456,14 +519,14 @@ namespace GxPT
                     string active = activeFromFile;
                     if (!string.IsNullOrEmpty(active) && this.tabControl1 != null && _tabManager != null)
                     {
-                        foreach (TabPage p in this.tabControl1.TabPages)
+                        foreach (KryptonPage p in this.tabControl1.Pages)
                         {
                             try
                             {
                                 var ctx = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                                 if (ctx != null && ctx.Conversation != null && string.Equals(ctx.Conversation.Id, active, StringComparison.Ordinal))
                                 {
-                                    this.tabControl1.SelectedTab = p;
+                                    this.tabControl1.SelectedPage = p;
                                     break;
                                 }
                             }
@@ -479,9 +542,13 @@ namespace GxPT
                 try { HydrateTabIfNeeded(_tabManager != null ? _tabManager.GetActiveContext() : null); }
                 catch { }
 
-                // Pre-warm MCP servers for the visible tab only (one reconcile, off the UI thread).
-                // Other tabs' servers launch lazily when they're sent to or first selected.
+                // At STARTUP both calls below are no-ops: the MCP host doesn't exist yet (it is
+                // built right after this restore returns, in RestoreSessionAfterShown, evaluating
+                // this now-active conversation's skills and pre-warming its workdir itself). They
+                // stay for defense in depth should this method ever run with a live host.
                 try { SyncMcpWorkingDirFromActiveTab(); }
+                catch { }
+                try { SlashRefreshSkillsServer(); }
                 catch { }
             }
             catch { }
@@ -582,7 +649,7 @@ namespace GxPT
             _sidebarManager = new SidebarManager(this, this.splitContainer1, this.miConversationHistory);
             _tabManager = new TabManager(this, this.tabControl1, this.msMain);
             _themeManager = new ThemeManager(this, this.chatTranscript, this.txtMessage,
-                this.btnSend, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
+                this.btnSend, this.btnAttach, this.cmbModel, this.lnkOpenSettings, this.lblNoApiKey);
             _inputManager = new InputManager(this, this.txtMessage, this.pnlInput,
                 this.btnSend, this.cmbModel, this.splitContainer1, this.pnlApiKeyBanner, this.pnlAttachmentsBanner);
 
@@ -636,17 +703,10 @@ namespace GxPT
             {
                 if (this.cmbModel != null)
                 {
+                    // ModelComboBox shows the short model name while storing the full "author/model" id,
+                    // and self-sizes its dropdown - so no owner-draw or width handler is wired here.
                     this.cmbModel.SelectedIndexChanged -= cmbModel_SelectedIndexChanged;
                     this.cmbModel.SelectedIndexChanged += cmbModel_SelectedIndexChanged;
-                    this.cmbModel.TextUpdate -= cmbModel_TextUpdate;
-                    this.cmbModel.TextUpdate += cmbModel_TextUpdate;
-                    // Adjust dropdown width dynamically to fit the widest item
-                    this.cmbModel.DropDown -= cmbModel_DropDownAdjustWidth;
-                    this.cmbModel.DropDown += cmbModel_DropDownAdjustWidth;
-                    // Owner-draw shows only the model name (after "author/"); the item value stays the
-                    // full "author/model" id, so GetSelectedModel and the request are unchanged.
-                    this.cmbModel.DrawItem -= cmbModel_DrawItem;
-                    this.cmbModel.DrawItem += cmbModel_DrawItem;
                 }
             }
             catch { }
@@ -683,7 +743,7 @@ namespace GxPT
         }
 
         // Event handlers for manager events
-        private void OnTabSelected(TabPage selectedTab)
+        private void OnTabSelected(KryptonPage selectedTab)
         {
             // Build this tab's transcript if it was deferred at session restore (first time it's shown).
             // Skipped while the restore loop is still opening tabs — the visible one is built afterward.
@@ -1290,7 +1350,7 @@ namespace GxPT
 
         // Entry point for the tab context menu: set the working folder for a specific tab. Useful
         // when the strip has been dismissed (setting a folder re-shows it).
-        internal void SetWorkingFolderForTab(TabPage page)
+        internal void SetWorkingFolderForTab(KryptonPage page)
         {
             if (_tabManager == null || page == null) return;
             TabManager.ChatTabContext ctx;
@@ -1491,6 +1551,13 @@ namespace GxPT
 
         private void OnTabsChanged()
         {
+            // During session restore this fires once per restored tab; every piece below is
+            // active-tab/global work that the next iteration immediately redoes (and the sidebar
+            // refresh would pay the cold conversation-metadata disk scan inside the restore loop).
+            // The restore epilogue performs one MCP sync + skills refresh, and the sidebar's initial
+            // population is deferred to after Shown.
+            if (_restoringTabs) return;
+
             if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
             // A tab opening/closing changes which working folders are still in use; release the
             // scoped servers of any folder whose last tab just closed.
@@ -1543,17 +1610,17 @@ namespace GxPT
             catch { }
         }
 
-        internal void SelectTab(TabPage page)
+        internal void SelectTab(KryptonPage page)
         {
             if (_tabManager != null) _tabManager.SelectTab(page);
         }
 
-        internal void CloseTab(TabPage page)
+        internal void CloseTab(KryptonPage page)
         {
             if (_tabManager != null) _tabManager.CloseConversationTab(page);
         }
 
-        internal void UntrackOpenConversation(TabPage page)
+        internal void UntrackOpenConversation(KryptonPage page)
         {
             if (_sidebarManager != null) _sidebarManager.UntrackOpenConversation(page);
         }
@@ -1617,7 +1684,7 @@ namespace GxPT
         {
             try
             {
-                string m = (cmbModel != null ? cmbModel.Text : null) ?? string.Empty;
+                string m = (cmbModel != null ? cmbModel.SelectedModelId : null) ?? string.Empty;
                 m = m.Trim();
                 return string.IsNullOrEmpty(m) ? ModelDefaults.DefaultModel : m;
             }
@@ -1625,6 +1692,35 @@ namespace GxPT
             {
                 return ModelDefaults.DefaultModel;
             }
+        }
+
+        // Paint the window's stock WinForms background/composer panels with the active Krypton client
+        // color so the client area matches the themed KryptonForm chrome instead of showing the default
+        // Windows control grey (behind the ZDR checkbox, above the send button when the input grows, and
+        // the split-container fill). Krypton controls (combo, buttons, checkbox) paint themselves; the
+        // transcript fills Panel1 with its own surface, so these colors only show in the gaps.
+        internal void ApplyThemedChrome()
+        {
+            Color bg = KryptonThemeBridge.FormBackColor();
+            try { this.BackColor = bg; } catch { }
+
+            Control[] surfaces =
+            {
+                this.pnlBottom, this.pnlInput, this.pnlInputRight, this.pnlButtonsFill,
+                this.pnlButtons, this.pnlModelRow, this.splitContainer1,
+                this.splitContainer1 != null ? this.splitContainer1.Panel1 : null,
+                this.splitContainer1 != null ? this.splitContainer1.Panel2 : null,
+            };
+            foreach (Control c in surfaces)
+            {
+                try { if (c != null) c.BackColor = bg; }
+                catch { }
+            }
+
+            // Fix KryptonCheckBox caption colors (e.g. the ZDR checkbox) - dimmer than labels in dark
+            // mode; cleared back to the palette color in light mode. Same fix used by the settings form.
+            try { KryptonThemeBridge.FixDarkCheckBoxText(this); }
+            catch { }
         }
 
         private void InitializeClient()
@@ -1669,16 +1765,31 @@ namespace GxPT
             }
             catch { }
 
-            // (Re)build the MCP host from the current settings (toggles, web-search key, GitHub PAT,
-            // and mcp.json custom servers). Connecting happens on a background thread.
+            // (Re)build the MCP host from the current settings. At STARTUP this is a gated no-op
+            // (_mcpHostStartupDeferred; assembling the host takes ~200ms on the UI thread and nothing
+            // can send a tool call before the window is visible - RestoreSessionAfterShown does the
+            // first build post-Shown). On every LATER call - the Settings dialog's close paths run
+            // InitializeClient to apply changes - the gate is already lifted, so new keys, server
+            // toggles, and mcp.json edits take effect immediately, as they did before the deferral.
             RebuildMcpHost();
         }
+
+        // True until the post-Shown startup sequence builds the MCP host for the first time. Gates
+        // RebuildMcpHost rather than just moving its ctor call site, because other pre-Shown paths
+        // can reach it indirectly (the initial tab's TabsChanged -> SlashRefreshSkillsServer calls
+        // RebuildMcpHost when the active conversation has enabled skills) and would drag the ~200ms
+        // host assembly back onto the launch path.
+        private bool _mcpHostStartupDeferred = true;
 
         // Assembles MCP server specs from settings and (re)starts the host. Safe to call repeatedly
         // (e.g. after Settings is saved). Workdir-independent servers (web + GitHub + custom) connect
         // here; files/git/command are deferred until a working-directory UX exists.
         private void RebuildMcpHost()
         {
+            // No-op until RestoreSessionAfterShown lifts the gate and builds the host: every consumer
+            // of _mcpHost is null-tolerant, and the post-Shown build reads the same settings/skill
+            // enablement any gated early call would have.
+            if (_mcpHostStartupDeferred) return;
             try
             {
                 // Tear down any previous host (servers from the old settings).
@@ -1849,7 +1960,7 @@ namespace GxPT
         {
             try
             {
-                var page = (this.tabControl1 != null ? this.tabControl1.SelectedTab : null);
+                var page = (this.tabControl1 != null ? this.tabControl1.SelectedPage : null);
                 string name = (page != null ? page.Text : null);
                 this.Text = string.IsNullOrEmpty(name) ? "GxPT" : ("GxPT - " + name);
             }
@@ -1872,6 +1983,16 @@ namespace GxPT
                 UpdateApiKeyBanner();
                 // Theme may have changed; re-apply to all open transcripts
                 try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
+                catch { }
+                // ...and to the per-tab approval/question panels. The theme apply above ends with
+                // FixDarkCheckBoxText sweeping every KryptonCheckBox on the form (including a live
+                // question panel's options); without this re-apply - which the dark-mode toggle and
+                // banner-link paths both do - the sweep runs last and a theme change made inside
+                // Settings leaves those captions in the palette color on a stale panel background.
+                try { ApplyThemeToAllApprovalPanels(); }
+                catch { }
+                // The status bar follows the UI theme too (the dark-mode toggle path does this).
+                try { ApplyThemeToStatusBar(); }
                 catch { }
                 // Re-apply transcript/message widths in case they changed
                 try
@@ -2051,7 +2172,7 @@ namespace GxPT
                 if (this.cmbModel != null)
                 {
                     _syncingModelCombo = true;
-                    try { this.cmbModel.Text = slug; }
+                    try { this.cmbModel.SelectedModelId = slug; }
                     finally { _syncingModelCombo = false; }
                 }
                 var c = _tabManager != null ? _tabManager.GetActiveContext() : null;
@@ -2422,7 +2543,7 @@ namespace GxPT
                     if (this.cmbModel != null)
                     {
                         _syncingModelCombo = true;
-                        try { this.cmbModel.Text = sourceCtx.SelectedModel; }
+                        try { this.cmbModel.SelectedModelId = sourceCtx.SelectedModel; }
                         finally { _syncingModelCombo = false; }
                     }
                 }
@@ -3259,29 +3380,6 @@ namespace GxPT
             catch { }
         }
 
-        // Owner-draw the model combo so only the model name shows (after the last "/"), while the item
-        // value stays the full "author/model" id.
-        private void cmbModel_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            DrawModelComboItem(e, this.cmbModel);
-        }
-
-        // Shared owner-draw for any model-list combo: render only the short model name (ShortModelName)
-        // while the item value stays the full "author/model" id. Used by the main window's model selector
-        // and the settings effort-tier pickers so the two render identically.
-        internal static void DrawModelComboItem(DrawItemEventArgs e, ComboBox combo)
-        {
-            e.DrawBackground();
-            if (combo != null && e.Index >= 0 && e.Index < combo.Items.Count)
-            {
-                string full = Convert.ToString(combo.Items[e.Index]);
-                // Clip the name at the edge like a native combo (no ellipsis).
-                TextRenderer.DrawText(e.Graphics, ShortModelName(full), e.Font, e.Bounds, e.ForeColor,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            }
-            e.DrawFocusRectangle();
-        }
-
         // "author/model-name" -> "model-name"; passes through anything without a slash.
         internal static string ShortModelName(string full)
         {
@@ -4020,65 +4118,16 @@ namespace GxPT
                     }
                     catch { }
 
-                    this.cmbModel.BeginUpdate();
-                    try
-                    {
-                        this.cmbModel.Items.Clear();
-                        foreach (var m in list) this.cmbModel.Items.Add(m);
-
-                        string target = !string.IsNullOrEmpty(currentTabModel) ? currentTabModel : (!string.IsNullOrEmpty(def) ? def : (list.Count > 0 ? list[0] : null));
-                        if (!string.IsNullOrEmpty(target))
-                        {
-                            _syncingModelCombo = true;
-                            try { this.cmbModel.Text = target; }
-                            finally { _syncingModelCombo = false; }
-                        }
-                    }
-                    finally
-                    {
-                        this.cmbModel.EndUpdate();
-                    }
-                    // Ensure dropdown width fits longest item (or control width if shorter)
-                    try { AdjustComboDropDownWidth(this.cmbModel); }
-                    catch { }
+                    // ModelComboBox stores full ids, shows short names, and self-sizes its dropdown.
+                    string target = !string.IsNullOrEmpty(currentTabModel) ? currentTabModel : (!string.IsNullOrEmpty(def) ? def : (list.Count > 0 ? list[0] : null));
+                    _syncingModelCombo = true;
+                    try { this.cmbModel.SetModels(list, target); }
+                    finally { _syncingModelCombo = false; }
                     // Ensure the active context stores whatever is shown
                     var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
                     if (ctx != null) ctx.SelectedModel = GetSelectedModel();
                 }
             }
-            catch { }
-        }
-
-        // Ensure the combo's dropdown width accommodates the widest item text
-        private void AdjustComboDropDownWidth(ComboBox combo)
-        {
-            if (combo == null) return;
-            try
-            {
-                int maxWidth = combo.Width; // at least the control width
-                // Measure each item text
-                for (int i = 0; i < combo.Items.Count; i++)
-                {
-                    string s = combo.GetItemText(combo.Items[i]) ?? string.Empty;
-                    if (s.Length == 0) continue;
-                    // TextRenderer accounts for ComboBox text rendering in WinForms
-                    int w = TextRenderer.MeasureText(s, combo.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width;
-                    if (w > maxWidth) maxWidth = w;
-                }
-                // Add space for vertical scrollbar if it will appear, plus a small margin
-                int extra = 10;
-                try { if (combo.Items.Count > combo.MaxDropDownItems) extra += SystemInformation.VerticalScrollBarWidth; }
-                catch { }
-                int target = Math.Max(combo.Width, Math.Min(maxWidth + extra, 2000)); // reasonable upper bound
-                combo.DropDownWidth = target;
-            }
-            catch { }
-        }
-
-        // Recompute dropdown width right before it opens
-        private void cmbModel_DropDownAdjustWidth(object sender, EventArgs e)
-        {
-            try { AdjustComboDropDownWidth(this.cmbModel); }
             catch { }
         }
 
@@ -4338,8 +4387,11 @@ namespace GxPT
                 UpdateApiKeyBanner();
                 try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
                 catch { }
-                // Theme may have changed in Settings; keep open approval prompts in sync.
+                // Theme may have changed in Settings; keep open approval prompts and the status bar
+                // in sync (the dark-mode toggle path does both).
                 ApplyThemeToAllApprovalPanels();
+                try { ApplyThemeToStatusBar(); }
+                catch { }
             }
         }
 
@@ -4796,10 +4848,10 @@ namespace GxPT
                 if (ctx == null) return;
                 var target = ctx.SelectedModel;
                 if (string.IsNullOrEmpty(target)) target = GetConfiguredDefaultModel();
-                if (!string.Equals(this.cmbModel.Text, target, StringComparison.Ordinal))
+                if (!string.Equals(this.cmbModel.SelectedModelId, target, StringComparison.Ordinal))
                 {
                     _syncingModelCombo = true;
-                    try { this.cmbModel.Text = target; }
+                    try { this.cmbModel.SelectedModelId = target; }
                     finally { _syncingModelCombo = false; }
                 }
             }
@@ -4825,29 +4877,6 @@ namespace GxPT
                     }
                 }
                 // The context meter's denominator follows the selected model.
-                SyncUsageStatusFromActiveTab();
-            }
-            catch { }
-        }
-
-        // Track typed text into the combo box as model selection per tab
-        private void cmbModel_TextUpdate(object sender, EventArgs e)
-        {
-            if (_syncingModelCombo) return;
-            try
-            {
-                var ctx = _tabManager != null ? _tabManager.GetActiveContext() : null;
-                if (ctx != null) ctx.SelectedModel = GetSelectedModel();
-                if (ctx != null && ctx.Conversation != null)
-                {
-                    ctx.Conversation.SelectedModel = ctx.SelectedModel;
-                    if (ctx.Conversation.History.Count > 0 && !ctx.NoSaveUntilUserSend)
-                    {
-                        ConversationStore.Save(ctx.Conversation);
-                        if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
-                    }
-                }
-                // The context meter's denominator follows the typed model id.
                 SyncUsageStatusFromActiveTab();
             }
             catch { }
@@ -5829,8 +5858,6 @@ namespace GxPT
             // Replace the conversation and refresh transcript UI
             ctx.Conversation = convo;
             ctx.SelectedModel = string.IsNullOrEmpty(convo.SelectedModel) ? GetSelectedModel() : convo.SelectedModel;
-            try { this.cmbModel.Text = ctx.SelectedModel; }
-            catch { }
             ConversationStore.EnsureConversationId(ctx.Conversation);
             if (_sidebarManager != null && ctx.Conversation != null)
                 _sidebarManager.TrackOpenConversation(ctx.Conversation.Id, ctx.Page);
@@ -5843,12 +5870,19 @@ namespace GxPT
             // Adopt the conversation's saved working folder.
             ApplyLoadedWorkingDir(ctx);
 
-            // Update tab title and window
-            try
-            {
-                ctx.Page.Text = ZdrTitle(convo, convo.Name);
-                UpdateWindowTitleFromActiveTab();
-            }
+            // Update tab title (window title follows below for the non-restore case).
+            try { ctx.Page.Text = ZdrTitle(convo, convo.Name); }
+            catch { }
+
+            // During session restore the new page is NOT selected (the saved active tab is selected
+            // once at the end, firing OnTabSelected which performs all of these syncs), so the
+            // active-tab-only updates below must be skipped: the visible tab is a DIFFERENT tab, and
+            // e.g. setting the model combo here would clobber its selection.
+            if (_restoringTabs) return;
+
+            try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
+            catch { }
+            try { UpdateWindowTitleFromActiveTab(); }
             catch { }
 
             // The tab was selected before the conversation was assigned, so re-sync the per-tab ZDR
@@ -5872,7 +5906,7 @@ namespace GxPT
                 // Update model selection for this tab
                 ctx.Conversation = convo;
                 ctx.SelectedModel = string.IsNullOrEmpty(convo.SelectedModel) ? GetSelectedModel() : convo.SelectedModel;
-                try { this.cmbModel.Text = ctx.SelectedModel; }
+                try { this.cmbModel.SelectedModelId = ctx.SelectedModel; }
                 catch { }
 
                 // Update sidebar tracking to point this page at the loaded conversation id
@@ -5933,7 +5967,10 @@ namespace GxPT
                 SyncUsageStatusFromActiveTab();
 
                 if (_inputManager != null) _inputManager.FocusInputSoon();
-                if (_sidebarManager != null) _sidebarManager.RefreshSidebarList();
+                // Not during session restore: the sidebar's initial population is deferred to after
+                // Shown (it starts collapsed), and refreshing here would pay the full cold disk scan
+                // of every conversation's metadata inside the restore loop.
+                if (!_restoringTabs && _sidebarManager != null) _sidebarManager.RefreshSidebarList();
             }
             catch { }
         }
@@ -5973,7 +6010,7 @@ namespace GxPT
             {
                 if (this.tabControl1 != null && _tabManager != null)
                 {
-                    foreach (TabPage p in this.tabControl1.TabPages)
+                    foreach (KryptonPage p in this.tabControl1.Pages)
                     {
                         var ctxOpen = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                         if (ctxOpen != null && ctxOpen.Conversation != null && string.Equals(ctxOpen.Conversation.Id, HelpApiKeysId, StringComparison.Ordinal))
@@ -6058,7 +6095,7 @@ namespace GxPT
             {
                 if (this.tabControl1 != null && _tabManager != null)
                 {
-                    foreach (TabPage p in this.tabControl1.TabPages)
+                    foreach (KryptonPage p in this.tabControl1.Pages)
                     {
                         var ctxOpen = _tabManager.TabContexts.ContainsKey(p) ? _tabManager.TabContexts[p] : null;
                         if (ctxOpen != null && ctxOpen.Conversation != null && string.Equals(ctxOpen.Conversation.Id, HelpPrivacyId, StringComparison.Ordinal))
@@ -6284,10 +6321,16 @@ namespace GxPT
             try
             {
                 if (this.ssMain == null) return;
-                this.ssMain.BackColor = SystemColors.Control;
-                this.ssMain.ForeColor = SystemColors.ControlText;
-                foreach (ToolStripItem it in this.ssMain.Items)
-                    it.ForeColor = SystemColors.ControlText;
+                // Krypton doesn't paint the StatusStrip background (its BackColor
+                // shows through, confirmed even under the stock palette mode), so set
+                // BackColor to the menu-bar color so the top and bottom bars match.
+                // ForeColor is set from the palette so the labels (which inherit it)
+                // read on the strip; the Saved label keeps its own red/green/default.
+                this.ssMain.BackColor = KryptonThemeBridge.StatusStripBackColor();
+                this.ssMain.ForeColor = KryptonThemeBridge.StatusStripTextColor();
+                // The owner-drawn context meter resolves its colors per-paint, so
+                // force it to repaint when the theme changes.
+                if (this.tspContextMeter != null) this.tspContextMeter.Invalidate();
                 SyncUsageStatusFromActiveTab();
             }
             catch { }
@@ -6468,8 +6511,14 @@ namespace GxPT
             if (this.tslSavedValue != null)
             {
                 this.tslSavedValue.Text = FormatMoney(s.TotalCacheDiscount);
-                this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? Color.Green
-                    : (s.TotalCacheDiscount < 0 ? Color.Firebrick : SystemColors.ControlText);
+                // Green = savings, red = surcharge, otherwise the themed status text
+                // color. In dark mode use brighter green/red so they stand out on the
+                // dark strip (the standard Green/Firebrick are too low-contrast there).
+                bool darkStrip = KryptonThemeBridge.IsDarkMode();
+                Color savePos = darkStrip ? Color.FromArgb(0x7B, 0xF7, 0x9A) : Color.Green;
+                Color saveNeg = darkStrip ? Color.FromArgb(0xFF, 0x92, 0x92) : Color.Firebrick;
+                this.tslSavedValue.ForeColor = s.TotalCacheDiscount > 0 ? savePos
+                    : (s.TotalCacheDiscount < 0 ? saveNeg : KryptonThemeBridge.StatusStripTextColor());
             }
 
             string breakdown = BuildUsageTooltip(s, haveMax ? maxContext : 0);

@@ -59,11 +59,20 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>lib\itextsharp.dll</HintPath>
     </Reference>
+    <Reference Include="Krypton.Toolkit">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Krypton.Toolkit.dll</HintPath>
+    </Reference>
+    <Reference Include="Krypton.Navigator">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Krypton.Navigator.dll</HintPath>
+    </Reference>
     <Reference Include="Newtonsoft.Json">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\src\Mcp35.Core\lib\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Configuration.Install" />
     <Reference Include="System.Web.Extensions">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
@@ -107,6 +116,7 @@
     <Compile Include="Controls\DiffPreviewPanel.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Controls\ModelComboBox.cs" />
     <Compile Include="Controls\SafeToolStripRenderer.cs" />
     <Compile Include="Controls\StatusStripTooltipFix.cs" />
     <Compile Include="Managers\ImportExportManager.cs" />
@@ -307,6 +317,8 @@
     <Compile Include="Managers\ThemeManager.cs" />
     <Compile Include="Services\TextFileAttachmentExtractor.cs" />
     <Compile Include="Services\ThemeService.cs" />
+    <Compile Include="Services\KryptonThemeBridge.cs" />
+    <Compile Include="Services\NgenInstaller.cs" />
     <Compile Include="Utilities\FileSafe.cs" />
     <Compile Include="Utilities\ZipSafe.cs" />
   </ItemGroup>
@@ -342,7 +354,7 @@
     <Content Include="Resources\Themes\orange.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\Themes\red.json">
+    <Content Include="Resources\Themes\purple.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Lib\libcurl.dll">

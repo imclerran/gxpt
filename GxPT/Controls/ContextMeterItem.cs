@@ -33,9 +33,11 @@ namespace GxPT
             2 * Inset + BlockCount * BlockWidth + (BlockCount - 1) * BlockGap; // 81
         public const int MeterHeight = 15;
 
-        private static readonly Color BorderColor = Color.FromArgb(96, 96, 96);
-        private static readonly Color TrackColor = Color.FromArgb(252, 252, 252);
-        private static readonly Color EmptyBlockColor = Color.FromArgb(228, 228, 228);
+        // Fallbacks used only if the theme lookups throw; the live colors are
+        // resolved per-paint in OnPaint so the meter follows the active theme.
+        private static readonly Color BorderColorFallback = Color.FromArgb(96, 96, 96);
+        private static readonly Color TrackColorFallback = Color.FromArgb(252, 252, 252);
+        private static readonly Color EmptyBlockColorFallback = Color.FromArgb(228, 228, 228);
         private static readonly Color GreenFill = Color.FromArgb(76, 160, 66);
         private static readonly Color YellowFill = Color.FromArgb(226, 168, 22);
         private static readonly Color RedFill = Color.FromArgb(199, 56, 44);
@@ -68,9 +70,24 @@ namespace GxPT
             Graphics g = e.Graphics;
             int w = this.Width, h = this.Height;
 
-            using (SolidBrush track = new SolidBrush(TrackColor))
+            // Theme-aware chrome: the track between blocks takes the chat-transcript
+            // background (white / #242424), empty blocks take the window chrome color,
+            // and the border takes the status-strip text color - so the meter fits the
+            // active theme. The lit green/yellow/red fills stay (they signal usage).
+            bool dark = false;
+            try { dark = KryptonThemeBridge.IsDarkMode(); }
+            catch { }
+            Color trackColor, borderColor, emptyColor;
+            try { trackColor = ThemeService.GetColors(dark).UiBackground; }
+            catch { trackColor = TrackColorFallback; }
+            try { borderColor = KryptonThemeBridge.StatusStripTextColor(); }
+            catch { borderColor = BorderColorFallback; }
+            try { emptyColor = KryptonThemeBridge.StatusStripBackColor(); }
+            catch { emptyColor = EmptyBlockColorFallback; }
+
+            using (SolidBrush track = new SolidBrush(trackColor))
                 g.FillRectangle(track, 0, 0, w, h);
-            using (Pen border = new Pen(BorderColor))
+            using (Pen border = new Pen(borderColor))
                 g.DrawRectangle(border, 0, 0, w - 1, h - 1);
 
             double frac = (_max > 0) ? (double)_used / _max : 0.0;
@@ -81,7 +98,7 @@ namespace GxPT
             Color fill = frac < 0.70 ? GreenFill : (frac < 0.90 ? YellowFill : RedFill);
             int blockHeight = h - 2 * Inset;
             using (SolidBrush on = new SolidBrush(fill))
-            using (SolidBrush off = new SolidBrush(EmptyBlockColor))
+            using (SolidBrush off = new SolidBrush(emptyColor))
             {
                 int bx = Inset;
                 for (int i = 0; i < BlockCount; i++)

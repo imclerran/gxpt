@@ -205,7 +205,7 @@ namespace GxPT
             {
                 // Seed with built-ins if none found on disk
                 dict["blue"] = BuildBuiltinBlue();
-                dict["red"] = BuildBuiltinRed();
+                dict["purple"] = BuildBuiltinPurple();
                 dict["orange"] = BuildBuiltinOrange();
             }
             lock (_lock)
@@ -234,6 +234,10 @@ namespace GxPT
             try { themeName = AppSettings.GetString("color_theme"); }
             catch { themeName = null; }
             if (string.IsNullOrEmpty(themeName)) themeName = "blue"; // default
+            // "red" was retired in favor of purple (its dark chrome was already Sparkle Purple);
+            // a settings.json still carrying it gets the purple transcript so bubbles keep matching
+            // the purple chrome the bridge gives it.
+            if (themeName.Trim().Equals("red", StringComparison.OrdinalIgnoreCase)) themeName = "purple";
             ThemeDefinition def = null;
             lock (_lock) { _themes.TryGetValue(themeName, out def); }
             if (def == null) def = BuildBuiltinBlue();
@@ -371,17 +375,20 @@ namespace GxPT
             return d;
         }
 
-        internal static ThemeDefinition BuildBuiltinRed()
+        // Replaces the old "red" theme: red's dark-mode chrome mapped onto Krypton's Sparkle Purple
+        // palette (no red Sparkle variant exists), so the transcript now matches it with real purple
+        // accents. A persisted color_theme of "red" resolves to no theme and falls back to blue.
+        internal static ThemeDefinition BuildBuiltinPurple()
         {
             var d = new ThemeDefinition();
-            d.Id = "red"; d.Name = "Red";
+            d.Id = "purple"; d.Name = "Purple";
             // Light adaptation
             d.Light = new ThemeColors
             {
                 UiBackground = SystemColors.Window,
                 UiForeground = SystemColors.WindowText,
-                UserBubbleBack = ColorTranslator.FromHtml("#ffe5e5"),
-                UserBubbleBorder = ColorTranslator.FromHtml("#e5a0a0"),
+                UserBubbleBack = ColorTranslator.FromHtml("#efe6fa"),
+                UserBubbleBorder = ColorTranslator.FromHtml("#c7b2e8"),
                 AssistantBubbleBack = Color.FromArgb(235, 235, 235),
                 AssistantBubbleBorder = Color.FromArgb(200, 200, 200),
                 SystemBubbleBack = Color.FromArgb(255, 250, 220),
@@ -390,7 +397,7 @@ namespace GxPT
                 CodeBorder = Color.FromArgb(210, 210, 210),
                 InlineCodeBack = Color.FromArgb(240, 240, 240),
                 InlineCodeBorder = Color.FromArgb(200, 200, 200),
-                Link = ColorTranslator.FromHtml("#cc0033"),
+                Link = ColorTranslator.FromHtml("#7a3cb8"),
                 CopyHover = Color.FromArgb(230, 230, 230),
                 CopyPressed = Color.FromArgb(210, 210, 210),
                 ScrollTrack = Color.FromArgb(235, 235, 235),
@@ -403,8 +410,8 @@ namespace GxPT
             {
                 UiBackground = Color.FromArgb(0x24, 0x24, 0x24),
                 UiForeground = Color.FromArgb(230, 230, 230),
-                UserBubbleBack = ColorTranslator.FromHtml("#660020"),
-                UserBubbleBorder = ColorTranslator.FromHtml("#990030"),
+                UserBubbleBack = ColorTranslator.FromHtml("#3f2a66"),
+                UserBubbleBorder = ColorTranslator.FromHtml("#5c3f99"),
                 AssistantBubbleBack = Color.FromArgb(48, 49, 52),
                 AssistantBubbleBorder = Color.FromArgb(70, 72, 75),
                 SystemBubbleBack = Color.FromArgb(64, 60, 40),
@@ -413,7 +420,7 @@ namespace GxPT
                 CodeBorder = Color.FromArgb(70, 72, 75),
                 InlineCodeBack = Color.FromArgb(45, 46, 49),
                 InlineCodeBorder = Color.FromArgb(70, 72, 75),
-                Link = Color.FromArgb(255, 140, 140),
+                Link = ColorTranslator.FromHtml("#c0a0f0"),
                 CopyHover = Color.FromArgb(60, 62, 66),
                 CopyPressed = Color.FromArgb(52, 54, 58),
                 ScrollTrack = Color.FromArgb(45, 46, 49),

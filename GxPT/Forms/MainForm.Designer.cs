@@ -62,11 +62,11 @@
             this.pnlInputRight = new System.Windows.Forms.Panel();
             this.pnlButtonsFill = new System.Windows.Forms.Panel();
             this.pnlButtons = new System.Windows.Forms.Panel();
-            this.btnSend = new System.Windows.Forms.Button();
-            this.btnAttach = new System.Windows.Forms.Button();
+            this.btnSend = new Krypton.Toolkit.KryptonButton();
+            this.btnAttach = new Krypton.Toolkit.KryptonButton();
             this.pnlModelRow = new System.Windows.Forms.Panel();
-            this.cmbModel = new System.Windows.Forms.ComboBox();
-            this.chkZdrTab = new System.Windows.Forms.CheckBox();
+            this.cmbModel = new GxPT.ModelComboBox();
+            this.chkZdrTab = new Krypton.Toolkit.KryptonCheckBox();
             this.toolTipZdr = new System.Windows.Forms.ToolTip(this.components);
             this.pnlBottom = new System.Windows.Forms.Panel();
             this.pnlApiKeyBanner = new System.Windows.Forms.Panel();
@@ -74,8 +74,8 @@
             this.lblNoApiKey = new System.Windows.Forms.Label();
             this.lnkOpenSettings = new System.Windows.Forms.LinkLabel();
             this.pnlAttachmentsBanner = new System.Windows.Forms.FlowLayoutPanel();
-            this.tabControl1 = new System.Windows.Forms.TabControl();
-            this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
+            this.tabPage1 = new Krypton.Navigator.KryptonPage();
             this.chatTranscript = new GxPT.ChatTranscriptControl();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.ssMain = new System.Windows.Forms.StatusStrip();
@@ -333,6 +333,11 @@
             this.pnlInput.Controls.Add(this.txtMessage);
             this.pnlInput.Controls.Add(this.pnlInputRight);
             this.pnlInput.Dock = System.Windows.Forms.DockStyle.Bottom;
+            // The (borderless) message textbox docks Fill inside this panel; this padding leaves a
+            // ring of the panel visible around it, and the panel is painted the Krypton form/chrome
+            // background (ApplyThemedChrome) - i.e. the textbox's "border" is the form background
+            // color in both themes, replacing the Fixed3D frame that read white in dark mode.
+            this.pnlInput.Padding = new System.Windows.Forms.Padding(2);
             this.pnlInput.Location = new System.Drawing.Point(0, 21);
             this.pnlInput.MinimumSize = new System.Drawing.Size(0, 75);
             this.pnlInput.Name = "pnlInput";
@@ -342,6 +347,10 @@
             // txtMessage
             // 
             this.txtMessage.AcceptsReturn = true;
+            // No border: the default Fixed3D frame's highlight edges read as a white outline around
+            // the input in dark mode, and in light mode the border was invisible against the white
+            // box anyway. The input's edge is defined by its themed BackColor against the composer.
+            this.txtMessage.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.txtMessage.Dock = System.Windows.Forms.DockStyle.Fill;
             this.txtMessage.Location = new System.Drawing.Point(0, 0);
             this.txtMessage.Margin = new System.Windows.Forms.Padding(0);
@@ -393,18 +402,20 @@
             this.btnSend.Size = new System.Drawing.Size(174, 52);
             this.btnSend.TabIndex = 0;
             this.btnSend.Text = "Send";
-            this.btnSend.UseVisualStyleBackColor = true;
             this.btnSend.Click += new System.EventHandler(this.btnSend_Click);
             // 
             // btnAttach
             // 
             this.btnAttach.Dock = System.Windows.Forms.DockStyle.Left;
-            this.btnAttach.Image = global::GxPT.Properties.Resources.AttatchGrey;
             this.btnAttach.Location = new System.Drawing.Point(0, 0);
             this.btnAttach.Name = "btnAttach";
             this.btnAttach.Size = new System.Drawing.Size(26, 52);
             this.btnAttach.TabIndex = 3;
-            this.btnAttach.UseVisualStyleBackColor = true;
+            // The paperclip glyph is drawn at runtime by ThemeManager.ApplyAttachIcon in the active theme's
+            // text color. Krypton drops a content image that overflows its rectangle (unlike stock Button),
+            // so zero the content padding to give the glyph the most room.
+            this.btnAttach.StateCommon.Content.Padding = new System.Windows.Forms.Padding(0);
+            this.btnAttach.Values.Text = "";
             // 
             // pnlModelRow
             // 
@@ -420,9 +431,7 @@
             // cmbModel
             // 
             this.cmbModel.Dock = System.Windows.Forms.DockStyle.Left;
-            this.cmbModel.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
             this.cmbModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.cmbModel.FormattingEnabled = true;
             // Items are populated at runtime by MainForm.PopulateModelsFromSettings (from the user's
             // settings, or ModelDefaults on a fresh install) - not hardcoded here, so the default
             // catalog lives in one place.
@@ -436,14 +445,12 @@
             // chkZdrTab
             // 
             this.chkZdrTab.Dock = System.Windows.Forms.DockStyle.Right;
-            this.chkZdrTab.FlatStyle = System.Windows.Forms.FlatStyle.System;
             this.chkZdrTab.Location = new System.Drawing.Point(152, 0);
             this.chkZdrTab.Margin = new System.Windows.Forms.Padding(0);
             this.chkZdrTab.Name = "chkZdrTab";
             this.chkZdrTab.Size = new System.Drawing.Size(48, 23);
             this.chkZdrTab.TabIndex = 3;
             this.chkZdrTab.Text = "ZDR";
-            this.chkZdrTab.UseVisualStyleBackColor = true;
             this.toolTipZdr.SetToolTip(this.chkZdrTab, "Enable Zero Data Retention for this conversation");
             // 
             // pnlBottom
@@ -512,25 +519,26 @@
             this.pnlAttachmentsBanner.TabIndex = 2;
             // 
             // tabControl1
-            // 
-            this.tabControl1.Controls.Add(this.tabPage1);
+            //
+            this.tabControl1.Pages.Add(this.tabPage1);
+            // Hide the navigator's built-in close button (tab close is driven by the menu-strip x button
+            // and the tab context menu), but keep the context button - its drop-down lists all open tabs.
+            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
+            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Logic;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(885, 646);
             this.tabControl1.TabIndex = 4;
-            // 
+            //
             // tabPage1
-            // 
+            //
             this.tabPage1.Controls.Add(this.chatTranscript);
-            this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Size = new System.Drawing.Size(877, 620);
-            this.tabPage1.TabIndex = 0;
+            this.tabPage1.Padding = new System.Windows.Forms.Padding(0);
             this.tabPage1.Text = "New Conversation";
-            this.tabPage1.UseVisualStyleBackColor = true;
-            // 
+            //
             // chatTranscript
             // 
             this.chatTranscript.AccessibleName = "Chat transcript";
@@ -604,9 +612,11 @@
             //
             // tsiStopGen
             //
-            // Top/bottom margins match tspGenProgress's so the button's 15px height lines up with
-            // the bar exactly.
-            this.tsiStopGen.Margin = new System.Windows.Forms.Padding(2, 4, 0, 3);
+            // Two pixels less top/bottom margin than tspGenProgress (4,3): the item is 19px to the
+            // bar's 15px (Krypton's border chrome insets the button face ~1px per edge, and the
+            // remaining extra height is a deliberate visual choice), keeping both centered on the
+            // same 22px row band.
+            this.tsiStopGen.Margin = new System.Windows.Forms.Padding(2, 2, 0, 1);
             this.tsiStopGen.Name = "tsiStopGen";
             this.tsiStopGen.ToolTipText = "Stop generating";
             this.tsiStopGen.Visible = false;
@@ -718,6 +728,11 @@
             //
             // MainForm
             //
+            // No AcceptButton: it would route Enter from ANY focused control that doesn't consume it
+            // (the question panel's Other textbox, the model combo, the ZDR checkbox) into a surprise
+            // Send of whatever draft sits in the composer. btnSend gets its accented default-button
+            // look via NotifyDefault in the MainForm constructor instead; the composer's own Enter
+            // handling (InputManager) is what actually sends.
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(892, 766);
@@ -764,13 +779,13 @@
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
         private System.Windows.Forms.ToolStripMenuItem miExit;
         private System.Windows.Forms.Panel pnlInput;
-        private System.Windows.Forms.Button btnSend;
+        private Krypton.Toolkit.KryptonButton btnSend;
         private System.Windows.Forms.TextBox txtMessage;
         private System.Windows.Forms.Panel pnlInputRight;
         private System.Windows.Forms.Panel pnlButtonsFill;
         private System.Windows.Forms.Panel pnlModelRow;
-        private System.Windows.Forms.ComboBox cmbModel;
-        private System.Windows.Forms.CheckBox chkZdrTab;
+        private GxPT.ModelComboBox cmbModel;
+        private Krypton.Toolkit.KryptonCheckBox chkZdrTab;
         private System.Windows.Forms.ToolTip toolTipZdr;
         private System.Windows.Forms.Panel pnlBottom;
         private System.Windows.Forms.Panel pnlApiKeyBanner;
@@ -778,8 +793,8 @@
         private System.Windows.Forms.LinkLabel lnkOpenSettings;
         private System.Windows.Forms.ToolStripMenuItem miNewConversation;
         private System.Windows.Forms.ToolStripMenuItem miOpenRecentWorkDir;
-        private System.Windows.Forms.TabControl tabControl1;
-        private System.Windows.Forms.TabPage tabPage1;
+        private Krypton.Navigator.KryptonNavigator tabControl1;
+        private Krypton.Navigator.KryptonPage tabPage1;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
         private System.Windows.Forms.ToolStripMenuItem miCloseConversation;
         private System.Windows.Forms.SplitContainer splitContainer1;
@@ -795,7 +810,7 @@
         private System.Windows.Forms.ToolStripMenuItem miImport;
         private System.Windows.Forms.ToolStripMenuItem miExport;
         private System.Windows.Forms.ToolStripMenuItem miPluginManage;
-        private System.Windows.Forms.Button btnAttach;
+        private Krypton.Toolkit.KryptonButton btnAttach;
         private System.Windows.Forms.Panel pnlButtons;
         private System.Windows.Forms.FlowLayoutPanel pnlAttachmentsBanner;
         private System.Windows.Forms.ToolStripMenuItem miDarkMode;

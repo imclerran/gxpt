@@ -3,14 +3,15 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using Krypton.Navigator;
 
 namespace GxPT
 {
     internal sealed class TabManager
     {
         private readonly MainForm _mainForm;
-        private readonly TabControl _tabControl;
-        private readonly Dictionary<TabPage, ChatTabContext> _tabContexts = new Dictionary<TabPage, ChatTabContext>();
+        private readonly KryptonNavigator _tabControl;
+        private readonly Dictionary<KryptonPage, ChatTabContext> _tabContexts = new Dictionary<KryptonPage, ChatTabContext>();
 
         // Tab context menu
         private ContextMenuStrip _tabCtxMenu;
@@ -21,19 +22,19 @@ namespace GxPT
         private ToolStripMenuItem _miTabRename;
         private ToolStripMenuItem _miTabExport;
         private ToolStripMenuItem _miTabDelete;
-        private TabPage _tabCtxTarget;
+        private KryptonPage _tabCtxTarget;
 
         // Custom toolbar buttons
         private GlyphToolStripButton _btnNewTab;
         private GlyphToolStripButton _btnCloseTab;
 
-        public event Action<TabPage> TabSelected;
+        public event Action<KryptonPage> TabSelected;
         public event Action TabsChanged;
 
         // Per-tab chat context
         public sealed class ChatTabContext
         {
-            public TabPage Page;
+            public KryptonPage Page;
             public ChatTranscriptControl Transcript;
             // Backing field for Conversation. Assignment goes through the property so that putting a
             // conversation on a tab is the SAME action as registering it in the sidebar's open-by-id
@@ -101,7 +102,7 @@ namespace GxPT
             public string PendingEditOriginalModel;
         }
 
-        public TabManager(MainForm mainForm, TabControl tabControl, MenuStrip menuStrip)
+        public TabManager(MainForm mainForm, KryptonNavigator tabControl, MenuStrip menuStrip)
         {
             _mainForm = mainForm;
             _tabControl = tabControl;
@@ -111,7 +112,7 @@ namespace GxPT
             AddCustomButtons(menuStrip);
         }
 
-        public Dictionary<TabPage, ChatTabContext> TabContexts
+        public Dictionary<KryptonPage, ChatTabContext> TabContexts
         {
             get { return _tabContexts; }
         }
@@ -120,14 +121,13 @@ namespace GxPT
         {
             if (_tabControl != null)
             {
-                _tabControl.SelectedIndexChanged += (s, e) =>
+                _tabControl.SelectedPageChanged += (s, e) =>
                 {
-                    if (TabSelected != null) TabSelected(_tabControl.SelectedTab);
+                    if (TabSelected != null) TabSelected(_tabControl.SelectedPage);
                 };
 
                 try
                 {
-                    _tabControl.DrawMode = TabDrawMode.Normal;
                     _tabControl.MouseDown -= tabControl1_MouseDown;
                     _tabControl.MouseDown += tabControl1_MouseDown;
                     _tabControl.MouseUp -= tabControl1_MouseUp;
@@ -207,7 +207,7 @@ namespace GxPT
             ctx.ConversationAssigned = delegate(ChatTabContext c) { _mainForm.OnTabConversationAssigned(c); };
         }
 
-        public ChatTabContext SetupInitialConversationTab(TabPage initialTab, ChatTranscriptControl initialTranscript)
+        public ChatTabContext SetupInitialConversationTab(KryptonPage initialTab, ChatTranscriptControl initialTranscript)
         {
             try
             {
@@ -255,8 +255,8 @@ namespace GxPT
         {
             if (_tabControl == null) return null;
 
-            var page = new TabPage("New Conversation");
-            page.UseVisualStyleBackColor = true;
+            var page = new KryptonPage("New Conversation");
+            page.Padding = new Padding(0); // transcript sits flush to the page edges
 
             var transcript = new ChatTranscriptControl();
             transcript.Dock = DockStyle.Fill;
@@ -286,9 +286,16 @@ namespace GxPT
             _tabContexts[page] = ctx;
             _mainForm.AttachWorkspaceStrip(ctx);
 
-            _tabControl.TabPages.Add(page);
-            try { _tabControl.SelectedTab = page; }
-            catch { }
+            _tabControl.Pages.Add(page);
+            // Selecting a page forces the navigator to fully lay it out (and fires the whole
+            // OnTabSelected sync chain). During session restore each restored tab was selected in
+            // turn just to be replaced by the next, paying that cost N times; the restore loop
+            // selects the saved active tab once at the end instead.
+            if (!_mainForm.IsRestoringTabs)
+            {
+                try { _tabControl.SelectedPage = page; }
+                catch { }
+            }
 
             // Apply transcript/message width from settings for newly created transcript
             try { TranscriptWidthSettings.Resolve().ApplyTo(transcript); }
@@ -303,7 +310,7 @@ namespace GxPT
             try
             {
                 if (_tabControl == null) return null;
-                var page = _tabControl.SelectedTab;
+                var page = _tabControl.SelectedPage;
                 if (page == null) return null;
                 ChatTabContext ctx;
                 return _tabContexts.TryGetValue(page, out ctx) ? ctx : null;
@@ -316,7 +323,7 @@ namespace GxPT
             try
             {
                 if (_tabControl == null) return;
-                var page = _tabControl.SelectedTab;
+                var page = _tabControl.SelectedPage;
                 if (page == null) return;
                 CloseConversationTab(page);
             }
@@ -325,7 +332,7 @@ namespace GxPT
 
         // True when the tab's conversation has a saved file on disk (and thus appears in the
         // sidebar). Used to gate the tab context menu's Delete entry.
-        private bool ConversationHasSavedFile(TabPage page)
+        private bool ConversationHasSavedFile(KryptonPage page)
         {
             try
             {
@@ -341,7 +348,7 @@ namespace GxPT
         // Export the conversation backing a tab: the single-conversation export, identical to the
         // sidebar's Export (same .gxcv SaveFileDialog flow). It packages the SAVED file, so the
         // menu item is gated on ConversationHasSavedFile like Delete.
-        public void ExportConversationTab(TabPage page)
+        public void ExportConversationTab(KryptonPage page)
         {
             try
             {
@@ -364,7 +371,7 @@ namespace GxPT
         // the sidebar's inline edit). Renames the LIVE conversation object - for an open tab it is
         // the authoritative copy - then persists update-only: an unsaved tab keeps the new name in
         // memory and it lands on disk with the conversation's first regular save.
-        public void RenameConversationTab(TabPage page)
+        public void RenameConversationTab(KryptonPage page)
         {
             try
             {
@@ -439,7 +446,7 @@ namespace GxPT
 
         // Delete the conversation backing a tab: remove its saved file, close the tab, and
         // refresh the sidebar. Mirrors the sidebar's Delete action from the tab side.
-        public void DeleteConversationTab(TabPage page)
+        public void DeleteConversationTab(KryptonPage page)
         {
             if (page == null) return;
             try
@@ -459,14 +466,14 @@ namespace GxPT
             catch { }
         }
 
-        public void CloseConversationTab(TabPage page)
+        public void CloseConversationTab(KryptonPage page)
         {
             if (page == null) return;
 
             ChatTabContext ctx;
             _tabContexts.TryGetValue(page, out ctx);
 
-            if (_tabControl != null && _tabControl.TabPages.Count <= 1)
+            if (_tabControl != null && _tabControl.Pages.Count <= 1)
             {
                 // Reset single remaining tab
                 try
@@ -522,7 +529,7 @@ namespace GxPT
                 {
                     try
                     {
-                        int idx = _tabControl.TabPages.IndexOf(page);
+                        int idx = _tabControl.Pages.IndexOf(page);
                         if (idx >= 0) desiredIndex = Math.Max(0, idx - 1);
                     }
                     catch { }
@@ -535,14 +542,14 @@ namespace GxPT
 
                 if (_tabControl != null)
                 {
-                    _tabControl.TabPages.Remove(page);
+                    _tabControl.Pages.Remove(page);
                     try
                     {
-                        if (_tabControl.TabPages.Count > 0)
+                        if (_tabControl.Pages.Count > 0)
                         {
                             if (desiredIndex < 0) desiredIndex = 0;
-                            if (desiredIndex >= _tabControl.TabPages.Count)
-                                desiredIndex = _tabControl.TabPages.Count - 1;
+                            if (desiredIndex >= _tabControl.Pages.Count)
+                                desiredIndex = _tabControl.Pages.Count - 1;
                             _tabControl.SelectedIndex = desiredIndex;
                         }
                     }
@@ -558,13 +565,13 @@ namespace GxPT
             catch { }
         }
 
-        private void CloseOtherTabs(TabPage keep)
+        private void CloseOtherTabs(KryptonPage keep)
         {
             try
             {
                 if (_tabControl == null || keep == null) return;
-                var toClose = new List<TabPage>();
-                foreach (TabPage p in _tabControl.TabPages)
+                var toClose = new List<KryptonPage>();
+                foreach (KryptonPage p in _tabControl.Pages)
                 {
                     if (!object.ReferenceEquals(p, keep)) toClose.Add(p);
                 }
@@ -584,16 +591,9 @@ namespace GxPT
 
                 if (e.Button == MouseButtons.Middle)
                 {
-                    for (int i = 0; i < _tabControl.TabPages.Count; i++)
-                    {
-                        var page = _tabControl.TabPages[i];
-                        Rectangle r = _tabControl.GetTabRect(i);
-                        if (r.Contains(e.Location))
-                        {
-                            CloseConversationTab(page);
-                            return;
-                        }
-                    }
+                    // PageFromPoint returns the page whose tab header is under the point (null otherwise).
+                    KryptonPage page = _tabControl.PageFromPoint(e.Location);
+                    if (page != null) CloseConversationTab(page);
                     return;
                 }
             }
@@ -607,22 +607,16 @@ namespace GxPT
                 if (_tabControl == null || _tabCtxMenu == null) return;
                 if (e.Button != MouseButtons.Right) return;
 
-                _tabCtxTarget = null;
-                for (int i = 0; i < _tabControl.TabPages.Count; i++)
+                _tabCtxTarget = _tabControl.PageFromPoint(e.Location);
+                if (_tabCtxTarget != null)
                 {
-                    Rectangle r = _tabControl.GetTabRect(i);
-                    if (r.Contains(e.Location))
-                    {
-                        _tabCtxTarget = _tabControl.TabPages[i];
-                        try { _tabControl.SelectedTab = _tabCtxTarget; }
-                        catch { }
-                        break;
-                    }
+                    try { _tabControl.SelectedPage = _tabCtxTarget; }
+                    catch { }
                 }
 
                 bool hasTarget = (_tabCtxTarget != null);
                 _miTabClose.Enabled = hasTarget;
-                _miTabCloseOthers.Enabled = hasTarget && _tabControl.TabPages.Count > 1;
+                _miTabCloseOthers.Enabled = hasTarget && _tabControl.Pages.Count > 1;
                 _miTabRename.Enabled = hasTarget;
                 // Export packages the conversation's saved file (like the sidebar's Export), and
                 // Delete removes it - both need the file to exist. A brand-new, message-less tab
@@ -635,12 +629,12 @@ namespace GxPT
             catch { }
         }
 
-        public void SelectTab(TabPage page)
+        public void SelectTab(KryptonPage page)
         {
             try
             {
-                if (_tabControl != null && _tabControl.TabPages.Contains(page))
-                    _tabControl.SelectedTab = page;
+                if (_tabControl != null && _tabControl.Pages.Contains(page))
+                    _tabControl.SelectedPage = page;
             }
             catch { }
         }
@@ -651,7 +645,7 @@ namespace GxPT
             try
             {
                 if (_tabControl == null) return;
-                int count = _tabControl.TabPages.Count;
+                int count = _tabControl.Pages.Count;
                 if (count <= 0) return;
                 int idx = Math.Max(0, _tabControl.SelectedIndex);
                 int next = (idx + 1) % count;
@@ -665,7 +659,7 @@ namespace GxPT
             try
             {
                 if (_tabControl == null) return;
-                int count = _tabControl.TabPages.Count;
+                int count = _tabControl.Pages.Count;
                 if (count <= 0) return;
                 int idx = Math.Max(0, _tabControl.SelectedIndex);
                 int prev = (idx - 1 + count) % count;
@@ -685,7 +679,7 @@ namespace GxPT
                 if (_tabControl != null)
                 {
                     _tabControl.Font = new Font(_tabControl.Font.FontFamily, size, _tabControl.Font.Style);
-                    foreach (TabPage p in _tabControl.TabPages)
+                    foreach (KryptonPage p in _tabControl.Pages)
                     {
                         try { if (p != null) p.Font = new Font(p.Font.FontFamily, size, p.Font.Style); }
                         catch { }
@@ -883,11 +877,14 @@ namespace GxPT
         }
 
         // Custom ToolStripButton with copy-button-like hover/press visuals and +/x glyphs
+        // A right-aligned +/x button on the menu strip. It is a stock ToolStripButton
+        // so Krypton's toolstrip renderer draws its hover/pressed background to match
+        // the themed strip (we deliberately do NOT paint our own background, which is
+        // what used to clash). We only paint the glyph, in the same color Krypton
+        // uses for the menu-bar text so it blends with File/View/Help.
         private sealed class GlyphToolStripButton : ToolStripButton
         {
             public enum GlyphType { Plus, Close }
-            private bool _hover;
-            private bool _pressed;
             private readonly GlyphType _glyph;
 
             public GlyphToolStripButton(GlyphType glyph)
@@ -899,51 +896,19 @@ namespace GxPT
                 Margin = new Padding(2);
             }
 
-            protected override void OnMouseEnter(EventArgs e)
-            {
-                _hover = true;
-                Invalidate();
-                base.OnMouseEnter(e);
-            }
-
-            protected override void OnMouseLeave(EventArgs e)
-            {
-                _hover = false;
-                _pressed = false;
-                Invalidate();
-                base.OnMouseLeave(e);
-            }
-
-            protected override void OnMouseDown(MouseEventArgs e)
-            {
-                if (e.Button == MouseButtons.Left)
-                {
-                    _pressed = true;
-                    Invalidate();
-                }
-                base.OnMouseDown(e);
-            }
-
-            protected override void OnMouseUp(MouseEventArgs e)
-            {
-                _pressed = false;
-                Invalidate();
-                base.OnMouseUp(e);
-            }
-
             protected override void OnPaint(PaintEventArgs e)
             {
+                // Let the (Krypton) renderer paint the themed button background and
+                // hover/pressed states first; ToolStripButton tracks those itself.
+                base.OnPaint(e);
+
                 var g = e.Graphics;
                 Rectangle r = new Rectangle(0, 0, (int)this.Width - 1, (int)this.Height - 1);
-                if (_hover || _pressed)
-                {
-                    int shade = _pressed ? 210 : 230;
-                    using (var sb = new SolidBrush(Color.FromArgb(shade, shade, shade)))
-                        g.FillRectangle(sb, r);
-                    using (var pen = new Pen(Color.FromArgb(210, 210, 210)))
-                        g.DrawRectangle(pen, r);
-                }
-                using (var pen = new Pen(Color.FromArgb(80, 80, 80), 2f))
+                Color glyphColor;
+                try { glyphColor = KryptonThemeBridge.MenuTextColor(); }
+                catch { glyphColor = Color.FromArgb(0x50, 0x50, 0x50); }
+
+                using (var pen = new Pen(glyphColor, 2f))
                 {
                     int cx = r.Left + r.Width / 2;
                     int cy = r.Top + r.Height / 2;

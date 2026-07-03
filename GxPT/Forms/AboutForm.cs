@@ -5,14 +5,33 @@ using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
-    partial class AboutForm : Form
+    partial class AboutForm : KryptonForm
     {
         public AboutForm()
         {
             InitializeComponent();
+            // The stock TableLayoutPanel is layout-only; make it transparent so the KryptonPanel
+            // beneath shows through and the labels sit on the themed surface (same pattern as
+            // SettingsForm).
+            try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); }
+            catch { }
+            // In dark mode the palette draws the link in the classic dark blue, which has too little
+            // contrast against the dark panel. Use the transcript theme's dark-mode link color (the
+            // same one chat links use) for both link states.
+            try
+            {
+                if (KryptonThemeBridge.IsDarkMode())
+                {
+                    Color link = ThemeService.GetColors(true).Link;
+                    this.link3rdPartyLicenses.OverrideNotVisited.ShortText.Color1 = link;
+                    this.link3rdPartyLicenses.OverrideVisited.ShortText.Color1 = link;
+                }
+            }
+            catch { }
             this.Text = String.Format("About {0}", AssemblyTitle);
             this.labelProductName.Text = AssemblyProduct;
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);

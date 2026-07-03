@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -20,8 +21,8 @@ namespace GxPT
         private readonly FlowLayoutPanel _options; // option rows (radios/checks + descriptions + Other)
         private readonly FlowLayoutPanel _buttons;  // Submit / Skip
         private readonly TextBox _otherText;
-        private readonly Button _submit;
-        private readonly Button _skip;
+        private readonly KryptonButton _submit;
+        private readonly KryptonButton _skip;
         private Font _headerFont;          // bold header font, rebuilt per show from the live UI font
         private Font _uiFont;              // panel-created UI font assigned to this.Font (NOT the inherited one)
 
@@ -36,11 +37,11 @@ namespace GxPT
         // width plus the selector's left margin.
         private const int LabelIndent = 18;
 
-        // The option selectors in display order (RadioButton when single-select, CheckBox when multi);
+        // The option selectors in display order (KryptonRadioButton when single-select, KryptonCheckBox when multi);
         // Tag carries the option label. _otherSelector is the always-present free-text row's selector.
-        private readonly List<ButtonBase> _selectors = new List<ButtonBase>();
+        private readonly List<Control> _selectors = new List<Control>();
         private readonly List<Label> _descriptions = new List<Label>(); // width-managed on resize
-        private ButtonBase _otherSelector;
+        private Control _otherSelector;
 
         private Action<QuestionAnswer> _onAnswer;
         private bool _multi;
@@ -62,7 +63,11 @@ namespace GxPT
             this.AutoSize = false;
             this.Height = 160;
             this.Padding = new Padding(8);
-            this.BorderStyle = BorderStyle.FixedSingle;
+            // No BorderStyle: FixedSingle is the SYSTEM single border (black in light mode). The
+            // border is drawn in OnPaint with the theme's assistant-bubble border color instead,
+            // matching the transcript's message bubbles and the sub-agents panel. ResizeRedraw keeps
+            // the drawn edges valid when the (docked) panel resizes.
+            this.SetStyle(ControlStyles.ResizeRedraw, true);
 
             _header = new Label();
             _header.Dock = DockStyle.Top;
@@ -101,13 +106,20 @@ namespace GxPT
             _buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             _buttons.MinimumSize = new Size(0, 34);
 
-            _submit = new Button();
+            _submit = new KryptonButton();
             _submit.Text = "Submit";
             _submit.AutoSize = true;
             _submit.Margin = new Padding(4);
             _submit.Click += OnSubmitClicked;
+            // Draw with the accented "default button" chrome (the same look a form's AcceptButton
+            // gets). NotifyDefault is used instead of Form.AcceptButton because this panel lives in a
+            // tab page - the form's accept button is the composer's Send, and it must keep the Enter
+            // key. WinForms clears the default flag if this button is focused and then left (the form
+            // re-tracks its own default chain), so re-assert it when focus departs.
+            _submit.NotifyDefault(true);
+            _submit.LostFocus += delegate { try { _submit.NotifyDefault(true); } catch { } };
 
-            _skip = new Button();
+            _skip = new KryptonButton();
             _skip.Text = "Skip";
             _skip.AutoSize = true;
             _skip.Margin = new Padding(4);
@@ -154,10 +166,12 @@ namespace GxPT
                 if (_options != null) _options.BackColor = tc.AssistantBubbleBack;
                 if (_buttons != null) _buttons.BackColor = tc.AssistantBubbleBack;
 
-                foreach (ButtonBase b in _selectors)
+                foreach (Control b in _selectors)
                 {
                     b.BackColor = tc.AssistantBubbleBack;
-                    b.ForeColor = tc.UiForeground;
+                    // Krypton check/radio captions are palette-driven; set the caption color explicitly so
+                    // it matches the panel's theme (and stays readable in dark mode).
+                    SetSelectorTextColor(b, tc.UiForeground);
                 }
                 // Description labels are dimmer than the option text (a subtitle), so derive a muted tone.
                 foreach (Label d in _descriptions)
@@ -170,8 +184,7 @@ namespace GxPT
                     _otherText.BackColor = tc.CodeBack;
                     _otherText.ForeColor = tc.UiForeground;
                 }
-                if (_submit != null) ApplyButtonTheme(_submit, dark, tc);
-                if (_skip != null) ApplyButtonTheme(_skip, dark, tc);
+                // _submit / _skip are KryptonButtons - they theme themselves from the active palette.
 
                 Invalidate(true);
             }
@@ -186,18 +199,19 @@ namespace GxPT
             return Color.FromArgb((f.R + b.R) / 2, (f.G + b.G) / 2, (f.B + b.B) / 2);
         }
 
-        // Flat, theme-tinted buttons (a visual-styles button ignores BackColor), matching ToolApprovalPanel.
-        private static void ApplyButtonTheme(Button b, bool dark, ThemeColors tc)
+        // 1px border in the theme's assistant-bubble border color, like the transcript's message
+        // bubbles and the sub-agents panel (the old FixedSingle BorderStyle drew the system black).
+        // Colors are read at paint time; ApplyTheme's Invalidate repaints it on a theme switch.
+        protected override void OnPaint(PaintEventArgs e)
         {
-            b.FlatStyle = FlatStyle.Flat;
-            b.UseVisualStyleBackColor = false;
-            b.BackColor = tc.CodeBack;
-            b.ForeColor = tc.UiForeground;
+            base.OnPaint(e);
             try
             {
-                b.FlatAppearance.BorderColor = tc.AssistantBubbleBorder;
-                b.FlatAppearance.MouseOverBackColor = tc.CopyHover;
-                b.FlatAppearance.MouseDownBackColor = tc.CopyPressed;
+                ThemeColors tc = ThemeService.GetColors(IsDark());
+                Rectangle border = this.ClientRectangle;
+                border.Width -= 1; border.Height -= 1;
+                using (Pen pen = new Pen(tc.AssistantBubbleBorder))
+                    e.Graphics.DrawRectangle(pen, border);
             }
             catch { }
         }
@@ -242,7 +256,7 @@ namespace GxPT
                 {
                     QuestionOption opt = req.Options[i];
                     if (opt == null || string.IsNullOrEmpty(opt.Label)) continue;
-                    ButtonBase sel = MakeSelector(opt.Label);
+                    Control sel = MakeSelector(opt.Label);
                     sel.Tag = opt.Label;
                     _selectors.Add(sel);
                     _options.Controls.Add(sel);
@@ -287,20 +301,20 @@ namespace GxPT
             }
         }
 
-        // Build a selector for the current mode: a RadioButton (single-select; auto-grouped because all
-        // selectors share _options as their immediate parent) or a CheckBox (multi-select).
-        private ButtonBase MakeSelector(string text)
+        // Build a selector for the current mode: a KryptonRadioButton (single-select; auto-grouped because
+        // all selectors share _options as their immediate parent) or a KryptonCheckBox (multi-select).
+        private Control MakeSelector(string text)
         {
-            ButtonBase b;
+            Control b;
             if (_multi)
             {
-                CheckBox cb = new CheckBox();
+                KryptonCheckBox cb = new KryptonCheckBox();
                 cb.CheckedChanged += OnSelectionChanged;
                 b = cb;
             }
             else
             {
-                RadioButton rb = new RadioButton();
+                KryptonRadioButton rb = new KryptonRadioButton();
                 rb.CheckedChanged += OnSelectionChanged;
                 b = rb;
             }
@@ -308,6 +322,19 @@ namespace GxPT
             b.AutoSize = true;
             b.Margin = new Padding(2, 2, 2, 0);
             return b;
+        }
+
+        // Set a Krypton check/radio selector's caption color (palette-driven, so ForeColor is ignored).
+        private static void SetSelectorTextColor(Control b, Color c)
+        {
+            try
+            {
+                KryptonCheckBox cb = b as KryptonCheckBox;
+                if (cb != null) { cb.StateCommon.ShortText.Color1 = c; return; }
+                KryptonRadioButton rb = b as KryptonRadioButton;
+                if (rb != null) { rb.StateCommon.ShortText.Color1 = c; }
+            }
+            catch { }
         }
 
         private Label MakeDescription(string text)
@@ -320,19 +347,19 @@ namespace GxPT
             return d;
         }
 
-        private bool IsChecked(ButtonBase b)
+        private bool IsChecked(Control b)
         {
-            RadioButton rb = b as RadioButton;
+            KryptonRadioButton rb = b as KryptonRadioButton;
             if (rb != null) return rb.Checked;
-            CheckBox cb = b as CheckBox;
+            KryptonCheckBox cb = b as KryptonCheckBox;
             return cb != null && cb.Checked;
         }
 
-        private void SetChecked(ButtonBase b, bool value)
+        private void SetChecked(Control b, bool value)
         {
-            RadioButton rb = b as RadioButton;
+            KryptonRadioButton rb = b as KryptonRadioButton;
             if (rb != null) { rb.Checked = value; return; }
-            CheckBox cb = b as CheckBox;
+            KryptonCheckBox cb = b as KryptonCheckBox;
             if (cb != null) cb.Checked = value;
         }
 
@@ -406,7 +433,7 @@ namespace GxPT
             ans.Selected = new List<string>();
             for (int i = 0; i < _selectors.Count; i++)
             {
-                ButtonBase b = _selectors[i];
+                Control b = _selectors[i];
                 if (ReferenceEquals(b, _otherSelector)) continue;
                 if (IsChecked(b) && b.Tag is string) ans.Selected.Add((string)b.Tag);
             }
@@ -448,7 +475,7 @@ namespace GxPT
 
         private void FocusFirstSelector()
         {
-            ButtonBase first = _selectors.Count > 0 ? _selectors[0] : null;
+            Control first = _selectors.Count > 0 ? _selectors[0] : null;
             if (first == null) return;
             try
             {

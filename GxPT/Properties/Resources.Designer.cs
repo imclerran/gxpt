@@ -66,5 +66,6 @@ namespace GxPT.Properties {
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
+
     }
 }

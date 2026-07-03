@@ -2,22 +2,25 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
     // Modal dialog for authoring a .gxpl: a name/version/description plus a checklist of the user's and
     // project's skills and agents (bundled items are excluded by the caller, mirroring what /export already
-    // enforces). A single-item bundle is just one checkbox. Built in code rather than with a Designer file,
-    // like the app's other small dialogs. XP / .NET 3.5 friendly.
-    internal sealed class PluginExportForm : Form
+    // enforces). A single-item bundle is just one checkbox. Krypton throughout: KryptonForm chrome, a
+    // KryptonPanel client surface, and Krypton inputs/labels/checklists themed from the active palette.
+    // Built in code rather than with a Designer file, like the app's other small dialogs.
+    // XP / .NET 3.5 friendly.
+    internal sealed class PluginExportForm : KryptonForm
     {
         private readonly IList<Skill> _skillItems;
         private readonly IList<Agent> _agentItems;
-        private readonly TextBox _name;
-        private readonly TextBox _version;
-        private readonly TextBox _description;
-        private readonly CheckedListBox _skills;
-        private readonly CheckedListBox _agents;
+        private readonly KryptonTextBox _name;
+        private readonly KryptonTextBox _version;
+        private readonly KryptonTextBox _description;
+        private readonly KryptonCheckedListBox _skills;
+        private readonly KryptonCheckedListBox _agents;
 
         public string PluginName { get; private set; }
         public string PluginVersion { get; private set; }
@@ -38,47 +41,55 @@ namespace GxPT
             ShowInTaskbar = false;
             ClientSize = new Size(460, 470);
 
-            Label nameLbl = MakeLabel("Name:", 12, 15, 70);
-            _name = new TextBox();
-            _name.SetBounds(90, 12, 350, 20);
+            KryptonLabel nameLbl = MakeLabel("Name:", 12, 15);
+            _name = MakeTextBox(90, 12, 350);
 
-            Label verLbl = MakeLabel("Version:", 12, 43, 70);
-            _version = new TextBox();
-            _version.SetBounds(90, 40, 120, 20);
+            KryptonLabel verLbl = MakeLabel("Version:", 12, 43);
+            _version = MakeTextBox(90, 40, 120);
             _version.Text = "1.0.0";
 
-            Label descLbl = MakeLabel("Description:", 12, 71, 75);
-            _description = new TextBox();
-            _description.SetBounds(90, 68, 350, 20);
+            KryptonLabel descLbl = MakeLabel("Description:", 12, 71);
+            _description = MakeTextBox(90, 68, 350);
 
-            Label skillsLbl = MakeLabel("Skills:", 12, 98, 200);
+            // The section labels sit 4px higher than the old stock labels did: a KryptonLabel
+            // auto-sizes a little taller, and at the original y its bottom edge overlapped the
+            // checklist below, notching the list's top-left corner.
+            KryptonLabel skillsLbl = MakeLabel("Skills:", 12, 94);
             _skills = MakeCheckList(12, 116, 428, 140);
             for (int i = 0; i < _skillItems.Count; i++)
                 _skills.Items.Add(Describe(_skillItems[i].Slug,
                     _skillItems[i].Source == SkillSource.Project, _skillItems[i].Description));
 
-            Label agentsLbl = MakeLabel("Agents:", 12, 262, 200);
+            KryptonLabel agentsLbl = MakeLabel("Agents:", 12, 258);
             _agents = MakeCheckList(12, 280, 428, 140);
             for (int i = 0; i < _agentItems.Count; i++)
                 _agents.Items.Add(Describe(_agentItems[i].Slug,
                     _agentItems[i].Source == AgentSource.Project, _agentItems[i].Description));
 
-            Button ok = new Button();
+            KryptonButton ok = new KryptonButton();
             ok.Text = "Export...";
             ok.SetBounds(274, 432, 80, 26);
             ok.Click += new EventHandler(OnOk);
 
-            Button cancel = new Button();
+            KryptonButton cancel = new KryptonButton();
             cancel.Text = "Cancel";
             cancel.DialogResult = DialogResult.Cancel;
             cancel.SetBounds(360, 432, 80, 26);
 
-            Controls.Add(nameLbl); Controls.Add(_name);
-            Controls.Add(verLbl); Controls.Add(_version);
-            Controls.Add(descLbl); Controls.Add(_description);
-            Controls.Add(skillsLbl); Controls.Add(_skills);
-            Controls.Add(agentsLbl); Controls.Add(_agents);
-            Controls.Add(ok); Controls.Add(cancel);
+            // A KryptonForm themes only its border/caption; host everything on a KryptonPanel docked to
+            // fill so the client surface takes the palette's panel color. Sized to the client area
+            // BEFORE the children are added (fixed dialog, no anchors - but keeps the pattern used by
+            // the app's other Krypton dialogs).
+            KryptonPanel root = new KryptonPanel();
+            root.Size = this.ClientSize;
+            root.Dock = DockStyle.Fill;
+            root.Controls.Add(nameLbl); root.Controls.Add(_name);
+            root.Controls.Add(verLbl); root.Controls.Add(_version);
+            root.Controls.Add(descLbl); root.Controls.Add(_description);
+            root.Controls.Add(skillsLbl); root.Controls.Add(_skills);
+            root.Controls.Add(agentsLbl); root.Controls.Add(_agents);
+            root.Controls.Add(ok); root.Controls.Add(cancel);
+            Controls.Add(root);
 
             AcceptButton = ok;
             CancelButton = cancel;
@@ -91,20 +102,27 @@ namespace GxPT
             PluginImportExportManager.ApplyOwnerIcon(this);
         }
 
-        private static Label MakeLabel(string text, int x, int y, int w)
+        private static KryptonLabel MakeLabel(string text, int x, int y)
         {
-            Label l = new Label();
+            KryptonLabel l = new KryptonLabel();
             l.Text = text;
-            l.SetBounds(x, y, w, 20);
+            l.Location = new Point(x, y);
             return l;
         }
 
-        private static CheckedListBox MakeCheckList(int x, int y, int w, int h)
+        private static KryptonTextBox MakeTextBox(int x, int y, int w)
         {
-            CheckedListBox c = new CheckedListBox();
+            KryptonTextBox t = new KryptonTextBox();
+            // Height is driven by the palette font; only the width is meaningful here.
+            t.SetBounds(x, y, w, 23);
+            return t;
+        }
+
+        private static KryptonCheckedListBox MakeCheckList(int x, int y, int w, int h)
+        {
+            KryptonCheckedListBox c = new KryptonCheckedListBox();
             c.SetBounds(x, y, w, h);
             c.CheckOnClick = true;
-            c.IntegralHeight = false;
             return c;
         }
 

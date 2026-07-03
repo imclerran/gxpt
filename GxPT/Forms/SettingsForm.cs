@@ -9,10 +9,12 @@ using System.IO;
 using System.Windows.Forms;
 using System.Web.Script.Serialization; // .NET 3.5 JSON serializer
 using Newtonsoft.Json.Linq;            // mcp.json validation
+using Krypton.Toolkit;
+using Krypton.Navigator;
 
 namespace GxPT
 {
-    public partial class SettingsForm : Form
+    public partial class SettingsForm : KryptonForm
     {
         private readonly string _settingsDir;
         private readonly string _settingsFile;
@@ -27,6 +29,12 @@ namespace GxPT
         // True once the user edits any control (and not yet saved). Drives the Apply button's enabled
         // state; cleared on a successful Apply/OK save and reset to false after the initial load.
         private bool _isDirty = false;
+
+        // Snapshot of every tracked control's value, taken once the form has loaded/settled. Dirtiness
+        // is decided by comparing the current values to this baseline rather than by "an event fired",
+        // so spurious Changed events that don't actually alter a value (e.g. Krypton combos re-raising
+        // SelectedIndexChanged when first realized on screen) never light up Apply.
+        private string _dirtyBaseline;
 
         // Debounce timer for JSON syntax highlighting
         private Timer _jsonHighlightTimer;
@@ -46,15 +54,84 @@ namespace GxPT
         private readonly ToolTip _mcpTip = new ToolTip();
 
         // Agent effort-tier model pickers (low/medium/high), built in code into the Models groupbox. Narrow
-        // owner-drawn combos that show just the model name while storing the full "author/model" id.
-        private ComboBox cmbEffortLow;
-        private ComboBox cmbEffortMedium;
-        private ComboBox cmbEffortHigh;
+        // combos that show just the model name while storing the full "author/model" id.
+        private ModelComboBox cmbEffortLow;
+        private ModelComboBox cmbEffortMedium;
+        private ModelComboBox cmbEffortHigh;
 
         public SettingsForm()
         {
             InitializeComponent();
             this.Disposed += delegate { try { _mcpTip.Dispose(); } catch { } };
+
+            // The visual tabs nest stock WinForms layout panels (TableLayoutPanels,
+            // Panels) inside themed Krypton surfaces. Left opaque, those panels paint
+            // a light rectangle over the dark KryptonPage/GroupBox in dark mode and the
+            // KryptonLabels on them become light-on-light. Making the layout-only
+            // containers transparent lets the themed surface show through so the labels
+            // read correctly in both light and dark mode.
+            try { KryptonThemeBridge.MakeLayoutContainersTransparent(this); } catch { }
+
+            // The two tables that host NumericUpDowns must NOT be transparent: a transparent parent
+            // chain disrupts the KryptonNumericUpDown's edit painting (on activation it drops to the
+            // raw hosted control instead of Krypton's rendered text). Paint them the opaque group-box
+            // panel color instead - visually identical to the transparent look, so labels still read,
+            // but the NUDs no longer sit on a transparent parent.
+            try
+            {
+                Color panelBack = KryptonThemeBridge.PanelBackColor();
+                if (this.tblAppearance != null) this.tblAppearance.BackColor = panelBack;
+                if (this.tblMemory != null) this.tblMemory.BackColor = panelBack;
+            }
+            catch { }
+
+            // The group boxes sit on the (light) navigator page but have dark panels.
+            // The default caption straddles the top border, so half the caption text
+            // lands on the light page behind it and is unreadable. Seat each caption
+            // fully inside its own group area so it reads against the dark panel.
+            try { KryptonThemeBridge.SeatGroupBoxCaptions(this); } catch { }
+
+            // KryptonNumericUpDown paints its value with the palette font, but its HOSTED WinForms
+            // edit uses the ambient Font (the .NET default Microsoft Sans Serif 8.25pt, since this
+            // form sets none). Those two fonts render at different metrics/position, so on the
+            // inactive->active flip the value shifts and the raw edit (different font, its own X)
+            // shows. Assigning nud.Font (the wrapper) does NOT reach the hosted control, so set the
+            // CONTAINED control's Font directly - via KryptonNumericUpDown.NumericUpDown - to the
+            // palette's own input font. That makes the active edit render in the same font as
+            // Krypton's paint (seamless like the example app) and matches the other themed inputs.
+            try
+            {
+                Font nudFont = KryptonThemeBridge.InputContentFont();
+                Color nudBack = KryptonThemeBridge.InputBackColor();
+                foreach (KryptonNumericUpDown nud in new KryptonNumericUpDown[]
+                    { this.nudTranscriptMaxWidth, this.nudMessageMaxWidth, this.nudFontSize, this.nudMemoryMaxLines })
+                {
+                    if (nud == null) continue;
+                    nud.TextAlign = HorizontalAlignment.Left;
+                    if (nudFont != null) nud.Font = nudFont;
+                    // Configure the CONTAINED control directly (wrapper props don't reach it): match
+                    // its font to Krypton's paint font and give it an opaque input background, so the
+                    // active edit renders in the same font/position as Krypton's paint instead of
+                    // reverting to the raw WinForms edit (different font, its own X, transparent bg).
+                    try
+                    {
+                        System.Windows.Forms.NumericUpDown inner = nud.NumericUpDown;
+                        if (inner != null)
+                        {
+                            if (nudFont != null) inner.Font = nudFont;
+                            inner.BackColor = nudBack;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // The navigator fills the client area except the bottom OK/Cancel/Apply strip, which
+            // would otherwise show the unthemed form background. Paint it the themed chrome-bar color
+            // (the same one the main window's status strip uses) so it matches the window chrome.
+            try { if (this.flowLayoutPanel1 != null) this.flowLayoutPanel1.BackColor = KryptonThemeBridge.StatusStripBackColor(); }
+            catch { }
 
             // Compute settings paths under %AppData%\GxPT
             _settingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GxPT");
@@ -77,6 +154,13 @@ namespace GxPT
 
             // Wire events (in case not hooked up in designer)
             this.Load += SettingsForm_Load;
+
+            // Some Krypton inputs (KryptonComboBox / KryptonNumericUpDown) raise their
+            // Changed events when first realized on screen - which happens after Load has
+            // already cleared the dirty flag - spuriously enabling Apply on open. Clear the
+            // dirty state once more after the form has finished showing (and the deferred
+            // events have flushed) so Apply starts disabled until the user actually edits.
+            this.Shown += SettingsForm_Shown;
 
             // Grey out the memory size limit when memory is disabled (it only applies when on).
             try
@@ -110,7 +194,7 @@ namespace GxPT
             this.KeyDown += SettingsForm_KeyDown;
 
             // Keep tabs in sync
-            this.tabControl1.SelectedIndexChanged += TabControl1_SelectedIndexChanged;
+            this.tabControl1.SelectedPageChanged += TabControl1_SelectedIndexChanged;
 
             // Keep default model list updated as models are typed
             this.txtModels.TextChanged += TxtModels_TextChanged;
@@ -184,6 +268,11 @@ namespace GxPT
             try { BuildEffortRow(); }
             catch { }
 
+            // In dark mode, KryptonCheckBox captions render dimmer than the labels next to them;
+            // brighten them to match. Done after BuildEffortRow so the re-hosted Sub-agents
+            // checkbox is included too.
+            try { KryptonThemeBridge.FixDarkCheckBoxText(this); } catch { }
+
             // Track edits across every input so the Apply button can light up only when there are
             // unsaved changes. Wired generically (by control type) so new controls are covered too.
             try { WireDirtyTracking(this); }
@@ -199,14 +288,22 @@ namespace GxPT
             if (root == null) return;
             foreach (Control c in root.Controls)
             {
-                if (c is TextBox || c is RichTextBox)
+                // TextChanged is a Control-level event, so it covers the stock and
+                // Krypton text / rich-text controls alike without a cast.
+                if (c is TextBox || c is RichTextBox || c is KryptonTextBox || c is KryptonRichTextBox)
                     c.TextChanged += AnyInput_Changed;
                 else if (c is CheckBox)
                     ((CheckBox)c).CheckedChanged += AnyInput_Changed;
+                else if (c is KryptonCheckBox)
+                    ((KryptonCheckBox)c).CheckedChanged += AnyInput_Changed;
                 else if (c is ComboBox)
                     ((ComboBox)c).SelectedIndexChanged += AnyInput_Changed;
+                else if (c is KryptonComboBox)
+                    ((KryptonComboBox)c).SelectedIndexChanged += AnyInput_Changed;
                 else if (c is NumericUpDown)
                     ((NumericUpDown)c).ValueChanged += AnyInput_Changed;
+                else if (c is KryptonNumericUpDown)
+                    ((KryptonNumericUpDown)c).ValueChanged += AnyInput_Changed;
 
                 if (c.HasChildren) WireDirtyTracking(c);
             }
@@ -221,8 +318,88 @@ namespace GxPT
         private void MarkDirty()
         {
             if (_isSyncing) return;
-            _isDirty = true;
+            // Compare actual control values to the loaded baseline instead of trusting that an
+            // event means a real edit. A spurious Changed event that leaves every value unchanged
+            // (e.g. a Krypton combo re-raising SelectedIndexChanged on first display) compares
+            // equal and keeps Apply disabled; a genuine edit differs and enables it.
+            _isDirty = _dirtyBaseline != null && CollectTrackedSnapshot() != _dirtyBaseline;
             UpdateDialogButtons();
+        }
+
+        // Capture the current baseline of all tracked control values and clear the dirty state.
+        // Called after load/show settle and after each successful save, so Apply greys out until
+        // the user makes a change that actually differs from the saved state.
+        private void ResetDirtyBaseline()
+        {
+            _dirtyBaseline = CollectTrackedSnapshot();
+            _isDirty = false;
+            UpdateDialogButtons();
+        }
+
+        // A stable string of every tracked input's value (same control set WireDirtyTracking hooks),
+        // used purely for equality comparison to detect real edits.
+        private string CollectTrackedSnapshot()
+        {
+            StringBuilder sb = new StringBuilder();
+            CollectTrackedSnapshot(this, sb);
+            return sb.ToString();
+        }
+
+        private void CollectTrackedSnapshot(Control root, StringBuilder sb)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is TextBox || c is RichTextBox || c is KryptonTextBox || c is KryptonRichTextBox)
+                    sb.Append(c.Name).Append('=').Append(NormalizeText(c.Text)).Append('\n');
+                else if (c is CheckBox)
+                    sb.Append(c.Name).Append('=').Append(((CheckBox)c).Checked).Append('\n');
+                else if (c is KryptonCheckBox)
+                    sb.Append(c.Name).Append('=').Append(((KryptonCheckBox)c).Checked).Append('\n');
+                else if (c is ComboBox)
+                    sb.Append(c.Name).Append('=').Append(((ComboBox)c).Text).Append('\n');
+                // ModelComboBox must be snapshotted by its FULL id, not .Text: the displayed text is
+                // the short model name (author prefix stripped), so two models differing only by
+                // author would snapshot identically and switching between them would never mark the
+                // form dirty - while the save path persists the full SelectedModelId.
+                else if (c is ModelComboBox)
+                    sb.Append(c.Name).Append('=').Append(((ModelComboBox)c).SelectedModelId ?? string.Empty).Append('\n');
+                else if (c is KryptonComboBox)
+                    sb.Append(c.Name).Append('=').Append(((KryptonComboBox)c).Text).Append('\n');
+                // Use .Text, not .Value: reading NumericUpDown.Value forces ValidateEditText,
+                // which snaps the half-typed number into [Minimum,Maximum] and rewrites the display
+                // mid-edit (so typing a digit below the minimum jumps straight to the minimum). The
+                // text is all we need to detect an edit.
+                else if (c is NumericUpDown)
+                    sb.Append(c.Name).Append('=').Append(((NumericUpDown)c).Text).Append('\n');
+                else if (c is KryptonNumericUpDown)
+                    sb.Append(c.Name).Append('=').Append(((KryptonNumericUpDown)c).Text).Append('\n');
+
+                if (c.Controls.Count > 0) CollectTrackedSnapshot(c, sb);
+            }
+        }
+
+        // A RichTextBox normalizes its line endings (and may add/drop a trailing newline) when its
+        // handle is first created - which happens the first time its tab is shown. That makes the JSON
+        // editors read differently after a tab switch than when the baseline was captured (those tabs
+        // unrealized), spuriously enabling Apply. Compare on normalized line endings with trailing
+        // whitespace removed so the realize artifact is ignored while real content edits still differ.
+        private static string NormalizeText(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            return s.Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd();
+        }
+
+        private void SettingsForm_Shown(object sender, EventArgs e)
+        {
+            // Re-establish the baseline after the form has finished showing, so any Changed events
+            // Krypton inputs raise as they're first realized on screen are folded into the baseline
+            // rather than treated as edits. Deferred via BeginInvoke so it runs once the initial
+            // display has settled; the form always opens clean.
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate { ResetDirtyBaseline(); });
+            }
+            catch { }
         }
 
         // OK and Cancel are always enabled (standard Windows practice); Apply only when there are
@@ -264,10 +441,9 @@ namespace GxPT
                 // mcp.json lives in its own file beside settings.json.
                 LoadMcpJsonEditor();
 
-                // Nothing the user did yet: clear any dirty marks left by populating the controls
-                // (LoadMcpJsonEditor runs outside the _isSyncing block) so Apply starts disabled.
-                _isDirty = false;
-                UpdateDialogButtons();
+                // Nothing the user did yet: snapshot the populated controls as the baseline so
+                // Apply starts disabled (the Shown handler refreshes it once the display settles).
+                ResetDirtyBaseline();
             }
             catch (Exception ex)
             {
@@ -348,7 +524,7 @@ namespace GxPT
                 finally { _isSyncing = false; }
 
                 // If currently on the JSON tab, re-apply highlighting once post-save
-                if (this.tabControl1.SelectedTab == this.tabJson)
+                if (this.tabControl1.SelectedPage == this.tabJson)
                 {
                     try { BeginInvoke(new Action(HighlightJsonNow)); }
                     catch { /* ignore */ }
@@ -388,8 +564,8 @@ namespace GxPT
             bool ok = SaveSettingsOnly();
             if (ok)
             {
-                _isDirty = false;
-                UpdateDialogButtons();
+                // Saved state is the new baseline, so Apply greys out until the next real edit.
+                ResetDirtyBaseline();
             }
             return ok;
         }
@@ -408,16 +584,23 @@ namespace GxPT
         {
             if (_isSyncing) return;
 
+            // A tab switch runs a sync (regenerate the JSON view, realize the page's controls) that
+            // isn't a user edit. If nothing was edited before the switch, fold the resulting derived /
+            // realize-time values into the baseline once the new page settles so Apply stays disabled;
+            // if edits were already pending, leave the dirty state untouched.
+            bool wasDirty = _isDirty;
+
             // The MCP tab edits mcp.json + its own settings; it is independent of the settings.json
             // visual/JSON sync. Just (re)highlight its editor on entry.
-            if (this.tabControl1.SelectedTab == this.tabMcp)
+            if (this.tabControl1.SelectedPage == this.tabMcp)
             {
                 try { BeginInvoke(new Action(HighlightMcpJsonNow)); }
                 catch { /* ignore */ }
+                RebaselineIfClean(wasDirty);
                 return;
             }
 
-            bool toJson = this.tabControl1.SelectedTab == this.tabJson;
+            bool toJson = this.tabControl1.SelectedPage == this.tabJson;
 
             _isSyncing = true;
             try
@@ -445,7 +628,7 @@ namespace GxPT
                         if (choice == JsonPromptChoice.Edit)
                         {
                             // Stay on JSON tab
-                            this.tabControl1.SelectedTab = this.tabJson;
+                            this.tabControl1.SelectedPage = this.tabJson;
                             return;
                         }
                         else
@@ -462,14 +645,14 @@ namespace GxPT
                                         "Reload Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                                     _isSyncing = true;
                                     // Stay on JSON tab to edit
-                                    this.tabControl1.SelectedTab = this.tabJson;
+                                    this.tabControl1.SelectedPage = this.tabJson;
                                     return;
                                 }
                                 _working = loaded;
                                 ApplySettingsToVisualControls(_working);
                                 UpdateJsonEditorFromSettings(_working);
                                 // Stay on JSON tab so the user can continue editing there
-                                this.tabControl1.SelectedTab = this.tabJson;
+                                this.tabControl1.SelectedPage = this.tabJson;
                                 return;
                             }
                             catch (Exception ex)
@@ -477,7 +660,7 @@ namespace GxPT
                                 _isSyncing = false;
                                 MessageBox.Show(this, "Failed to reload settings: " + ex.Message, "Reload Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                                 _isSyncing = true;
-                                this.tabControl1.SelectedTab = this.tabJson;
+                                this.tabControl1.SelectedPage = this.tabJson;
                                 return;
                             }
                         }
@@ -495,6 +678,20 @@ namespace GxPT
                 try { BeginInvoke(new Action(HighlightJsonNow)); }
                 catch { /* ignore */ }
             }
+
+            RebaselineIfClean(wasDirty);
+        }
+
+        // After a tab switch that wasn't preceded by edits, the values the sync produced (regenerated
+        // JSON text, RichTextBox handle-creation reformatting, Krypton controls realized for the first
+        // time) are not user edits - so recapture the baseline once the new page has settled, leaving
+        // Apply disabled. If edits were already pending, keep the dirty state as-is. Deferred via
+        // BeginInvoke so it runs after the realize/highlight events for the new page have flushed.
+        private void RebaselineIfClean(bool wasDirty)
+        {
+            if (wasDirty) return;
+            try { BeginInvoke((MethodInvoker)delegate { ResetDirtyBaseline(); }); }
+            catch { }
         }
 
         // --- Serialization helpers (JavaScriptSerializer for .NET 3.5) ---
@@ -870,7 +1067,12 @@ namespace GxPT
                 string ct = s.color_theme ?? "blue";
                 ct = ct.Trim();
                 if (ct.Length == 0) ct = "blue";
-                // Keep as-is; ThemeService will fallback if unknown
+                // "red" was retired in favor of purple (ThemeService and the Krypton bridge already
+                // render it as purple). Alias it here too, or the color combo - whose bound list is
+                // blue/orange/purple - would silently land on its first item ("Blue") and any save
+                // would rewrite the user's theme to blue.
+                if (ct.Equals("red", StringComparison.OrdinalIgnoreCase)) ct = "purple";
+                // Otherwise keep as-is; ThemeService will fallback if unknown
                 s.color_theme = ct;
             }
             catch { s.color_theme = "blue"; }
@@ -941,9 +1143,9 @@ namespace GxPT
             finally { this.cmbDefaultModel.EndUpdate(); }
 
             // Effort-tier pickers: same model list, each seeded with its configured (or default) model.
-            SyncEffortCombo(this.cmbEffortLow, s.models, s.model_effort_low);
-            SyncEffortCombo(this.cmbEffortMedium, s.models, s.model_effort_medium);
-            SyncEffortCombo(this.cmbEffortHigh, s.models, s.model_effort_high);
+            this.cmbEffortLow.SetModels(s.models, s.model_effort_low);
+            this.cmbEffortMedium.SetModels(s.models, s.model_effort_medium);
+            this.cmbEffortHigh.SetModels(s.models, s.model_effort_high);
 
             // Font size
             try
@@ -1295,12 +1497,14 @@ namespace GxPT
                     && this.tblMcp.RowStyles[2] is RowStyle)
                 {
                     ((RowStyle)this.tblMcp.RowStyles[2]).SizeType = SizeType.Absolute;
-                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 100F;
+                    ((RowStyle)this.tblMcp.RowStyles[2]).Height = 112F;
                 }
 
                 // Re-host the existing enable checkbox + the effort grid in a 2-row table docked into the group
                 // (the checkbox keeps its name/state/wiring - only its parent changes).
-                this.grpAgents.Controls.Remove(this.chkAgents);
+                // A KryptonGroupBox hosts its content on .Panel (not .Controls); adding to
+                // .Controls would put the table behind the panel and hide everything.
+                this.grpAgents.Panel.Controls.Remove(this.chkAgents);
                 this.chkAgents.Anchor = AnchorStyles.Left;
                 this.chkAgents.Margin = new Padding(3, 3, 3, 2);
 
@@ -1310,10 +1514,15 @@ namespace GxPT
                 layout.RowCount = 2;
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46F));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
                 layout.Controls.Add(this.chkAgents, 0, 0);
                 layout.Controls.Add(BuildEffortGrid(), 0, 1);
-                this.grpAgents.Controls.Add(layout);
+                this.grpAgents.Panel.Controls.Add(layout);
+
+                // These containers are built after the constructor's theming pass, so
+                // make them transparent now too - otherwise the stock TableLayoutPanels
+                // paint a light rectangle over the dark group panel in dark mode.
+                KryptonThemeBridge.MakeLayoutContainersTransparent(this.grpAgents);
             }
             finally { this.grpAgents.ResumeLayout(); }
         }
@@ -1329,27 +1538,33 @@ namespace GxPT
             grid.ColumnCount = 4;
             grid.RowCount = 2;
             grid.Margin = new Padding(0, 1, 0, 1);
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56F));   // row label
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76F));   // row label ("Models")
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
             grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // captions
-            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // combos
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F)); // captions (fixed so the
+            grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // Dock=Fill labels don't collapse)
 
             // Row label spanning both rows -> vertically centered across the caption+combo block.
-            Label lbl = new Label();
+            // A KryptonLabel themes itself from the palette exactly like the designer labels,
+            // so it stays consistent with the surrounding text in both light and dark mode.
+            KryptonLabel lbl = new KryptonLabel();
             lbl.Text = "Models";
+            lbl.AutoSize = false;
             lbl.Dock = DockStyle.Fill;
-            lbl.TextAlign = ContentAlignment.MiddleLeft;
             lbl.Margin = new Padding(3, 0, 6, 0);
+            lbl.StateCommon.ShortText.TextH = PaletteRelativeAlign.Near;
+            lbl.StateCommon.ShortText.TextV = PaletteRelativeAlign.Center;
             grid.Controls.Add(lbl, 0, 0);
             grid.SetRowSpan(lbl, 2);
             _mcpTip.SetToolTip(lbl, "Pick the model used for each agent effort tier. An agent (or "
                 + "dispatch_agent) can ask for low/medium/high without naming a model.");
 
-            this.cmbEffortLow = MakeEffortCombo();
-            this.cmbEffortMedium = MakeEffortCombo();
-            this.cmbEffortHigh = MakeEffortCombo();
+            // Named so the dirty-tracking snapshot lines are distinct per tier (an unnamed control
+            // snapshots as "=value", making the three tiers ambiguous with each other).
+            this.cmbEffortLow = MakeEffortCombo("cmbEffortLow");
+            this.cmbEffortMedium = MakeEffortCombo("cmbEffortMedium");
+            this.cmbEffortHigh = MakeEffortCombo("cmbEffortHigh");
 
             grid.Controls.Add(MakeEffortCaption("Low effort"), 1, 0);
             grid.Controls.Add(MakeEffortCaption("Medium effort"), 2, 0);
@@ -1362,91 +1577,33 @@ namespace GxPT
 
         // A tier caption that centers over its combo: Dock=Fill + centered text, with the same right margin
         // the combo uses so the two line up.
-        private static Label MakeEffortCaption(string text)
+        private static KryptonLabel MakeEffortCaption(string text)
         {
-            Label c = new Label();
+            KryptonLabel c = new KryptonLabel();
             c.Text = text;
+            c.AutoSize = false;
             c.Dock = DockStyle.Fill;
-            c.TextAlign = ContentAlignment.MiddleCenter;
             c.Margin = new Padding(0, 0, 6, 0);
+            c.StateCommon.ShortText.TextH = PaletteRelativeAlign.Center;
+            c.StateCommon.ShortText.TextV = PaletteRelativeAlign.Center;
             return c;
         }
 
-        private ComboBox MakeEffortCombo()
+        private ModelComboBox MakeEffortCombo(string name)
         {
-            ComboBox c = new ComboBox();
+            ModelComboBox c = new ModelComboBox();   // short display name + full id, Krypton chrome, self-sizing dropdown
+            c.Name = name;
             c.Dock = DockStyle.Fill;
             c.Margin = new Padding(0, 2, 6, 2);
-            c.DropDownStyle = ComboBoxStyle.DropDownList;
-            c.DrawMode = DrawMode.OwnerDrawFixed;   // show just the model name; the item value stays the full id
-            c.DrawItem += EffortCombo_DrawItem;
-            c.DropDown += EffortCombo_DropDown;
             return c;
-        }
-
-        // Owner-draw via the shared helper so the effort pickers render the short model name exactly like
-        // the main window's model selector.
-        private void EffortCombo_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            MainForm.DrawModelComboItem(e, sender as ComboBox);
-        }
-
-        // The box is narrow, so widen the dropdown to fit the longest (short) model name when it opens.
-        private void EffortCombo_DropDown(object sender, EventArgs e)
-        {
-            ComboBox combo = sender as ComboBox;
-            if (combo == null) return;
-            int w = combo.Width;
-            try
-            {
-                using (Graphics g = combo.CreateGraphics())
-                {
-                    foreach (object item in combo.Items)
-                    {
-                        string s = MainForm.ShortModelName(Convert.ToString(item));
-                        int tw = TextRenderer.MeasureText(g, s, combo.Font).Width + 24;
-                        if (tw > w) w = tw;
-                    }
-                }
-                combo.DropDownWidth = Math.Min(w, 600);
-            }
-            catch { }
-        }
-
-        // Repopulate one effort combo from the model list, preserving (or seeding) its selection. A stored
-        // value not in the list is still added so it stays visible/selectable (mirrors cmbDefaultModel).
-        private void SyncEffortCombo(ComboBox combo, IList<string> models, string selected)
-        {
-            if (combo == null) return;
-            combo.BeginUpdate();
-            try
-            {
-                combo.Items.Clear();
-                if (models != null)
-                    foreach (var m in models) combo.Items.Add(m);
-                string sel = selected ?? string.Empty;
-                if (sel.Length > 0 && !ContainsOrdinalIgnoreCase(models, sel))
-                    combo.Items.Add(sel);
-                combo.SelectedItem = sel;
-            }
-            finally { combo.EndUpdate(); }
-        }
-
-        private static bool ContainsOrdinalIgnoreCase(IList<string> list, string value)
-        {
-            if (list == null) return false;
-            for (int i = 0; i < list.Count; i++)
-                if (string.Equals(list[i], value, StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
         }
 
         // The selected model id for an effort combo, or the fallback (the existing working value) when the
         // combo is empty - so capturing settings never silently clears a tier.
-        private static string EffortComboValue(ComboBox combo, string fallback)
+        private static string EffortComboValue(ModelComboBox combo, string fallback)
         {
             if (combo == null) return fallback ?? string.Empty;
-            string sel = combo.SelectedItem as string;
-            if (string.IsNullOrEmpty(sel)) sel = combo.Text;
+            string sel = combo.SelectedModelId;
             return string.IsNullOrEmpty(sel) ? (fallback ?? string.Empty) : sel;
         }
 
@@ -1498,9 +1655,9 @@ namespace GxPT
             }
 
             // Keep the effort-tier pickers in step with the model list too, preserving each selection.
-            SyncEffortCombo(this.cmbEffortLow, models, this.cmbEffortLow != null ? this.cmbEffortLow.SelectedItem as string : null);
-            SyncEffortCombo(this.cmbEffortMedium, models, this.cmbEffortMedium != null ? this.cmbEffortMedium.SelectedItem as string : null);
-            SyncEffortCombo(this.cmbEffortHigh, models, this.cmbEffortHigh != null ? this.cmbEffortHigh.SelectedItem as string : null);
+            this.cmbEffortLow.SetModels(models, this.cmbEffortLow.SelectedModelId);
+            this.cmbEffortMedium.SetModels(models, this.cmbEffortMedium.SelectedModelId);
+            this.cmbEffortHigh.SetModels(models, this.cmbEffortHigh.SelectedModelId);
 
             UpdateRecommendedButtonStates();
         }
@@ -1508,7 +1665,7 @@ namespace GxPT
         // Ensure working copy is current before saving
         private bool SyncWorkingSettingsFromActiveTab(bool showErrors)
         {
-            bool jsonActive = this.tabControl1.SelectedTab == this.tabJson;
+            bool jsonActive = this.tabControl1.SelectedPage == this.tabJson;
             if (jsonActive)
             {
                 SettingsData parsed;
@@ -1539,7 +1696,7 @@ namespace GxPT
                                     }
                                     finally { _isSyncing = false; }
                                     // Keep user on JSON tab to continue editing
-                                    this.tabControl1.SelectedTab = this.tabJson;
+                                    this.tabControl1.SelectedPage = this.tabJson;
                                 }
                                 else
                                 {
@@ -1732,7 +1889,7 @@ namespace GxPT
             }
             catch (Exception ex)
             {
-                try { if (tabMcp != null) this.tabControl1.SelectedTab = tabMcp; }
+                try { if (tabMcp != null) this.tabControl1.SelectedPage = tabMcp; }
                 catch { }
                 MessageBox.Show(this, "mcp.json is not valid JSON:\r\n\r\n" + ex.Message,
                     "Invalid mcp.json", MessageBoxButtons.OK, MessageBoxIcon.Error);

@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
+using Krypton.Toolkit;
 
 namespace GxPT
 {
@@ -438,7 +439,7 @@ namespace GxPT
         // Cache for dynamically derived styled fonts based on a given base font (preserves size for headings)
         private readonly Dictionary<string, Font> _styledFontCache = new Dictionary<string, Font>();
 
-        private readonly VScrollBar _vbar;
+        private readonly KryptonScrollBar _vbar;
         private int _contentHeight;
         private int _scrollOffset;
         // Queue a deferred reflow to run after current layout (avoids stale viewport sizes)
@@ -669,10 +670,19 @@ namespace GxPT
 
             ApplyThemeFromSettings();
 
-            _vbar = new VScrollBar();
+            _vbar = new KryptonScrollBar();
+            _vbar.Orientation = ScrollBarOrientation.VERTICAL;
+            _vbar.Width = 17; // keep the docked band the width of a native vertical scrollbar
             _vbar.Dock = DockStyle.Right;
             _vbar.Visible = true;
-            _vbar.ValueChanged += delegate { _scrollOffset = _vbar.Value; Invalidate(); };
+            // KryptonScrollBar raises Scroll (not ValueChanged) on user interaction; every programmatic
+            // Value set already updates _scrollOffset alongside it, so wiring Scroll is sufficient.
+            _vbar.Scroll += delegate
+            {
+                int maxOff = Math.Max(0, _contentHeight - Math.Max(0, ClientSize.Height));
+                _scrollOffset = Math.Max(0, Math.Min(maxOff, _vbar.Value));
+                Invalidate();
+            };
             Controls.Add(_vbar);
 
             _ctx = new ContextMenuStrip();
@@ -816,8 +826,7 @@ namespace GxPT
                 int view = System.Math.Max(0, ClientSize.Height);
                 int max = System.Math.Max(0, _contentHeight - view);
                 _scrollOffset = System.Math.Max(0, System.Math.Min(max, _scrollOffset + pixels));
-                int allowedMax = System.Math.Max(0, _vbar.Maximum - _vbar.LargeChange + 1);
-                _vbar.Value = System.Math.Max(_vbar.Minimum, System.Math.Min(allowedMax, _scrollOffset));
+                SyncVBarValue(_scrollOffset);
                 Invalidate();
             }
             catch { }
@@ -3812,26 +3821,31 @@ namespace GxPT
             return -1;
         }
 
+        // Set the KryptonScrollBar's Value to a scroll offset, clamped to its [Minimum, Maximum] range,
+        // and force a repaint. KryptonScrollBar's Value ranges over [Minimum, Maximum] (the thumb hits the
+        // bottom at Value == Maximum, unlike a WinForms ScrollBar), and a programmatic Value change may not
+        // repaint the thumb on its own - so Invalidate here keeps the thumb in sync with wheel/programmatic
+        // scrolling.
+        private void SyncVBarValue(int offset)
+        {
+            // KryptonScrollBar doesn't move its thumb on a programmatic Value change; the bridge writes the
+            // backing value and forces the thumb reposition so wheel/programmatic scrolls stay in sync.
+            KryptonThemeBridge.SetScrollBarValue(_vbar, offset);
+        }
+
         private void ScrollToBottom()
         {
             int view = Math.Max(0, ClientSize.Height);
             int max = Math.Max(0, _contentHeight - view);
             _scrollOffset = max;
-            if (_vbar.Enabled)
-            {
-                int allowedMax = Math.Max(0, _vbar.Maximum - _vbar.LargeChange + 1);
-                _vbar.Value = Math.Max(_vbar.Minimum, Math.Min(allowedMax, max));
-            }
+            if (_vbar.Enabled) SyncVBarValue(max);
         }
 
         // Public helper to jump to the top of the transcript (used for help templates)
         public void ScrollToTop()
         {
             _scrollOffset = 0;
-            if (_vbar.Enabled)
-            {
-                _vbar.Value = _vbar.Minimum;
-            }
+            if (_vbar.Enabled) SyncVBarValue(0);
             Invalidate();
         }
 
@@ -3846,32 +3860,39 @@ namespace GxPT
                 _vbar.Enabled = false;
                 _vbar.Minimum = 0;
                 _vbar.Maximum = 0;
-                _vbar.Value = 0;
+                SyncVBarValue(0);
                 _scrollOffset = 0;
                 return;
             }
 
             _vbar.Minimum = 0;
-            _vbar.LargeChange = Math.Max(1, view);
-            _vbar.SmallChange = ScrollStep;
-            // For WinForms ScrollBar, Maximum should be totalContent-1; allowed Value max is Maximum-LargeChange+1
-            _vbar.Maximum = Math.Max(0, _contentHeight - 1);
-            int allowedMaxValue = Math.Max(0, _vbar.Maximum - _vbar.LargeChange + 1);
+            // KryptonScrollBar's Value ranges over [Minimum, Maximum] (thumb bottom at Value == Maximum),
+            // so Maximum is the maximum scroll offset itself - NOT contentHeight-1.
+            _vbar.Maximum = maxScrollOffset;
+            // Its thumb size is largeChange/Maximum of the track. Use the proportional page size
+            // (maxScroll * viewport / content) so the thumb reflects the visible fraction and never fills
+            // the whole track (which would push it under the arrow buttons). SmallChange must be
+            // <= LargeChange, which can be small when the content only just overflows.
+            int page = (_contentHeight > 0)
+                ? (int)Math.Round((double)maxScrollOffset * view / _contentHeight)
+                : view;
+            page = Math.Max(2, Math.Min(Math.Max(2, maxScrollOffset), page));
+            _vbar.SmallChange = 1;
+            _vbar.LargeChange = page;
 
             _vbar.Enabled = maxScrollOffset > 0;
 
             // Stick to bottom during streaming
             if (_stickToBottom && _vbar.Enabled)
             {
-                int desired = Math.Max(0, _contentHeight - view);
-                _scrollOffset = desired;
-                _vbar.Value = Math.Max(_vbar.Minimum, Math.Min(allowedMaxValue, desired));
+                _scrollOffset = maxScrollOffset;
+                SyncVBarValue(maxScrollOffset);
                 return;
             }
 
-            // Clamp our logical scroll offset to what the scrollbar will accept
-            _scrollOffset = Math.Max(0, Math.Min(allowedMaxValue, _scrollOffset));
-            _vbar.Value = _scrollOffset;
+            // Clamp our logical scroll offset to the scrollable range and mirror it onto the bar.
+            _scrollOffset = Math.Max(0, Math.Min(maxScrollOffset, _scrollOffset));
+            SyncVBarValue(_scrollOffset);
         }
 
         // Post a deferred reflow/scrollbar refresh so measurements use the final viewport size

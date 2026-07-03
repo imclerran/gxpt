@@ -30,73 +30,73 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SettingsForm));
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
-            this.btnOk = new System.Windows.Forms.Button();
-            this.btnCancel = new System.Windows.Forms.Button();
-            this.btnApply = new System.Windows.Forms.Button();
+            this.btnOk = new Krypton.Toolkit.KryptonButton();
+            this.btnCancel = new Krypton.Toolkit.KryptonButton();
+            this.btnApply = new Krypton.Toolkit.KryptonButton();
             this.rtbJson = new System.Windows.Forms.RichTextBox();
             this.tblSettings = new System.Windows.Forms.TableLayoutPanel();
-            this.grpAccount = new System.Windows.Forms.GroupBox();
+            this.grpAccount = new Krypton.Toolkit.KryptonGroupBox();
             this.tblAccount = new System.Windows.Forms.TableLayoutPanel();
-            this.grpModels = new System.Windows.Forms.GroupBox();
+            this.grpModels = new Krypton.Toolkit.KryptonGroupBox();
             this.tblModels = new System.Windows.Forms.TableLayoutPanel();
-            this.grpAppearance = new System.Windows.Forms.GroupBox();
+            this.grpAppearance = new Krypton.Toolkit.KryptonGroupBox();
             this.tblAppearance = new System.Windows.Forms.TableLayoutPanel();
-            this.grpMemory = new System.Windows.Forms.GroupBox();
+            this.grpMemory = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMemory = new System.Windows.Forms.TableLayoutPanel();
-            this.grpPrivacy = new System.Windows.Forms.GroupBox();
+            this.grpPrivacy = new Krypton.Toolkit.KryptonGroupBox();
             this.tblPrivacy = new System.Windows.Forms.TableLayoutPanel();
-            this.lblApiKey = new System.Windows.Forms.Label();
-            this.lblModels = new System.Windows.Forms.Label();
-            this.lblDefaultModel = new System.Windows.Forms.Label();
-            this.lblTheme = new System.Windows.Forms.Label();
-            this.lblTranscriptMaxWidth = new System.Windows.Forms.Label();
-            this.lblMessageMaxWidth = new System.Windows.Forms.Label();
-            this.lblFontSize = new System.Windows.Forms.Label();
-            this.lblEnableLogging = new System.Windows.Forms.Label();
-            this.txtApiKey = new System.Windows.Forms.TextBox();
+            this.lblApiKey = new Krypton.Toolkit.KryptonLabel();
+            this.lblModels = new Krypton.Toolkit.KryptonLabel();
+            this.lblDefaultModel = new Krypton.Toolkit.KryptonLabel();
+            this.lblTheme = new Krypton.Toolkit.KryptonLabel();
+            this.lblTranscriptMaxWidth = new Krypton.Toolkit.KryptonLabel();
+            this.lblMessageMaxWidth = new Krypton.Toolkit.KryptonLabel();
+            this.lblFontSize = new Krypton.Toolkit.KryptonLabel();
+            this.lblEnableLogging = new Krypton.Toolkit.KryptonLabel();
+            this.txtApiKey = new Krypton.Toolkit.KryptonTextBox();
             this.pnlModelsRow = new System.Windows.Forms.Panel();
-            this.txtModels = new System.Windows.Forms.TextBox();
+            this.txtModels = new Krypton.Toolkit.KryptonTextBox();
             this.pnlModelsRight = new System.Windows.Forms.Panel();
-            this.grpRecommended = new System.Windows.Forms.GroupBox();
-            this.btnAddRecommended = new System.Windows.Forms.Button();
-            this.btnReplaceRecommended = new System.Windows.Forms.Button();
-            this.btnUpdateModelInfo = new System.Windows.Forms.Button();
-            this.cmbDefaultModel = new System.Windows.Forms.ComboBox();
-            this.cmbTheme = new System.Windows.Forms.ComboBox();
-            this.nudTranscriptMaxWidth = new System.Windows.Forms.NumericUpDown();
-            this.nudMessageMaxWidth = new System.Windows.Forms.NumericUpDown();
-            this.nudFontSize = new System.Windows.Forms.NumericUpDown();
-            this.chkEnableLogging = new System.Windows.Forms.CheckBox();
-            this.lblProviderDataCollection = new System.Windows.Forms.Label();
-            this.chkZdr = new System.Windows.Forms.CheckBox();
-            this.lblColor = new System.Windows.Forms.Label();
-            this.cmbColor = new System.Windows.Forms.ComboBox();
-            this.lblMemoryEnabled = new System.Windows.Forms.Label();
-            this.chkMemoryEnabled = new System.Windows.Forms.CheckBox();
-            this.lblMemoryMaxLines = new System.Windows.Forms.Label();
-            this.nudMemoryMaxLines = new System.Windows.Forms.NumericUpDown();
-            this.tabControl1 = new System.Windows.Forms.TabControl();
-            this.tabVisual = new System.Windows.Forms.TabPage();
-            this.tabJson = new System.Windows.Forms.TabPage();
-            this.tabMcp = new System.Windows.Forms.TabPage();
+            this.grpRecommended = new Krypton.Toolkit.KryptonGroupBox();
+            this.btnAddRecommended = new Krypton.Toolkit.KryptonButton();
+            this.btnReplaceRecommended = new Krypton.Toolkit.KryptonButton();
+            this.btnUpdateModelInfo = new Krypton.Toolkit.KryptonButton();
+            this.cmbDefaultModel = new Krypton.Toolkit.KryptonComboBox();
+            this.cmbTheme = new Krypton.Toolkit.KryptonComboBox();
+            this.nudTranscriptMaxWidth = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.nudMessageMaxWidth = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.nudFontSize = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.chkEnableLogging = new Krypton.Toolkit.KryptonCheckBox();
+            this.lblProviderDataCollection = new Krypton.Toolkit.KryptonLabel();
+            this.chkZdr = new Krypton.Toolkit.KryptonCheckBox();
+            this.lblColor = new Krypton.Toolkit.KryptonLabel();
+            this.cmbColor = new Krypton.Toolkit.KryptonComboBox();
+            this.lblMemoryEnabled = new Krypton.Toolkit.KryptonLabel();
+            this.chkMemoryEnabled = new Krypton.Toolkit.KryptonCheckBox();
+            this.lblMemoryMaxLines = new Krypton.Toolkit.KryptonLabel();
+            this.nudMemoryMaxLines = new Krypton.Toolkit.KryptonNumericUpDown();
+            this.tabControl1 = new Krypton.Navigator.KryptonNavigator();
+            this.tabVisual = new Krypton.Navigator.KryptonPage();
+            this.tabJson = new Krypton.Navigator.KryptonPage();
+            this.tabMcp = new Krypton.Navigator.KryptonPage();
             this.tblMcp = new System.Windows.Forms.TableLayoutPanel();
-            this.grpMcpWeb = new System.Windows.Forms.GroupBox();
+            this.grpMcpWeb = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMcpWeb = new System.Windows.Forms.TableLayoutPanel();
-            this.chkMcpWeb = new System.Windows.Forms.CheckBox();
-            this.txtWebSearchKey = new System.Windows.Forms.TextBox();
-            this.chkMcpGithub = new System.Windows.Forms.CheckBox();
-            this.txtGithubPat = new System.Windows.Forms.TextBox();
-            this.grpMcpWorkspace = new System.Windows.Forms.GroupBox();
+            this.chkMcpWeb = new Krypton.Toolkit.KryptonCheckBox();
+            this.txtWebSearchKey = new Krypton.Toolkit.KryptonTextBox();
+            this.chkMcpGithub = new Krypton.Toolkit.KryptonCheckBox();
+            this.txtGithubPat = new Krypton.Toolkit.KryptonTextBox();
+            this.grpMcpWorkspace = new Krypton.Toolkit.KryptonGroupBox();
             this.tblMcpWorkspace = new System.Windows.Forms.TableLayoutPanel();
             this.tblMcpKeyless = new System.Windows.Forms.TableLayoutPanel();
-            this.chkMcpFiles = new System.Windows.Forms.CheckBox();
-            this.chkMcpCommand = new System.Windows.Forms.CheckBox();
-            this.chkMcpGit = new System.Windows.Forms.CheckBox();
-            this.chkMcpMsBuild = new System.Windows.Forms.CheckBox();
-            this.chkMcpCommandScratch = new System.Windows.Forms.CheckBox();
-            this.grpMcpCustom = new System.Windows.Forms.GroupBox();
-            this.grpAgents = new System.Windows.Forms.GroupBox();
-            this.chkAgents = new System.Windows.Forms.CheckBox();
+            this.chkMcpFiles = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpCommand = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpGit = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpMsBuild = new Krypton.Toolkit.KryptonCheckBox();
+            this.chkMcpCommandScratch = new Krypton.Toolkit.KryptonCheckBox();
+            this.grpMcpCustom = new Krypton.Toolkit.KryptonGroupBox();
+            this.grpAgents = new Krypton.Toolkit.KryptonGroupBox();
+            this.chkAgents = new Krypton.Toolkit.KryptonCheckBox();
             this.tblMcpCustom = new System.Windows.Forms.TableLayoutPanel();
             this.rtbMcpJson = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
@@ -114,10 +114,6 @@
             this.pnlModelsRow.SuspendLayout();
             this.pnlModelsRight.SuspendLayout();
             this.grpRecommended.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.nudTranscriptMaxWidth)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudMessageMaxWidth)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudFontSize)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudMemoryMaxLines)).BeginInit();
             this.tabControl1.SuspendLayout();
             this.tabVisual.SuspendLayout();
             this.tabJson.SuspendLayout();
@@ -156,7 +152,6 @@
             this.btnOk.Size = new System.Drawing.Size(75, 23);
             this.btnOk.TabIndex = 0;
             this.btnOk.Text = "OK";
-            this.btnOk.UseVisualStyleBackColor = true;
             this.btnOk.Click += new System.EventHandler(this.btnOk_Click);
             //
             // btnCancel
@@ -167,7 +162,6 @@
             this.btnCancel.Size = new System.Drawing.Size(75, 23);
             this.btnCancel.TabIndex = 1;
             this.btnCancel.Text = "Cancel";
-            this.btnCancel.UseVisualStyleBackColor = true;
             //
             // btnApply
             //
@@ -177,7 +171,6 @@
             this.btnApply.Size = new System.Drawing.Size(75, 23);
             this.btnApply.TabIndex = 2;
             this.btnApply.Text = "Apply";
-            this.btnApply.UseVisualStyleBackColor = true;
             this.btnApply.Click += new System.EventHandler(this.btnApply_Click);
             // 
             // rtbJson
@@ -212,15 +205,15 @@
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 54F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 180F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 118F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 82F));
-            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 80F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 92F));
+            this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 88F));
             this.tblSettings.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
             this.tblSettings.Size = new System.Drawing.Size(590, 405);
             this.tblSettings.TabIndex = 2;
             //
             // grpAccount
             //
-            this.grpAccount.Controls.Add(this.tblAccount);
+            this.grpAccount.Panel.Controls.Add(this.tblAccount);
             this.grpAccount.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAccount.Location = new System.Drawing.Point(3, 3);
             this.grpAccount.Name = "grpAccount";
@@ -247,7 +240,7 @@
             //
             // grpModels
             //
-            this.grpModels.Controls.Add(this.tblModels);
+            this.grpModels.Panel.Controls.Add(this.tblModels);
             this.grpModels.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpModels.Location = new System.Drawing.Point(3, 57);
             this.grpModels.Name = "grpModels";
@@ -277,7 +270,7 @@
             //
             // grpAppearance
             //
-            this.grpAppearance.Controls.Add(this.tblAppearance);
+            this.grpAppearance.Panel.Controls.Add(this.tblAppearance);
             this.grpAppearance.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAppearance.Location = new System.Drawing.Point(3, 236);
             this.grpAppearance.Name = "grpAppearance";
@@ -290,9 +283,9 @@
             // tblAppearance
             //
             this.tblAppearance.ColumnCount = 4;
-            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 165F));
             this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
-            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 130F));
+            this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 165F));
             this.tblAppearance.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
             this.tblAppearance.Controls.Add(this.lblTheme, 0, 0);
             this.tblAppearance.Controls.Add(this.cmbTheme, 1, 0);
@@ -316,12 +309,12 @@
             //
             // grpMemory
             //
-            this.grpMemory.Controls.Add(this.tblMemory);
+            this.grpMemory.Panel.Controls.Add(this.tblMemory);
             this.grpMemory.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMemory.Location = new System.Drawing.Point(3, 406);
             this.grpMemory.Name = "grpMemory";
             this.grpMemory.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
-            this.grpMemory.Size = new System.Drawing.Size(584, 76);
+            this.grpMemory.Size = new System.Drawing.Size(584, 86);
             this.grpMemory.TabIndex = 3;
             this.grpMemory.TabStop = false;
             this.grpMemory.Text = "Memory";
@@ -346,12 +339,12 @@
             //
             // grpPrivacy
             //
-            this.grpPrivacy.Controls.Add(this.tblPrivacy);
+            this.grpPrivacy.Panel.Controls.Add(this.tblPrivacy);
             this.grpPrivacy.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpPrivacy.Location = new System.Drawing.Point(3, 488);
             this.grpPrivacy.Name = "grpPrivacy";
             this.grpPrivacy.Padding = new System.Windows.Forms.Padding(6, 0, 6, 6);
-            this.grpPrivacy.Size = new System.Drawing.Size(584, 74);
+            this.grpPrivacy.Size = new System.Drawing.Size(584, 82);
             this.grpPrivacy.TabIndex = 4;
             this.grpPrivacy.TabStop = false;
             this.grpPrivacy.Text = "Privacy && diagnostics";
@@ -383,18 +376,17 @@
             this.lblApiKey.Size = new System.Drawing.Size(121, 26);
             this.lblApiKey.TabIndex = 0;
             this.lblApiKey.Text = "OpenRouter API Key";
-            this.lblApiKey.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblModels
             // 
-            this.lblModels.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblModels.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)));
             this.lblModels.AutoSize = true;
             this.lblModels.Location = new System.Drawing.Point(83, 32);
             this.lblModels.Margin = new System.Windows.Forms.Padding(3, 6, 3, 0);
             this.lblModels.Name = "lblModels";
             this.lblModels.Size = new System.Drawing.Size(41, 13);
             this.lblModels.TabIndex = 1;
-            this.lblModels.Text = "Models";
+            this.lblModels.Text = "Model List";
             // 
             // lblDefaultModel
             // 
@@ -404,7 +396,6 @@
             this.lblDefaultModel.Size = new System.Drawing.Size(121, 27);
             this.lblDefaultModel.TabIndex = 2;
             this.lblDefaultModel.Text = "Default Model";
-            this.lblDefaultModel.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblTheme
             // 
@@ -415,7 +406,6 @@
             this.lblTheme.Size = new System.Drawing.Size(121, 27);
             this.lblTheme.TabIndex = 10;
             this.lblTheme.Text = "Theme";
-            this.lblTheme.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblTranscriptMaxWidth
             // 
@@ -426,7 +416,6 @@
             this.lblTranscriptMaxWidth.Size = new System.Drawing.Size(121, 26);
             this.lblTranscriptMaxWidth.TabIndex = 12;
             this.lblTranscriptMaxWidth.Text = "Transcript Max Width";
-            this.lblTranscriptMaxWidth.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblMessageMaxWidth
             // 
@@ -437,7 +426,6 @@
             this.lblMessageMaxWidth.Size = new System.Drawing.Size(121, 26);
             this.lblMessageMaxWidth.TabIndex = 14;
             this.lblMessageMaxWidth.Text = "Message Max Width (%)";
-            this.lblMessageMaxWidth.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblFontSize
             // 
@@ -448,7 +436,6 @@
             this.lblFontSize.Size = new System.Drawing.Size(121, 26);
             this.lblFontSize.TabIndex = 8;
             this.lblFontSize.Text = "Font Size";
-            this.lblFontSize.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // lblEnableLogging
             // 
@@ -458,14 +445,13 @@
             this.lblEnableLogging.Size = new System.Drawing.Size(121, 23);
             this.lblEnableLogging.TabIndex = 3;
             this.lblEnableLogging.Text = "Enable Logging";
-            this.lblEnableLogging.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // txtApiKey
             // 
             this.txtApiKey.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
                         | System.Windows.Forms.AnchorStyles.Right)));
             this.txtApiKey.Location = new System.Drawing.Point(127, 3);
-            this.txtApiKey.Margin = new System.Windows.Forms.Padding(0, 3, 0, 3);
+            this.txtApiKey.Margin = new System.Windows.Forms.Padding(0, 3, 6, 3);
             this.txtApiKey.Name = "txtApiKey";
             this.txtApiKey.Size = new System.Drawing.Size(463, 20);
             this.txtApiKey.TabIndex = 7;
@@ -476,7 +462,7 @@
             this.pnlModelsRow.Controls.Add(this.pnlModelsRight);
             this.pnlModelsRow.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlModelsRow.Location = new System.Drawing.Point(127, 26);
-            this.pnlModelsRow.Margin = new System.Windows.Forms.Padding(0);
+            this.pnlModelsRow.Margin = new System.Windows.Forms.Padding(0, 0, 6, 0);
             this.pnlModelsRow.Name = "pnlModelsRow";
             this.pnlModelsRow.Size = new System.Drawing.Size(463, 122);
             this.pnlModelsRow.TabIndex = 20;
@@ -499,14 +485,14 @@
             this.pnlModelsRight.Dock = System.Windows.Forms.DockStyle.Right;
             this.pnlModelsRight.Location = new System.Drawing.Point(274, 0);
             this.pnlModelsRight.Name = "pnlModelsRight";
-            this.pnlModelsRight.Padding = new System.Windows.Forms.Padding(4, 0, 0, 0);
+            this.pnlModelsRight.Padding = new System.Windows.Forms.Padding(8, 0, 0, 0);
             this.pnlModelsRight.Size = new System.Drawing.Size(189, 122);
             this.pnlModelsRight.TabIndex = 20;
             // 
             // grpRecommended
             // 
-            this.grpRecommended.Controls.Add(this.btnAddRecommended);
-            this.grpRecommended.Controls.Add(this.btnReplaceRecommended);
+            this.grpRecommended.Panel.Controls.Add(this.btnAddRecommended);
+            this.grpRecommended.Panel.Controls.Add(this.btnReplaceRecommended);
             this.grpRecommended.Dock = System.Windows.Forms.DockStyle.Top;
             this.grpRecommended.Location = new System.Drawing.Point(4, 0);
             this.grpRecommended.Name = "grpRecommended";
@@ -517,21 +503,19 @@
             // 
             // btnAddRecommended
             // 
-            this.btnAddRecommended.Location = new System.Drawing.Point(13, 26);
+            this.btnAddRecommended.Location = new System.Drawing.Point(13, 7);
             this.btnAddRecommended.Name = "btnAddRecommended";
             this.btnAddRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnAddRecommended.TabIndex = 0;
             this.btnAddRecommended.Text = "Add to list";
-            this.btnAddRecommended.UseVisualStyleBackColor = true;
             // 
             // btnReplaceRecommended
             // 
-            this.btnReplaceRecommended.Location = new System.Drawing.Point(13, 60);
+            this.btnReplaceRecommended.Location = new System.Drawing.Point(13, 40);
             this.btnReplaceRecommended.Name = "btnReplaceRecommended";
             this.btnReplaceRecommended.Size = new System.Drawing.Size(150, 26);
             this.btnReplaceRecommended.TabIndex = 1;
             this.btnReplaceRecommended.Text = "Replace list...";
-            this.btnReplaceRecommended.UseVisualStyleBackColor = true;
             //
             // btnUpdateModelInfo
             //
@@ -541,11 +525,11 @@
             this.btnUpdateModelInfo.Size = new System.Drawing.Size(185, 23);
             this.btnUpdateModelInfo.TabIndex = 22;
             this.btnUpdateModelInfo.Text = "Update Model Info";
-            this.btnUpdateModelInfo.UseVisualStyleBackColor = true;
             //
             // cmbDefaultModel
             //
             this.cmbDefaultModel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.cmbDefaultModel.Margin = new System.Windows.Forms.Padding(0, 3, 6, 3);
             this.cmbDefaultModel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbDefaultModel.DropDownWidth = 175;
             this.cmbDefaultModel.FormattingEnabled = true;
@@ -581,7 +565,7 @@
             0,
             0});
             this.nudTranscriptMaxWidth.Name = "nudTranscriptMaxWidth";
-            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 20);
+            this.nudTranscriptMaxWidth.Size = new System.Drawing.Size(120, 22);
             this.nudTranscriptMaxWidth.TabIndex = 13;
             this.nudTranscriptMaxWidth.Value = new decimal(new int[] {
             1000,
@@ -603,7 +587,7 @@
             0,
             0});
             this.nudMessageMaxWidth.Name = "nudMessageMaxWidth";
-            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 20);
+            this.nudMessageMaxWidth.Size = new System.Drawing.Size(120, 22);
             this.nudMessageMaxWidth.TabIndex = 15;
             this.nudMessageMaxWidth.Value = new decimal(new int[] {
             100,
@@ -616,7 +600,7 @@
             this.nudFontSize.DecimalPlaces = 2;
             this.nudFontSize.Location = new System.Drawing.Point(130, 307);
             this.nudFontSize.Name = "nudFontSize";
-            this.nudFontSize.Size = new System.Drawing.Size(120, 20);
+            this.nudFontSize.Size = new System.Drawing.Size(120, 22);
             this.nudFontSize.TabIndex = 9;
             // 
             // chkEnableLogging
@@ -628,8 +612,10 @@
             this.chkEnableLogging.Name = "chkEnableLogging";
             this.chkEnableLogging.Size = new System.Drawing.Size(457, 14);
             this.chkEnableLogging.TabIndex = 4;
-            this.chkEnableLogging.UseVisualStyleBackColor = true;
-            // 
+            // The lblEnableLogging beside it is the caption; clear the KryptonCheckBox
+            // default "Label" text so only the box shows.
+            this.chkEnableLogging.Text = "";
+            //
             // lblProviderDataCollection
             // 
             this.lblProviderDataCollection.AutoSize = true;
@@ -639,7 +625,6 @@
             this.lblProviderDataCollection.Size = new System.Drawing.Size(121, 23);
             this.lblProviderDataCollection.TabIndex = 16;
             this.lblProviderDataCollection.Text = "Zero Data Retention";
-            this.lblProviderDataCollection.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // chkZdr
             // 
@@ -650,7 +635,6 @@
             this.chkZdr.Size = new System.Drawing.Size(299, 17);
             this.chkZdr.TabIndex = 17;
             this.chkZdr.Text = "Default new conversations to zero-retention providers only";
-            this.chkZdr.UseVisualStyleBackColor = true;
             // 
             // lblColor
             // 
@@ -661,7 +645,6 @@
             this.lblColor.Size = new System.Drawing.Size(121, 27);
             this.lblColor.TabIndex = 18;
             this.lblColor.Text = "Chat Color";
-            this.lblColor.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // cmbColor
             // 
@@ -681,7 +664,6 @@
             this.lblMemoryEnabled.Size = new System.Drawing.Size(121, 26);
             this.lblMemoryEnabled.TabIndex = 20;
             this.lblMemoryEnabled.Text = "Enable Memory";
-            this.lblMemoryEnabled.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // chkMemoryEnabled
             // 
@@ -693,7 +675,6 @@
             this.chkMemoryEnabled.Size = new System.Drawing.Size(457, 17);
             this.chkMemoryEnabled.TabIndex = 21;
             this.chkMemoryEnabled.Text = "Remember facts about my workspaces (persistent project memory)";
-            this.chkMemoryEnabled.UseVisualStyleBackColor = true;
             // 
             // lblMemoryMaxLines
             // 
@@ -704,7 +685,6 @@
             this.lblMemoryMaxLines.Size = new System.Drawing.Size(121, 26);
             this.lblMemoryMaxLines.TabIndex = 22;
             this.lblMemoryMaxLines.Text = "Memory size limit";
-            this.lblMemoryMaxLines.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
             // nudMemoryMaxLines
             // 
@@ -725,7 +705,7 @@
             0,
             0});
             this.nudMemoryMaxLines.Name = "nudMemoryMaxLines";
-            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 20);
+            this.nudMemoryMaxLines.Size = new System.Drawing.Size(120, 22);
             this.nudMemoryMaxLines.TabIndex = 23;
             this.nudMemoryMaxLines.Value = new decimal(new int[] {
             40,
@@ -735,48 +715,43 @@
             // 
             // tabControl1
             // 
-            this.tabControl1.Controls.Add(this.tabVisual);
-            this.tabControl1.Controls.Add(this.tabJson);
-            this.tabControl1.Controls.Add(this.tabMcp);
+            this.tabControl1.Pages.Add(this.tabVisual);
+            this.tabControl1.Pages.Add(this.tabJson);
+            this.tabControl1.Pages.Add(this.tabMcp);
+            // Hide the navigator's built-in context (drop-down) and close buttons in
+            // the tab bar's top-right corner - the settings tabs are fixed.
+            this.tabControl1.Button.CloseButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
+            this.tabControl1.Button.ContextButtonDisplay = Krypton.Navigator.ButtonDisplay.Hide;
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(604, 437);
             this.tabControl1.TabIndex = 3;
-            // 
+            //
             // tabVisual
-            // 
+            //
             this.tabVisual.Controls.Add(this.tblSettings);
-            this.tabVisual.Location = new System.Drawing.Point(4, 22);
             this.tabVisual.Name = "tabVisual";
             this.tabVisual.Padding = new System.Windows.Forms.Padding(3);
             this.tabVisual.Size = new System.Drawing.Size(596, 411);
-            this.tabVisual.TabIndex = 0;
             this.tabVisual.Text = "General";
-            this.tabVisual.UseVisualStyleBackColor = true;
-            // 
+            //
             // tabJson
-            // 
+            //
             this.tabJson.Controls.Add(this.rtbJson);
-            this.tabJson.Location = new System.Drawing.Point(4, 22);
             this.tabJson.Name = "tabJson";
             this.tabJson.Padding = new System.Windows.Forms.Padding(3);
             this.tabJson.Size = new System.Drawing.Size(596, 363);
-            this.tabJson.TabIndex = 1;
             this.tabJson.Text = "JSON";
-            this.tabJson.UseVisualStyleBackColor = true;
-            // 
+            //
             // tabMcp
-            // 
+            //
             this.tabMcp.Controls.Add(this.tblMcp);
-            this.tabMcp.Location = new System.Drawing.Point(4, 22);
             this.tabMcp.Name = "tabMcp";
             this.tabMcp.Padding = new System.Windows.Forms.Padding(3);
             this.tabMcp.Size = new System.Drawing.Size(596, 363);
-            this.tabMcp.TabIndex = 2;
             this.tabMcp.Text = "Tools";
-            this.tabMcp.UseVisualStyleBackColor = true;
             // 
             // tblMcp
             // 
@@ -799,7 +774,7 @@
             //
             // grpMcpWeb
             //
-            this.grpMcpWeb.Controls.Add(this.tblMcpWeb);
+            this.grpMcpWeb.Panel.Controls.Add(this.tblMcpWeb);
             this.grpMcpWeb.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpWeb.Location = new System.Drawing.Point(3, 3);
             this.grpMcpWeb.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -830,7 +805,7 @@
             //
             // grpMcpWorkspace
             //
-            this.grpMcpWorkspace.Controls.Add(this.tblMcpWorkspace);
+            this.grpMcpWorkspace.Panel.Controls.Add(this.tblMcpWorkspace);
             this.grpMcpWorkspace.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpWorkspace.Location = new System.Drawing.Point(3, 77);
             this.grpMcpWorkspace.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -866,7 +841,6 @@
             this.chkMcpWeb.Size = new System.Drawing.Size(84, 17);
             this.chkMcpWeb.TabIndex = 0;
             this.chkMcpWeb.Text = "Web search";
-            this.chkMcpWeb.UseVisualStyleBackColor = true;
             // 
             // txtWebSearchKey
             // 
@@ -886,7 +860,6 @@
             this.chkMcpGithub.Size = new System.Drawing.Size(59, 17);
             this.chkMcpGithub.TabIndex = 2;
             this.chkMcpGithub.Text = "GitHub";
-            this.chkMcpGithub.UseVisualStyleBackColor = true;
             // 
             // txtGithubPat
             // 
@@ -926,7 +899,6 @@
             this.chkMcpFiles.Size = new System.Drawing.Size(47, 17);
             this.chkMcpFiles.TabIndex = 4;
             this.chkMcpFiles.Text = "Files";
-            this.chkMcpFiles.UseVisualStyleBackColor = true;
             // 
             // chkMcpCommand
             // 
@@ -938,7 +910,6 @@
             this.chkMcpCommand.Size = new System.Drawing.Size(73, 17);
             this.chkMcpCommand.TabIndex = 5;
             this.chkMcpCommand.Text = "Command";
-            this.chkMcpCommand.UseVisualStyleBackColor = true;
             // 
             // chkMcpGit
             // 
@@ -950,7 +921,6 @@
             this.chkMcpGit.Size = new System.Drawing.Size(39, 17);
             this.chkMcpGit.TabIndex = 6;
             this.chkMcpGit.Text = "Git";
-            this.chkMcpGit.UseVisualStyleBackColor = true;
             // 
             // chkMcpMsBuild
             // 
@@ -962,7 +932,6 @@
             this.chkMcpMsBuild.Size = new System.Drawing.Size(65, 17);
             this.chkMcpMsBuild.TabIndex = 7;
             this.chkMcpMsBuild.Text = "MSBuild";
-            this.chkMcpMsBuild.UseVisualStyleBackColor = true;
             //
             // chkMcpCommandScratch
             //
@@ -974,11 +943,10 @@
             this.chkMcpCommandScratch.Size = new System.Drawing.Size(355, 17);
             this.chkMcpCommandScratch.TabIndex = 2;
             this.chkMcpCommandScratch.Text = "Run Command in a temporary scratch folder when no workspace is set";
-            this.chkMcpCommandScratch.UseVisualStyleBackColor = true;
             //
             // grpMcpCustom
             //
-            this.grpMcpCustom.Controls.Add(this.tblMcpCustom);
+            this.grpMcpCustom.Panel.Controls.Add(this.tblMcpCustom);
             this.grpMcpCustom.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpMcpCustom.Location = new System.Drawing.Point(3, 167);
             this.grpMcpCustom.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -991,7 +959,7 @@
             //
             // grpAgents
             //
-            this.grpAgents.Controls.Add(this.chkAgents);
+            this.grpAgents.Panel.Controls.Add(this.chkAgents);
             this.grpAgents.Dock = System.Windows.Forms.DockStyle.Fill;
             this.grpAgents.Location = new System.Drawing.Point(3, 173);
             this.grpAgents.Margin = new System.Windows.Forms.Padding(3, 3, 3, 3);
@@ -1005,12 +973,11 @@
             // chkAgents
             //
             this.chkAgents.AutoSize = true;
-            this.chkAgents.Location = new System.Drawing.Point(9, 20);
+            this.chkAgents.Location = new System.Drawing.Point(6, 4);
             this.chkAgents.Name = "chkAgents";
             this.chkAgents.Size = new System.Drawing.Size(320, 17);
             this.chkAgents.TabIndex = 0;
             this.chkAgents.Text = "Enable sub-agents (delegate sub-tasks to specialist agents)";
-            this.chkAgents.UseVisualStyleBackColor = true;
             //
             // tblMcpCustom
             //
@@ -1046,11 +1013,11 @@
             this.CancelButton = this.btnCancel;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(604, 576);
+            this.ClientSize = new System.Drawing.Size(604, 594);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.flowLayoutPanel1);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.MinimumSize = new System.Drawing.Size(620, 614);
+            this.MinimumSize = new System.Drawing.Size(620, 632);
             this.Name = "SettingsForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Settings";
@@ -1075,10 +1042,6 @@
             this.pnlModelsRow.PerformLayout();
             this.pnlModelsRight.ResumeLayout(false);
             this.grpRecommended.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.nudTranscriptMaxWidth)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudMessageMaxWidth)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudFontSize)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudMemoryMaxLines)).EndInit();
             this.tabControl1.ResumeLayout(false);
             this.tabVisual.ResumeLayout(false);
             this.tabJson.ResumeLayout(false);
@@ -1104,74 +1067,74 @@
         #endregion
 
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
-        private System.Windows.Forms.Button btnOk;
-        private System.Windows.Forms.Button btnCancel;
-        private System.Windows.Forms.Button btnApply;
+        private Krypton.Toolkit.KryptonButton btnOk;
+        private Krypton.Toolkit.KryptonButton btnCancel;
+        private Krypton.Toolkit.KryptonButton btnApply;
         private System.Windows.Forms.RichTextBox rtbJson;
         private System.Windows.Forms.TableLayoutPanel tblSettings;
-        private System.Windows.Forms.GroupBox grpAccount;
+        private Krypton.Toolkit.KryptonGroupBox grpAccount;
         private System.Windows.Forms.TableLayoutPanel tblAccount;
-        private System.Windows.Forms.GroupBox grpModels;
+        private Krypton.Toolkit.KryptonGroupBox grpModels;
         private System.Windows.Forms.TableLayoutPanel tblModels;
-        private System.Windows.Forms.GroupBox grpAppearance;
+        private Krypton.Toolkit.KryptonGroupBox grpAppearance;
         private System.Windows.Forms.TableLayoutPanel tblAppearance;
-        private System.Windows.Forms.GroupBox grpMemory;
+        private Krypton.Toolkit.KryptonGroupBox grpMemory;
         private System.Windows.Forms.TableLayoutPanel tblMemory;
-        private System.Windows.Forms.GroupBox grpPrivacy;
+        private Krypton.Toolkit.KryptonGroupBox grpPrivacy;
         private System.Windows.Forms.TableLayoutPanel tblPrivacy;
-        private System.Windows.Forms.Label lblApiKey;
-        private System.Windows.Forms.Label lblModels;
-        private System.Windows.Forms.Label lblDefaultModel;
-        private System.Windows.Forms.Label lblEnableLogging;
-        private System.Windows.Forms.CheckBox chkEnableLogging;
-        private System.Windows.Forms.ComboBox cmbDefaultModel;
-        private System.Windows.Forms.TextBox txtModels;
+        private Krypton.Toolkit.KryptonLabel lblApiKey;
+        private Krypton.Toolkit.KryptonLabel lblModels;
+        private Krypton.Toolkit.KryptonLabel lblDefaultModel;
+        private Krypton.Toolkit.KryptonLabel lblEnableLogging;
+        private Krypton.Toolkit.KryptonCheckBox chkEnableLogging;
+        private Krypton.Toolkit.KryptonComboBox cmbDefaultModel;
+        private Krypton.Toolkit.KryptonTextBox txtModels;
         private System.Windows.Forms.Panel pnlModelsRow;
         private System.Windows.Forms.Panel pnlModelsRight;
-        private System.Windows.Forms.GroupBox grpRecommended;
-        private System.Windows.Forms.Button btnAddRecommended;
-        private System.Windows.Forms.Button btnReplaceRecommended;
-        private System.Windows.Forms.Button btnUpdateModelInfo;
-        private System.Windows.Forms.TextBox txtApiKey;
-        private System.Windows.Forms.TabControl tabControl1;
-        private System.Windows.Forms.TabPage tabVisual;
-        private System.Windows.Forms.TabPage tabJson;
-        private System.Windows.Forms.Label lblFontSize;
-        private System.Windows.Forms.NumericUpDown nudFontSize;
-        private System.Windows.Forms.Label lblTheme;
-        private System.Windows.Forms.ComboBox cmbTheme;
-        private System.Windows.Forms.Label lblTranscriptMaxWidth;
-        private System.Windows.Forms.NumericUpDown nudTranscriptMaxWidth;
-        private System.Windows.Forms.Label lblMessageMaxWidth;
-        private System.Windows.Forms.NumericUpDown nudMessageMaxWidth;
-        private System.Windows.Forms.Label lblProviderDataCollection;
-        private System.Windows.Forms.CheckBox chkZdr;
-        private System.Windows.Forms.Label lblMemoryEnabled;
-        private System.Windows.Forms.CheckBox chkMemoryEnabled;
-        private System.Windows.Forms.Label lblMemoryMaxLines;
-        private System.Windows.Forms.NumericUpDown nudMemoryMaxLines;
-        private System.Windows.Forms.Label lblColor;
-        private System.Windows.Forms.ComboBox cmbColor;
-        private System.Windows.Forms.TabPage tabMcp;
+        private Krypton.Toolkit.KryptonGroupBox grpRecommended;
+        private Krypton.Toolkit.KryptonButton btnAddRecommended;
+        private Krypton.Toolkit.KryptonButton btnReplaceRecommended;
+        private Krypton.Toolkit.KryptonButton btnUpdateModelInfo;
+        private Krypton.Toolkit.KryptonTextBox txtApiKey;
+        private Krypton.Navigator.KryptonNavigator tabControl1;
+        private Krypton.Navigator.KryptonPage tabVisual;
+        private Krypton.Navigator.KryptonPage tabJson;
+        private Krypton.Toolkit.KryptonLabel lblFontSize;
+        private Krypton.Toolkit.KryptonNumericUpDown nudFontSize;
+        private Krypton.Toolkit.KryptonLabel lblTheme;
+        private Krypton.Toolkit.KryptonComboBox cmbTheme;
+        private Krypton.Toolkit.KryptonLabel lblTranscriptMaxWidth;
+        private Krypton.Toolkit.KryptonNumericUpDown nudTranscriptMaxWidth;
+        private Krypton.Toolkit.KryptonLabel lblMessageMaxWidth;
+        private Krypton.Toolkit.KryptonNumericUpDown nudMessageMaxWidth;
+        private Krypton.Toolkit.KryptonLabel lblProviderDataCollection;
+        private Krypton.Toolkit.KryptonCheckBox chkZdr;
+        private Krypton.Toolkit.KryptonLabel lblMemoryEnabled;
+        private Krypton.Toolkit.KryptonCheckBox chkMemoryEnabled;
+        private Krypton.Toolkit.KryptonLabel lblMemoryMaxLines;
+        private Krypton.Toolkit.KryptonNumericUpDown nudMemoryMaxLines;
+        private Krypton.Toolkit.KryptonLabel lblColor;
+        private Krypton.Toolkit.KryptonComboBox cmbColor;
+        private Krypton.Navigator.KryptonPage tabMcp;
         private System.Windows.Forms.TableLayoutPanel tblMcp;
-        private System.Windows.Forms.GroupBox grpMcpWeb;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpWeb;
         private System.Windows.Forms.TableLayoutPanel tblMcpWeb;
-        private System.Windows.Forms.GroupBox grpMcpWorkspace;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpWorkspace;
         private System.Windows.Forms.TableLayoutPanel tblMcpKeyless;
-        private System.Windows.Forms.GroupBox grpMcpCustom;
-        private System.Windows.Forms.GroupBox grpAgents;
-        private System.Windows.Forms.CheckBox chkAgents;
+        private Krypton.Toolkit.KryptonGroupBox grpMcpCustom;
+        private Krypton.Toolkit.KryptonGroupBox grpAgents;
+        private Krypton.Toolkit.KryptonCheckBox chkAgents;
         private System.Windows.Forms.TableLayoutPanel tblMcpCustom;
-        private System.Windows.Forms.CheckBox chkMcpWeb;
-        private System.Windows.Forms.TextBox txtWebSearchKey;
-        private System.Windows.Forms.CheckBox chkMcpGithub;
-        private System.Windows.Forms.TextBox txtGithubPat;
-        private System.Windows.Forms.CheckBox chkMcpFiles;
-        private System.Windows.Forms.CheckBox chkMcpGit;
-        private System.Windows.Forms.CheckBox chkMcpCommand;
-        private System.Windows.Forms.CheckBox chkMcpCommandScratch;
-        private System.Windows.Forms.CheckBox chkMcpMsBuild;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpWeb;
+        private Krypton.Toolkit.KryptonTextBox txtWebSearchKey;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpGithub;
+        private Krypton.Toolkit.KryptonTextBox txtGithubPat;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpFiles;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpGit;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpCommand;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpCommandScratch;
+        private Krypton.Toolkit.KryptonCheckBox chkMcpMsBuild;
         private System.Windows.Forms.RichTextBox rtbMcpJson;
     }
 }
