@@ -1061,7 +1061,12 @@ namespace GxPT
                 string ct = s.color_theme ?? "blue";
                 ct = ct.Trim();
                 if (ct.Length == 0) ct = "blue";
-                // Keep as-is; ThemeService will fallback if unknown
+                // "red" was retired in favor of purple (ThemeService and the Krypton bridge already
+                // render it as purple). Alias it here too, or the color combo - whose bound list is
+                // blue/orange/purple - would silently land on its first item ("Blue") and any save
+                // would rewrite the user's theme to blue.
+                if (ct.Equals("red", StringComparison.OrdinalIgnoreCase)) ct = "purple";
+                // Otherwise keep as-is; ThemeService will fallback if unknown
                 s.color_theme = ct;
             }
             catch { s.color_theme = "blue"; }

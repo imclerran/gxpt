@@ -77,6 +77,17 @@ namespace GxPT
         public MainForm()
         {
             InitializeComponent();
+            // Send keeps the accented default-button look WITHOUT being the form's AcceptButton
+            // (which routed Enter from any non-consuming focused control - the question panel's
+            // Other textbox, the model combo, the ZDR checkbox - into a surprise Send of the
+            // composer draft). Same approach as QuestionPanel's Submit; re-asserted on LostFocus
+            // because WinForms clears the flag after the button is focused and left.
+            try
+            {
+                this.btnSend.NotifyDefault(true);
+                this.btnSend.LostFocus += delegate { try { this.btnSend.NotifyDefault(true); } catch { } };
+            }
+            catch { }
             InitializeManagers();
             HookEvents();
             InitializeDragAndDrop();
@@ -1750,10 +1761,13 @@ namespace GxPT
             }
             catch { }
 
-            // The MCP host is NOT built here: assembling it takes ~200ms on the UI thread, and nothing
-            // can send a tool call before the window is even visible. RestoreSessionAfterShown builds
-            // it (post-Shown, before the tabs restore, so the visible tab's pre-warm finds a live
-            // host); until then RebuildMcpHost is gated - see _mcpHostStartupDeferred.
+            // (Re)build the MCP host from the current settings. At STARTUP this is a gated no-op
+            // (_mcpHostStartupDeferred; assembling the host takes ~200ms on the UI thread and nothing
+            // can send a tool call before the window is visible - RestoreSessionAfterShown does the
+            // first build post-Shown). On every LATER call - the Settings dialog's close paths run
+            // InitializeClient to apply changes - the gate is already lifted, so new keys, server
+            // toggles, and mcp.json edits take effect immediately, as they did before the deferral.
+            RebuildMcpHost();
         }
 
         // True until the post-Shown startup sequence builds the MCP host for the first time. Gates

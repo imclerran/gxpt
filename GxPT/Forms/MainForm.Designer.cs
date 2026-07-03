@@ -728,7 +728,11 @@
             //
             // MainForm
             //
-            this.AcceptButton = this.btnSend;
+            // No AcceptButton: it would route Enter from ANY focused control that doesn't consume it
+            // (the question panel's Other textbox, the model combo, the ZDR checkbox) into a surprise
+            // Send of whatever draft sits in the composer. btnSend gets its accented default-button
+            // look via NotifyDefault in the MainForm constructor instead; the composer's own Enter
+            // handling (InputManager) is what actually sends.
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(892, 766);
