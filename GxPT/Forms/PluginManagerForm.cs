@@ -69,6 +69,7 @@ namespace GxPT
             _list.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
             _list.SelectionChanged += new EventHandler(OnSelectionChanged);
             _list.CellMouseDown += new DataGridViewCellMouseEventHandler(OnGridCellMouseDown);
+            _list.MouseDown += new MouseEventHandler(OnGridMouseDown);
             _list.DoubleClick += new EventHandler(OnDetails); // double-click a row opens its details
             // KryptonDataGridView themes its chrome but leaves cell interiors white;
             // fill cell/header/background/selection colors from the active palette.
@@ -258,6 +259,24 @@ namespace GxPT
             _list.ClearSelection();
             _list.Rows[e.RowIndex].Selected = true;
             try { _list.CurrentCell = _list.Rows[e.RowIndex].Cells[0]; }
+            catch { }
+        }
+
+        // Clicking the empty area below the rows deselects, matching the old ListView - a
+        // DataGridView otherwise offers no mouse gesture that clears the selection at all.
+        private void OnGridMouseDown(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (e.Button != MouseButtons.Left) return;
+                DataGridView.HitTestInfo hit = _list.HitTest(e.X, e.Y);
+                if (hit.Type == DataGridViewHitTestType.None)
+                {
+                    _list.ClearSelection();
+                    try { _list.CurrentCell = null; }
+                    catch { }
+                }
+            }
             catch { }
         }
 

@@ -723,13 +723,22 @@ namespace GxPT
 
         private void LvConversations_MouseDown(object sender, MouseEventArgs e)
         {
-            // If we're renaming and the user clicks a different row (or empty space), finish the rename.
-            if (_renamingItem == null) return;
             try
             {
                 var hit = _lvConversations.HitTest(e.X, e.Y);
-                if (hit.RowIndex != _renamingItem.Index)
+
+                // If we're renaming and the user clicks a different row (or empty space), finish the rename.
+                if (_renamingItem != null && hit.RowIndex != _renamingItem.Index)
                     FinishRename(true);
+
+                // Clicking the empty area below the rows deselects, matching the old ListView - a
+                // DataGridView otherwise offers no mouse gesture that clears the selection at all.
+                if (e.Button == MouseButtons.Left && hit.Type == DataGridViewHitTestType.None)
+                {
+                    _lvConversations.ClearSelection();
+                    try { _lvConversations.CurrentCell = null; }
+                    catch { }
+                }
             }
             catch { }
         }

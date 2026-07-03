@@ -1984,6 +1984,16 @@ namespace GxPT
                 // Theme may have changed; re-apply to all open transcripts
                 try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
                 catch { }
+                // ...and to the per-tab approval/question panels. The theme apply above ends with
+                // FixDarkCheckBoxText sweeping every KryptonCheckBox on the form (including a live
+                // question panel's options); without this re-apply - which the dark-mode toggle and
+                // banner-link paths both do - the sweep runs last and a theme change made inside
+                // Settings leaves those captions in the palette color on a stale panel background.
+                try { ApplyThemeToAllApprovalPanels(); }
+                catch { }
+                // The status bar follows the UI theme too (the dark-mode toggle path does this).
+                try { ApplyThemeToStatusBar(); }
+                catch { }
                 // Re-apply transcript/message widths in case they changed
                 try
                 {
@@ -4377,8 +4387,11 @@ namespace GxPT
                 UpdateApiKeyBanner();
                 try { if (_themeManager != null) _themeManager.ApplyThemeToAllTranscripts(); }
                 catch { }
-                // Theme may have changed in Settings; keep open approval prompts in sync.
+                // Theme may have changed in Settings; keep open approval prompts and the status bar
+                // in sync (the dark-mode toggle path does both).
                 ApplyThemeToAllApprovalPanels();
+                try { ApplyThemeToStatusBar(); }
+                catch { }
             }
         }
 
