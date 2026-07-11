@@ -388,6 +388,8 @@ namespace GxPT
                             : null;
                         var id = ctx != null && ctx.Conversation != null ? ctx.Conversation.Id : null;
                         if (string.IsNullOrEmpty(id)) continue;
+                        // Temporary conversations die with the app - never record them as open tabs to restore.
+                        if (ctx != null && ctx.Conversation != null && ctx.Conversation.Ephemeral) continue;
                         // Include help tabs (by known help ids) even if marked NoSaveUntilUserSend
                         if (ctx != null && ctx.NoSaveUntilUserSend && !IsHelpConversationId(id)) continue;
                         list.Add(id);
@@ -3364,12 +3366,18 @@ namespace GxPT
 
         // Marker prefixed to a tab title / sidebar row once a conversation has latched ZDR.
         internal const string ZdrTitlePrefix = "[zdr] ";
+        // Marker prefixed to a temporary (ephemeral, never-saved) conversation's tab title. Analogous
+        // to the ZDR marker; the two compose (a temp conversation can also be ZDR).
+        internal const string TempTitlePrefix = "[...] ";
 
-        // The display title for a conversation: its name, prefixed with the ZDR marker once latched.
+        // The display title for a conversation: its name, prefixed with the temporary and/or ZDR
+        // markers as they apply. Both are decorators on the underlying name and stack (temp first).
         internal static string ZdrTitle(Conversation convo, string name)
         {
             string n = string.IsNullOrEmpty(name) ? "Conversation" : name;
-            return (convo != null && convo.ZdrFirstMessageIndex >= 0) ? ZdrTitlePrefix + n : n;
+            if (convo != null && convo.ZdrFirstMessageIndex >= 0) n = ZdrTitlePrefix + n;
+            if (convo != null && convo.Ephemeral) n = TempTitlePrefix + n;
+            return n;
         }
 
         // Recompute the active tab's title to reflect a newly-latched ZDR state.
@@ -3803,8 +3811,13 @@ namespace GxPT
                             && dispatcherForTurn.LastTranscripts != null)
                         {
                             AgentTranscriptStore.Put(recKey, dispatcherForTurn.LastTranscripts);
-                            try { AgentTranscriptPersistence.Save(ConvId(ctx), recKey, dispatcherForTurn.LastTranscripts); }
-                            catch { }
+                            // Ephemeral conversations leave nothing on disk - the in-memory store above
+                            // still resolves "View transcript" links for the app's lifetime.
+                            if (ctx.Conversation == null || !ctx.Conversation.Ephemeral)
+                            {
+                                try { AgentTranscriptPersistence.Save(ConvId(ctx), recKey, dispatcherForTurn.LastTranscripts); }
+                                catch { }
+                            }
                         }
                         string marker = McpMarkers.IsDenied(resultText)
                             ? McpMarkers.Denied(name)

@@ -50,6 +50,12 @@ namespace GxPT
         // never clears, so the checkbox locks on and the tab/messages are marked from that point.
         public bool Zdr { get; set; }
         public int ZdrFirstMessageIndex { get; set; }
+        // Temporary (ephemeral) conversation: lives only in memory for the lifetime of the app. It is
+        // never written to disk (ConversationStore.Save short-circuits on this flag), never appears in
+        // the history sidebar (that list is built from disk files), and is not restored on the next
+        // launch. Runtime-only and intentionally NOT part of the persisted DTO - once the tab closes or
+        // the app exits, the conversation is gone. Shown with a "[...] " marker on its tab title.
+        public bool Ephemeral { get; set; }
         // Per-conversation skill enablement overrides (design S10/sec.7), combined with the global default
         // (skills.json) by SkillResolve. SkillsFeatureOff: null = inherit global, true/false = force the
         // whole feature off/on for this conversation. SkillOverrides: slug -> bool (true = force on, false

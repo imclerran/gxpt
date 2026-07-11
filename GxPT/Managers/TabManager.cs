@@ -26,6 +26,7 @@ namespace GxPT
 
         // Custom toolbar buttons
         private GlyphToolStripButton _btnNewTab;
+        private GlyphToolStripButton _btnNewTempTab;
         private GlyphToolStripButton _btnCloseTab;
 
         public event Action<KryptonPage> TabSelected;
@@ -184,14 +185,23 @@ namespace GxPT
                     _btnNewTab.Click += delegate { CreateConversationTab(); };
                     _btnNewTab.Alignment = ToolStripItemAlignment.Right;
 
+                    _btnNewTempTab = new GlyphToolStripButton(GlyphToolStripButton.GlyphType.Ghost);
+                    _btnNewTempTab.Margin = new Padding(2, 2, 2, 2);
+                    _btnNewTempTab.ToolTipText = "New Temporary Tab (not saved to disk)";
+                    _btnNewTempTab.Click += delegate { CreateEphemeralConversationTab(); };
+                    _btnNewTempTab.Alignment = ToolStripItemAlignment.Right;
+
                     _btnCloseTab = new GlyphToolStripButton(GlyphToolStripButton.GlyphType.Close);
                     _btnCloseTab.Margin = new Padding(2, 2, 3, 2);
                     _btnCloseTab.ToolTipText = "Close Tab";
                     _btnCloseTab.Click += delegate { CloseActiveConversationTab(); };
                     _btnCloseTab.Alignment = ToolStripItemAlignment.Right;
 
+                    // Right-aligned items lay out right-to-left in add order, so this yields a
+                    // left-to-right visual order of: [ghost] [+] [x].
                     menuStrip.Items.Add(_btnCloseTab);
                     menuStrip.Items.Add(_btnNewTab);
+                    menuStrip.Items.Add(_btnNewTempTab);
                 }
             }
             catch { }
@@ -253,6 +263,19 @@ namespace GxPT
 
         public ChatTabContext CreateConversationTab()
         {
+            return CreateConversationTab(false);
+        }
+
+        // Create a temporary (ephemeral) conversation tab: identical to a normal new tab except the
+        // conversation is flagged Ephemeral, so it is never saved to disk, never listed in the history
+        // sidebar, and not restored on the next launch. Its tab title carries the "[...] " marker.
+        public ChatTabContext CreateEphemeralConversationTab()
+        {
+            return CreateConversationTab(true);
+        }
+
+        private ChatTabContext CreateConversationTab(bool ephemeral)
+        {
             if (_tabControl == null) return null;
 
             var page = new KryptonPage("New Conversation");
@@ -275,8 +298,15 @@ namespace GxPT
             // map (a brand-new Conversation has no id until EnsureConversationId runs).
             var convo = new Conversation(_mainForm.GetClient());
             convo.SelectedModel = ctx.SelectedModel;
+            convo.Ephemeral = ephemeral;
             _mainForm.EnsureConversationId(convo);
             ctx.Conversation = convo;
+            // Reflect the ephemeral marker on the tab title up front (before any generated name lands).
+            if (ephemeral)
+            {
+                try { page.Text = MainForm.ZdrTitle(convo, convo.Name); }
+                catch { }
+            }
 
             // Wire edit-request, retry and name-generated handlers for this tab
             HookEditRequest(ctx);
@@ -884,7 +914,7 @@ namespace GxPT
         // uses for the menu-bar text so it blends with File/View/Help.
         private sealed class GlyphToolStripButton : ToolStripButton
         {
-            public enum GlyphType { Plus, Close }
+            public enum GlyphType { Plus, Close, Ghost }
             private readonly GlyphType _glyph;
 
             public GlyphToolStripButton(GlyphType glyph)
@@ -919,11 +949,48 @@ namespace GxPT
                         g.DrawLine(pen, cx - len, cy, cx + len, cy);
                         g.DrawLine(pen, cx, cy - len, cx, cy + len);
                     }
-                    else
+                    else if (_glyph == GlyphType.Close)
                     {
                         g.DrawLine(pen, cx - len, cy - len, cx + len, cy + len);
                         g.DrawLine(pen, cx - len, cy + len, cx + len, cy - len);
                     }
+                    else // Ghost: a little pac-man style ghost (rounded dome + scalloped feet)
+                    {
+                        DrawGhost(g, pen, cx, cy);
+                    }
+                }
+            }
+
+            // Stroked ghost outline only (semicircular dome on top, three scalloped feet at the
+            // bottom), centered at (cx, cy). Line-art style to match the +/x glyphs.
+            private static void DrawGhost(Graphics g, Pen pen, int cx, int cy)
+            {
+                float hw = 6f;              // half width of the body
+                float top = cy - 7f;        // top of the dome
+                float bottom = cy + 6f;     // baseline the feet hang from
+                float left = cx - hw;
+                float right = cx + hw;
+                float dome = hw;            // dome radius (spans the full width)
+                float sidesTop = top + dome; // y where the straight sides meet the dome
+                float footH = 2.5f;         // depth of the scallop notches
+
+                using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    path.StartFigure();
+                    // Left side up, over the dome, right side down.
+                    path.AddLine(left, bottom, left, sidesTop);
+                    path.AddArc(left, top, dome * 2f, dome * 2f, 180f, 180f);
+                    path.AddLine(right, sidesTop, right, bottom);
+                    // Scalloped bottom, right -> left: three feet with up-notches between them.
+                    float s = (right - left) / 3f;
+                    path.AddLine(right, bottom, right - s * 0.5f, bottom - footH);
+                    path.AddLine(right - s * 0.5f, bottom - footH, right - s, bottom);
+                    path.AddLine(right - s, bottom, right - s * 1.5f, bottom - footH);
+                    path.AddLine(right - s * 1.5f, bottom - footH, right - s * 2f, bottom);
+                    path.AddLine(right - s * 2f, bottom, right - s * 2.5f, bottom - footH);
+                    path.AddLine(right - s * 2.5f, bottom - footH, left, bottom);
+                    path.CloseFigure();
+                    g.DrawPath(pen, path);
                 }
             }
         }
