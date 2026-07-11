@@ -438,6 +438,9 @@
             this.cmbModel.Location = new System.Drawing.Point(0, 0);
             this.cmbModel.Margin = new System.Windows.Forms.Padding(0);
             this.cmbModel.Name = "cmbModel";
+            // Dropdown rows show a [v]/[f] vision/file-attachment badge from the model catalog; the
+            // settings effort combos leave this off and render bare model names.
+            this.cmbModel.ShowCapabilityBadges = true;
             this.cmbModel.Size = new System.Drawing.Size(146, 21);
             this.cmbModel.Sorted = true;
             this.cmbModel.TabIndex = 2;
