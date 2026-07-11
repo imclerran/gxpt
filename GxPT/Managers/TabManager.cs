@@ -155,7 +155,7 @@ namespace GxPT
                 _miTabRename = new ToolStripMenuItem("Rename");
                 // Only meaningful for a temporary (ephemeral) tab: promotes it to a normal saved
                 // conversation. Hidden for ordinary tabs (which are already saved).
-                _miTabSaveToDisk = new ToolStripMenuItem("Save to Disk");
+                _miTabSaveToDisk = new ToolStripMenuItem("Save to History");
                 _miTabExport = new ToolStripMenuItem("Export");
                 _miTabDelete = new ToolStripMenuItem("Delete");
                 _miTabDelete.Image = ResourceManager.TryGetAssemblyImage("ExplorerDelete.png");
@@ -706,7 +706,7 @@ namespace GxPT
                 _miTabClose.Enabled = hasTarget;
                 _miTabCloseOthers.Enabled = hasTarget && _tabControl.Pages.Count > 1;
                 _miTabRename.Enabled = hasTarget;
-                // "Save to Disk" only appears for a temporary tab - it converts it to a normal saved one.
+                // "Save to History" only appears for a temporary tab - it converts it to a normal saved one.
                 _miTabSaveToDisk.Visible = hasTarget && IsEphemeralTab(_tabCtxTarget);
                 // Export packages the conversation's saved file (like the sidebar's Export), and
                 // Delete removes it - both need the file to exist. A brand-new, message-less tab
