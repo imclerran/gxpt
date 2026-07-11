@@ -981,14 +981,12 @@ namespace GxPT
                     path.AddLine(left, bottom, left, sidesTop);
                     path.AddArc(left, top, dome * 2f, dome * 2f, 180f, 180f);
                     path.AddLine(right, sidesTop, right, bottom);
-                    // Scalloped bottom, right -> left: three feet with up-notches between them.
-                    float s = (right - left) / 3f;
+                    // Scalloped bottom, right -> left: two up-notches (one fewer point than before).
+                    float s = (right - left) / 2f;
                     path.AddLine(right, bottom, right - s * 0.5f, bottom - footH);
                     path.AddLine(right - s * 0.5f, bottom - footH, right - s, bottom);
                     path.AddLine(right - s, bottom, right - s * 1.5f, bottom - footH);
-                    path.AddLine(right - s * 1.5f, bottom - footH, right - s * 2f, bottom);
-                    path.AddLine(right - s * 2f, bottom, right - s * 2.5f, bottom - footH);
-                    path.AddLine(right - s * 2.5f, bottom - footH, left, bottom);
+                    path.AddLine(right - s * 1.5f, bottom - footH, left, bottom);
                     path.CloseFigure();
                     g.DrawPath(pen, path);
                 }
