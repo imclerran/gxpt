@@ -20,6 +20,7 @@ namespace GxPT
         private ToolStripMenuItem _miTabCloseOthers;
         private ToolStripMenuItem _miTabWorkdir;
         private ToolStripMenuItem _miTabRename;
+        private ToolStripMenuItem _miTabSaveToDisk;
         private ToolStripMenuItem _miTabExport;
         private ToolStripMenuItem _miTabDelete;
         private KryptonPage _tabCtxTarget;
@@ -152,6 +153,9 @@ namespace GxPT
                 _miTabCloseOthers = new ToolStripMenuItem("Close Others");
                 _miTabWorkdir = new ToolStripMenuItem("Set Working Folder...");
                 _miTabRename = new ToolStripMenuItem("Rename");
+                // Only meaningful for a temporary (ephemeral) tab: promotes it to a normal saved
+                // conversation. Hidden for ordinary tabs (which are already saved).
+                _miTabSaveToDisk = new ToolStripMenuItem("Save to Disk");
                 _miTabExport = new ToolStripMenuItem("Export");
                 _miTabDelete = new ToolStripMenuItem("Delete");
                 _miTabDelete.Image = ResourceManager.TryGetAssemblyImage("ExplorerDelete.png");
@@ -161,10 +165,11 @@ namespace GxPT
                 _miTabCloseOthers.Click += delegate { if (_tabCtxTarget != null) CloseOtherTabs(_tabCtxTarget); };
                 _miTabWorkdir.Click += delegate { if (_tabCtxTarget != null) _mainForm.SetWorkingFolderForTab(_tabCtxTarget); };
                 _miTabRename.Click += delegate { if (_tabCtxTarget != null) RenameConversationTab(_tabCtxTarget); };
+                _miTabSaveToDisk.Click += delegate { if (_tabCtxTarget != null) SaveEphemeralTabToDisk(_tabCtxTarget); };
                 _miTabExport.Click += delegate { if (_tabCtxTarget != null) ExportConversationTab(_tabCtxTarget); };
                 _miTabDelete.Click += delegate { if (_tabCtxTarget != null) DeleteConversationTab(_tabCtxTarget); };
 
-                _tabCtxMenu.Items.AddRange(new ToolStripItem[] { _miTabNew, new ToolStripSeparator(), _miTabWorkdir, _miTabRename, _miTabExport, new ToolStripSeparator(), _miTabClose, _miTabCloseOthers, new ToolStripSeparator(), _miTabDelete });
+                _tabCtxMenu.Items.AddRange(new ToolStripItem[] { _miTabNew, new ToolStripSeparator(), _miTabWorkdir, _miTabRename, _miTabSaveToDisk, _miTabExport, new ToolStripSeparator(), _miTabClose, _miTabCloseOthers, new ToolStripSeparator(), _miTabDelete });
             }
             catch { }
         }
@@ -268,7 +273,7 @@ namespace GxPT
 
         // Create a temporary (ephemeral) conversation tab: identical to a normal new tab except the
         // conversation is flagged Ephemeral, so it is never saved to disk, never listed in the history
-        // sidebar, and not restored on the next launch. Its tab title carries the "[temp] " marker.
+        // sidebar, and not restored on the next launch. Its tab title carries the "[tmp] " marker.
         public ChatTabContext CreateEphemeralConversationTab()
         {
             return CreateConversationTab(true);
@@ -373,6 +378,54 @@ namespace GxPT
                 return !string.IsNullOrEmpty(path) && System.IO.File.Exists(path);
             }
             catch { return false; }
+        }
+
+        // True when the tab backs a temporary (ephemeral) conversation.
+        private bool IsEphemeralTab(KryptonPage page)
+        {
+            try
+            {
+                ChatTabContext ctx;
+                return page != null && _tabContexts.TryGetValue(page, out ctx)
+                    && ctx != null && ctx.Conversation != null && ctx.Conversation.Ephemeral;
+            }
+            catch { return false; }
+        }
+
+        // Promote a temporary (ephemeral) tab to a normal, persisted conversation: clear the Ephemeral
+        // flag so ConversationStore.Save no longer short-circuits, drop the "[tmp] " tab marker, and
+        // write it out now (surfacing it in the history sidebar). An empty conversation isn't written
+        // yet - like any fresh tab it lands on disk with its first user send. No-op for a normal tab.
+        public void SaveEphemeralTabToDisk(KryptonPage page)
+        {
+            try
+            {
+                ChatTabContext ctx;
+                if (page == null || !_tabContexts.TryGetValue(page, out ctx) || ctx == null || ctx.Conversation == null)
+                    return;
+                if (!ctx.Conversation.Ephemeral) return;
+
+                ctx.Conversation.Ephemeral = false;
+                try { page.Text = MainForm.ZdrTitle(ctx.Conversation, ctx.Conversation.Name); }
+                catch { }
+                _mainForm.UpdateWindowTitle();
+
+                // Persist immediately when there's something to keep; refresh the sidebar so the newly
+                // saved conversation appears. A race with a running turn's history mutation throws and
+                // is skipped - the next regular save catches up.
+                try
+                {
+                    if (ctx.Conversation.History != null && ctx.Conversation.History.Count > 0)
+                    {
+                        ctx.NoSaveUntilUserSend = false;
+                        ConversationStore.Save(ctx.Conversation);
+                        var sidebar = _mainForm.GetSidebarManager();
+                        if (sidebar != null) sidebar.RefreshSidebarList();
+                    }
+                }
+                catch { }
+            }
+            catch { }
         }
 
         // Export the conversation backing a tab: the single-conversation export, identical to the
@@ -648,6 +701,8 @@ namespace GxPT
                 _miTabClose.Enabled = hasTarget;
                 _miTabCloseOthers.Enabled = hasTarget && _tabControl.Pages.Count > 1;
                 _miTabRename.Enabled = hasTarget;
+                // "Save to Disk" only appears for a temporary tab - it converts it to a normal saved one.
+                _miTabSaveToDisk.Visible = hasTarget && IsEphemeralTab(_tabCtxTarget);
                 // Export packages the conversation's saved file (like the sidebar's Export), and
                 // Delete removes it - both need the file to exist. A brand-new, message-less tab
                 // has nothing to export or delete.
