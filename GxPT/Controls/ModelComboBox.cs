@@ -10,24 +10,29 @@ namespace GxPT
     // stripped) while storing the full "author/model" id, and auto-sizes its dropdown to fit.
     //
     // Shared by the main window's model selector (cmbModel) and the settings effort-tier pickers.
-    // The item's ToString() is always the bare short name: KryptonComboBox paints its own closed box
-    // from ToString() (owner-draw only reaches the dropdown rows), and Sorted sorts on it - so the
-    // closed box and sort order stay clean regardless of the badge feature below.
-    //
-    // ShowCapabilityBadges (opt-in, off by default) turns on owner-draw so the DROPDOWN ROWS append a
-    // "[v]"/"[f]" capability suffix from the model catalog; the closed box keeps the bare name because
-    // Krypton paints it from ToString(). The settings effort combos leave it off and behave exactly as
-    // before; only the main window's model selector sets it on. Callers work in full ids via
-    // SetModels/SelectedModelId.
+    // KryptonComboBox paints BOTH its closed box and its dropdown rows from the item's ToString(), and
+    // this build of Krypton never raises DrawItem, so owner-draw can't be used to badge only the
+    // dropdown. Instead ToString() itself appends the capability suffix when ShowCapabilityBadges is on
+    // (main window), and returns the bare name when off (settings) - so the two use sites differ by one
+    // flag, not a forked control. Callers work in full ids via SetModels/SelectedModelId.
     internal class ModelComboBox : KryptonComboBox
     {
-        // Combo item that displays the short model name but remembers the full id. Equality is on the
-        // id (case-insensitive) so selection/lookup resolve to the right entry.
+        // Combo item that displays the short model name (plus a "[v]"/"[f]" capability badge when its
+        // owner has ShowCapabilityBadges on) but remembers the full id. Equality is on the id
+        // (case-insensitive) so selection/lookup resolve to the right entry, and sorting - which keys on
+        // ToString() - stays by name because the badge is only ever a trailing suffix.
         private sealed class Item
         {
             public readonly string Id;
-            public Item(string id) { Id = id ?? string.Empty; }
-            public override string ToString() { return MainForm.ShortModelName(Id); }
+            private readonly ModelComboBox _owner;
+            public Item(ModelComboBox owner, string id) { _owner = owner; Id = id ?? string.Empty; }
+            public override string ToString()
+            {
+                string name = MainForm.ShortModelName(Id);
+                return (_owner != null && _owner._showCapabilityBadges)
+                    ? name + _owner.CapabilitySuffix(Id)
+                    : name;
+            }
             public override bool Equals(object obj)
             {
                 Item o = obj as Item;
@@ -43,15 +48,15 @@ namespace GxPT
         {
             DropDownStyle = ComboBoxStyle.DropDownList;
             DropDown += delegate { AdjustDropDownWidth(); };
-            DrawItem += OnDrawModelItem;
         }
 
         private bool _showCapabilityBadges;
 
-        // When true, dropdown rows append a "[v]"/"[f]" capability suffix (vision / file input) read
-        // from the model catalog. Off by default so the settings effort combos render bare names.
-        // Toggling flips owner-draw on/off; the closed box is unaffected (Krypton paints it from
-        // ToString()), so only the dropdown gains the badges.
+        // When true, each item's displayed text gains a " [v]" (vision / image input) and/or " [f]"
+        // (native file input) suffix read from the model catalog - in both the dropdown and the closed
+        // box, since Krypton paints both from ToString(). Off by default, so the settings effort combos
+        // render bare model names. Models the catalog doesn't know get no suffix rather than a
+        // misleading one.
         public bool ShowCapabilityBadges
         {
             get { return _showCapabilityBadges; }
@@ -59,9 +64,32 @@ namespace GxPT
             {
                 if (_showCapabilityBadges == value) return;
                 _showCapabilityBadges = value;
-                DrawMode = value ? DrawMode.OwnerDrawFixed : DrawMode.Normal;
-                AdjustDropDownWidth();
+                RefreshItemDisplay();
             }
+        }
+
+        // The " [v]"/" [f]" suffix for a model id, or "" when the catalog has no info for it.
+        private string CapabilitySuffix(string id)
+        {
+            ModelInfo info;
+            if (!ModelCatalogService.TryGetModelInfo(id, out info) || info == null) return string.Empty;
+            string s = string.Empty;
+            if (info.SupportsImageInput) s += " [v]";
+            if (info.SupportsFileInput) s += " [f]";
+            return s;
+        }
+
+        // Force the closed box and dropdown to re-read ToString() after the badge flag flips. In
+        // practice the flag is set once at construction (before items are populated), so this is a
+        // no-op safety net for a runtime toggle.
+        private void RefreshItemDisplay()
+        {
+            try
+            {
+                AdjustDropDownWidth();
+                if (IsHandleCreated) Invalidate();
+            }
+            catch { }
         }
 
         // Replace the item list with the given model ids and select selectedId (added if not present,
@@ -74,10 +102,10 @@ namespace GxPT
                 Items.Clear();
                 if (ids != null)
                     foreach (string id in ids)
-                        if (!string.IsNullOrEmpty(id)) Items.Add(new Item(id));
+                        if (!string.IsNullOrEmpty(id)) Items.Add(new Item(this, id));
 
                 string sel = selectedId ?? string.Empty;
-                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(sel));
+                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(this, sel));
                 SelectId(sel);
             }
             finally { EndUpdate(); }
@@ -92,7 +120,7 @@ namespace GxPT
             set
             {
                 string sel = value ?? string.Empty;
-                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(sel));
+                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(this, sel));
                 SelectId(sel);
             }
         }
@@ -112,87 +140,6 @@ namespace GxPT
             return -1;
         }
 
-        // The text shown for an item in the dropdown: the short model name, plus a " [v]"/" [f]"
-        // capability suffix when ShowCapabilityBadges is on and the catalog knows the model. Unknown
-        // models (not yet fetched) get no suffix rather than a misleading one.
-        private string DisplayText(int index) { return DisplayText(index, true); }
-
-        private string DisplayText(int index, bool withBadge)
-        {
-            object raw = (index >= 0 && index < Items.Count) ? Items[index] : null;
-            Item it = raw as Item;
-            if (it == null) return raw != null ? raw.ToString() : string.Empty;
-
-            string text = it.ToString(); // MainForm.ShortModelName(Id)
-            if (!_showCapabilityBadges || !withBadge) return text;
-
-            ModelInfo info;
-            bool hit = ModelCatalogService.TryGetModelInfo(it.Id, out info) && info != null;
-            try
-            {
-                Logger.Log("ModelCombo", "badge lookup id=" + it.Id + " hit=" + hit
-                    + (hit ? (" img=" + info.SupportsImageInput + " file=" + info.SupportsFileInput) : ""));
-            }
-            catch { }
-            if (!hit) return text + " [?]"; // TEMP diagnostic: catalog has no info for this id
-            if (info.SupportsImageInput) text += " [v]";
-            if (info.SupportsFileInput) text += " [f]";
-            return text;
-        }
-
-        // Owner-draw for the dropdown rows (only invoked while DrawMode != Normal, i.e. when
-        // ShowCapabilityBadges is on). Theme-aware so the badged dropdown matches the rest of the UI;
-        // the selected row uses the system highlight for guaranteed contrast.
-        private void OnDrawModelItem(object sender, DrawItemEventArgs e)
-        {
-            try { Logger.Log("ModelCombo", "DrawItem fired idx=" + e.Index + " state=" + e.State + " badges=" + _showCapabilityBadges); }
-            catch { }
-            if (e.Index < 0)
-            {
-                e.DrawBackground();
-                e.DrawFocusRectangle();
-                return;
-            }
-
-            bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            // The closed-box (edit portion) keeps the bare name - badges are a dropdown-only affordance.
-            // Krypton paints the closed box from ToString() and normally doesn't route it here, but guard
-            // against it in case it ever does.
-            bool isEditPortion = (e.State & DrawItemState.ComboBoxEdit) == DrawItemState.ComboBoxEdit;
-            ThemeColors colors;
-            try { colors = ThemeService.GetColors(IsDarkTheme()); }
-            catch { colors = null; }
-
-            Color back = selected
-                ? SystemColors.Highlight
-                : (colors != null ? colors.UiBackground : SystemColors.Window);
-            Color fore = selected
-                ? SystemColors.HighlightText
-                : (colors != null ? colors.UiForeground : SystemColors.WindowText);
-
-            using (SolidBrush b = new SolidBrush(back))
-                e.Graphics.FillRectangle(b, e.Bounds);
-
-            TextRenderer.DrawText(e.Graphics, DisplayText(e.Index, !isEditPortion), e.Font ?? Font, e.Bounds, fore,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
-                    | TextFormatFlags.NoPrefix);
-
-            e.DrawFocusRectangle();
-        }
-
-        // True when the active app theme is dark (mirrors ThemeManager.IsDarkTheme so this control
-        // doesn't need a back-reference to the form).
-        private static bool IsDarkTheme()
-        {
-            try
-            {
-                string theme = AppSettings.GetString("theme");
-                return !string.IsNullOrEmpty(theme) &&
-                    theme.Trim().Equals("dark", StringComparison.OrdinalIgnoreCase);
-            }
-            catch { return false; }
-        }
-
         // Widen the dropdown to fit the longest displayed item text (badges included); never narrower
         // than the control.
         private void AdjustDropDownWidth()
@@ -204,7 +151,7 @@ namespace GxPT
                 {
                     for (int i = 0; i < Items.Count; i++)
                     {
-                        string s = DisplayText(i);
+                        string s = Items[i] != null ? Items[i].ToString() : string.Empty;
                         if (s.Length == 0) continue;
                         int w = TextRenderer.MeasureText(g, s, Font,
                             new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width;

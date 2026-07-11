@@ -441,7 +441,10 @@
             // Dropdown rows show a [v]/[f] vision/file-attachment badge from the model catalog; the
             // settings effort combos leave this off and render bare model names.
             this.cmbModel.ShowCapabilityBadges = true;
-            this.cmbModel.Size = new System.Drawing.Size(146, 21);
+            // Widened from 146 so the selected model's "[v]/[f]" capability badge (ShowCapabilityBadges)
+            // fits in the closed box; the ZDR checkbox is Dock.Right so it isn't affected. The dropdown
+            // self-sizes wider still to fit the full badged text.
+            this.cmbModel.Size = new System.Drawing.Size(184, 21);
             this.cmbModel.Sorted = true;
             this.cmbModel.TabIndex = 2;
             // 
