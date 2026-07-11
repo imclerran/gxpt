@@ -453,8 +453,18 @@ namespace GxPT
         // the transcript is re-measured once the drag settles instead of on every pixel.
         private Timer _resizeDebounce;
 
-        // Stick-to-bottom behavior during streaming to avoid calling ScrollToBottom each delta
+        // Stick-to-bottom behavior during streaming to avoid calling ScrollToBottom each delta.
+        // _stickToBottom marks that a stream is active (set by the host at stream start/end).
+        // _followStreamBottom decides, within an active stream, whether we actually keep pinning to
+        // the bottom: it starts true and stays true while the user sits at the bottom, but flips to
+        // false the moment they scroll up. When false the view is left anchored by its pixel offset
+        // from the top (new content grows below without moving what the user is reading); scrolling
+        // back to the bottom re-engages following.
         private bool _stickToBottom;
+        private bool _followStreamBottom = true;
+        // Tolerance (px) for treating the view as "at the bottom" when re-evaluating following after
+        // a manual scroll, so the user doesn't have to land on the exact last pixel to resume it.
+        private const int BottomFollowSlack = 8;
 
         // Use modern ContextMenuStrip instead of legacy ContextMenu
         private readonly ContextMenuStrip _ctx;
@@ -681,6 +691,7 @@ namespace GxPT
             {
                 int maxOff = Math.Max(0, _contentHeight - Math.Max(0, ClientSize.Height));
                 _scrollOffset = Math.Max(0, Math.Min(maxOff, _vbar.Value));
+                UpdateFollowStateFromUserScroll();
                 Invalidate();
             };
             Controls.Add(_vbar);
@@ -827,6 +838,7 @@ namespace GxPT
                 int max = System.Math.Max(0, _contentHeight - view);
                 _scrollOffset = System.Math.Max(0, System.Math.Min(max, _scrollOffset + pixels));
                 SyncVBarValue(_scrollOffset);
+                UpdateFollowStateFromUserScroll();
                 Invalidate();
             }
             catch { }
@@ -3835,10 +3847,25 @@ namespace GxPT
 
         private void ScrollToBottom()
         {
+            // While a stream is active but the user has scrolled up, honor their locked position:
+            // appending a new message (or finishing a batch) must not yank the view back to the
+            // bottom. Following resumes automatically once they scroll back down.
+            if (_stickToBottom && !_followStreamBottom) return;
             int view = Math.Max(0, ClientSize.Height);
             int max = Math.Max(0, _contentHeight - view);
             _scrollOffset = max;
             if (_vbar.Enabled) SyncVBarValue(max);
+        }
+
+        // Re-evaluate whether we should keep following the streaming bottom after a user-initiated
+        // vertical scroll. Called from the scrollbar and mouse-wheel handlers: scrolling up locks the
+        // view in place, scrolling back to (or near) the bottom resumes following the stream. No-op
+        // when no stream is active.
+        private void UpdateFollowStateFromUserScroll()
+        {
+            if (!_stickToBottom) return;
+            int maxOff = Math.Max(0, _contentHeight - Math.Max(0, ClientSize.Height));
+            _followStreamBottom = _scrollOffset >= maxOff - BottomFollowSlack;
         }
 
         // Public helper to jump to the top of the transcript (used for help templates)
@@ -3882,8 +3909,10 @@ namespace GxPT
 
             _vbar.Enabled = maxScrollOffset > 0;
 
-            // Stick to bottom during streaming
-            if (_stickToBottom && _vbar.Enabled)
+            // Stick to bottom during streaming, but only while the user is following the bottom.
+            // Once they scroll up (_followStreamBottom == false) fall through to the clamp branch,
+            // which preserves _scrollOffset so the view stays anchored to the top as content grows.
+            if (_stickToBottom && _followStreamBottom && _vbar.Enabled)
             {
                 _scrollOffset = maxScrollOffset;
                 SyncVBarValue(maxScrollOffset);
@@ -3922,6 +3951,9 @@ namespace GxPT
             {
                 if (_stickToBottom == value) return;
                 _stickToBottom = value;
+                // Each time a stream begins, start out following the bottom afresh; a stale
+                // "scrolled-up" state from a prior turn must not suppress the initial pin.
+                if (value) _followStreamBottom = true;
                 UpdateScrollbar();
                 Invalidate();
             }
