@@ -3368,7 +3368,7 @@ namespace GxPT
         internal const string ZdrTitlePrefix = "[zdr] ";
         // Marker prefixed to a temporary (ephemeral, never-saved) conversation's tab title. Analogous
         // to the ZDR marker; the two compose (a temp conversation can also be ZDR).
-        internal const string TempTitlePrefix = "[...] ";
+        internal const string TempTitlePrefix = "[temp] ";
 
         // The display title for a conversation: its name, prefixed with the temporary and/or ZDR
         // markers as they apply. Both are decorators on the underlying name and stack (temp first).

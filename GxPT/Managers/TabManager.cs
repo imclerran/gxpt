@@ -268,7 +268,7 @@ namespace GxPT
 
         // Create a temporary (ephemeral) conversation tab: identical to a normal new tab except the
         // conversation is flagged Ephemeral, so it is never saved to disk, never listed in the history
-        // sidebar, and not restored on the next launch. Its tab title carries the "[...] " marker.
+        // sidebar, and not restored on the next launch. Its tab title carries the "[temp] " marker.
         public ChatTabContext CreateEphemeralConversationTab()
         {
             return CreateConversationTab(true);
