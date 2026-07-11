@@ -304,6 +304,11 @@ namespace GxPT
             var convo = new Conversation(_mainForm.GetClient());
             convo.SelectedModel = ctx.SelectedModel;
             convo.Ephemeral = ephemeral;
+            // A temporary conversation defaults to ZDR on (checked) - it's the privacy-forward choice
+            // for a chat that's already meant to leave no trace. Seed the toggle only, not the latch
+            // (ZdrFirstMessageIndex stays -1), so the checkbox is checked but still unlockable until the
+            // first send - the user can uncheck it beforehand.
+            if (ephemeral) convo.Zdr = true;
             _mainForm.EnsureConversationId(convo);
             ctx.Conversation = convo;
             // Reflect the ephemeral marker on the tab title up front (before any generated name lands).
