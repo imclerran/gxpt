@@ -10,18 +10,29 @@ namespace GxPT
     // stripped) while storing the full "author/model" id, and auto-sizes its dropdown to fit.
     //
     // Shared by the main window's model selector (cmbModel) and the settings effort-tier pickers.
-    // No owner-draw: KryptonComboBox paints its own closed box from the item's ToString(), so a small
-    // display wrapper is used instead - that way BOTH the closed box and the dropdown show the short
-    // name (owner-draw only reached the dropdown). Callers work in full ids via SetModels/SelectedModelId.
+    // KryptonComboBox paints BOTH its closed box and its dropdown rows from the item's ToString(), and
+    // this build of Krypton never raises DrawItem, so owner-draw can't be used to badge only the
+    // dropdown. Instead ToString() itself appends the capability suffix when ShowCapabilityBadges is on
+    // (main window), and returns the bare name when off (settings) - so the two use sites differ by one
+    // flag, not a forked control. Callers work in full ids via SetModels/SelectedModelId.
     internal class ModelComboBox : KryptonComboBox
     {
-        // Combo item that displays the short model name but remembers the full id. Equality is on the
-        // id (case-insensitive) so selection/lookup resolve to the right entry.
+        // Combo item that displays the short model name (plus a "[v]"/"[f]" capability badge when its
+        // owner has ShowCapabilityBadges on) but remembers the full id. Equality is on the id
+        // (case-insensitive) so selection/lookup resolve to the right entry, and sorting - which keys on
+        // ToString() - stays by name because the badge is only ever a trailing suffix.
         private sealed class Item
         {
             public readonly string Id;
-            public Item(string id) { Id = id ?? string.Empty; }
-            public override string ToString() { return MainForm.ShortModelName(Id); }
+            private readonly ModelComboBox _owner;
+            public Item(ModelComboBox owner, string id) { _owner = owner; Id = id ?? string.Empty; }
+            public override string ToString()
+            {
+                string name = MainForm.ShortModelName(Id);
+                return (_owner != null && _owner._showCapabilityBadges)
+                    ? name + _owner.CapabilitySuffix(Id)
+                    : name;
+            }
             public override bool Equals(object obj)
             {
                 Item o = obj as Item;
@@ -39,6 +50,48 @@ namespace GxPT
             DropDown += delegate { AdjustDropDownWidth(); };
         }
 
+        private bool _showCapabilityBadges;
+
+        // When true, each item's displayed text gains a " [v]" (vision / image input) and/or " [f]"
+        // (native file input) suffix read from the model catalog - in both the dropdown and the closed
+        // box, since Krypton paints both from ToString(). Off by default, so the settings effort combos
+        // render bare model names. Models the catalog doesn't know get no suffix rather than a
+        // misleading one.
+        public bool ShowCapabilityBadges
+        {
+            get { return _showCapabilityBadges; }
+            set
+            {
+                if (_showCapabilityBadges == value) return;
+                _showCapabilityBadges = value;
+                RefreshItemDisplay();
+            }
+        }
+
+        // The " [v]"/" [f]" suffix for a model id, or "" when the catalog has no info for it.
+        private string CapabilitySuffix(string id)
+        {
+            ModelInfo info;
+            if (!ModelCatalogService.TryGetModelInfo(id, out info) || info == null) return string.Empty;
+            string s = string.Empty;
+            if (info.SupportsImageInput) s += " [v]";
+            if (info.SupportsFileInput) s += " [f]";
+            return s;
+        }
+
+        // Force the closed box and dropdown to re-read ToString() after the badge flag flips. In
+        // practice the flag is set once at construction (before items are populated), so this is a
+        // no-op safety net for a runtime toggle.
+        private void RefreshItemDisplay()
+        {
+            try
+            {
+                AdjustDropDownWidth();
+                if (IsHandleCreated) Invalidate();
+            }
+            catch { }
+        }
+
         // Replace the item list with the given model ids and select selectedId (added if not present,
         // so a stored value that is no longer in the catalog still stays visible/selectable).
         public void SetModels(IEnumerable<string> ids, string selectedId)
@@ -49,10 +102,10 @@ namespace GxPT
                 Items.Clear();
                 if (ids != null)
                     foreach (string id in ids)
-                        if (!string.IsNullOrEmpty(id)) Items.Add(new Item(id));
+                        if (!string.IsNullOrEmpty(id)) Items.Add(new Item(this, id));
 
                 string sel = selectedId ?? string.Empty;
-                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(sel));
+                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(this, sel));
                 SelectId(sel);
             }
             finally { EndUpdate(); }
@@ -67,7 +120,7 @@ namespace GxPT
             set
             {
                 string sel = value ?? string.Empty;
-                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(sel));
+                if (sel.Length > 0 && IndexOfId(sel) < 0) Items.Add(new Item(this, sel));
                 SelectId(sel);
             }
         }
@@ -87,7 +140,8 @@ namespace GxPT
             return -1;
         }
 
-        // Widen the dropdown to fit the longest (short) item text; never narrower than the control.
+        // Widen the dropdown to fit the longest displayed item text (badges included); never narrower
+        // than the control.
         private void AdjustDropDownWidth()
         {
             try

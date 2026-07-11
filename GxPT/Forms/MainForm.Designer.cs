@@ -438,6 +438,12 @@
             this.cmbModel.Location = new System.Drawing.Point(0, 0);
             this.cmbModel.Margin = new System.Windows.Forms.Padding(0);
             this.cmbModel.Name = "cmbModel";
+            // Dropdown rows show a [v]/[f] vision/file-attachment badge from the model catalog; the
+            // settings effort combos leave this off and render bare model names.
+            this.cmbModel.ShowCapabilityBadges = true;
+            // Fixed width - do not grow this to fit the "[v]/[f]" badge, or it clips the Dock.Right ZDR
+            // checkbox. The closed box truncates a long selected name+badge gracefully; the dropdown
+            // still self-sizes wider (DropDownWidth) to show the full badged text.
             this.cmbModel.Size = new System.Drawing.Size(146, 21);
             this.cmbModel.Sorted = true;
             this.cmbModel.TabIndex = 2;
