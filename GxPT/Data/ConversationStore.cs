@@ -79,6 +79,10 @@ namespace GxPT
         public static void Save(Conversation convo)
         {
             if (convo == null) return;
+            // Ephemeral (temporary) conversations never touch disk - this is the single chokepoint every
+            // save path funnels through, so gating here makes "unsaved" hold regardless of which caller
+            // (turn completion, close, detached finalize, etc.) reaches for a save.
+            if (convo.Ephemeral) return;
             string json = ToJson(convo);
             if (json == null) return;
 
