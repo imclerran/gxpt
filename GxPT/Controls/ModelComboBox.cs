@@ -127,7 +127,14 @@ namespace GxPT
             if (!_showCapabilityBadges || !withBadge) return text;
 
             ModelInfo info;
-            if (!ModelCatalogService.TryGetModelInfo(it.Id, out info) || info == null) return text;
+            bool hit = ModelCatalogService.TryGetModelInfo(it.Id, out info) && info != null;
+            try
+            {
+                Logger.Log("ModelCombo", "badge lookup id=" + it.Id + " hit=" + hit
+                    + (hit ? (" img=" + info.SupportsImageInput + " file=" + info.SupportsFileInput) : ""));
+            }
+            catch { }
+            if (!hit) return text + " [?]"; // TEMP diagnostic: catalog has no info for this id
             if (info.SupportsImageInput) text += " [v]";
             if (info.SupportsFileInput) text += " [f]";
             return text;
@@ -138,6 +145,8 @@ namespace GxPT
         // the selected row uses the system highlight for guaranteed contrast.
         private void OnDrawModelItem(object sender, DrawItemEventArgs e)
         {
+            try { Logger.Log("ModelCombo", "DrawItem fired idx=" + e.Index + " state=" + e.State + " badges=" + _showCapabilityBadges); }
+            catch { }
             if (e.Index < 0)
             {
                 e.DrawBackground();
