@@ -104,6 +104,10 @@ namespace GxPT
         // Code block UI
         private const int CodeHScrollHeight = 12;      // height of horizontal scrollbar area
         private const int CodeHScrollThumbMin = 24;    // minimum thumb width
+        // Vertical scrollbar for over-tall expanded tool records (mirrors the horizontal one, rotated).
+        private const int CodeVScrollWidth = 12;       // width of the vertical scrollbar column
+        private const int CodeVScrollThumbMin = 24;    // minimum thumb height
+        private const int ToolBodyMaxRows = 10;        // an expanded tool record body caps at this many rows
         private const int CodeCopyButtonHeight = 14;   // header area for copy button
         private const int CodeCopyButtonPad = 4;       // padding around copy text
         // Compute header height dynamically so the Copy button accommodates current font size
@@ -520,6 +524,9 @@ namespace GxPT
             public List<EditDiffHit> EditDiffHits;
             // Edit-diff horizontal scrollbar track rects captured at draw time (virtual coords)
             public List<EditDiffScrollHit> EditDiffScrollHits;
+            // Edit-diff vertical scrollbar track/body rects captured at draw time (virtual coords), for
+            // over-tall expanded tool record bodies that are clipped to ToolBodyMaxRows.
+            public List<EditDiffVScrollHit> EditDiffVScrollHits;
             // Drawn inline text segments for selection/copy (paragraphs, headings, lists, table cells)
             public List<DrawnSeg> DrawnSegments;
             // Unique link run id counter per message (increments when a new link run starts)
@@ -549,14 +556,23 @@ namespace GxPT
         // ---------- Edit-diff records (collapsible, chromeless; data derived from tool-call args) ----------
         private struct EditDiffHit { public Rectangle Rect; public string Key; }
         private struct EditDiffScrollHit { public Rectangle Track; public Rectangle Body; public string Key; public int ContentWidth; public int ViewportWidth; }
+        private struct EditDiffVScrollHit { public Rectangle Track; public Rectangle Body; public string Key; public int ContentHeight; public int ViewportHeight; }
 
         // Horizontal scroll offset per diff key (UI-thread only); 0 when absent.
         private readonly Dictionary<string, int> _editDiffScroll = new Dictionary<string, int>(StringComparer.Ordinal);
+        // Vertical scroll offset per diff key (UI-thread only); 0 when absent. Used when an expanded tool
+        // record body is taller than ToolBodyMaxRows and gets clipped to a scrollable viewport.
+        private readonly Dictionary<string, int> _editDiffVScroll = new Dictionary<string, int>(StringComparer.Ordinal);
         // Drag state for an edit-diff scrollbar (self-contained; mirrors the code-block scroll drag).
         private bool _draggingEditDiffScroll;
         private string _dragEditDiffKey;
         private Rectangle _dragEditDiffTrack;
         private int _dragEditDiffContentWidth, _dragEditDiffViewportWidth, _dragEditDiffStartMouseX, _dragEditDiffStartScroll;
+        // Drag state for a vertical edit-diff scrollbar (mirrors the horizontal one, rotated).
+        private bool _draggingEditDiffVScroll;
+        private string _dragEditDiffVKey;
+        private Rectangle _dragEditDiffVTrack;
+        private int _dragEditDiffVContentHeight, _dragEditDiffVViewportHeight, _dragEditDiffVStartMouseY, _dragEditDiffVStartScroll;
 
         private int GetEditDiffScroll(string key)
         {
@@ -565,6 +581,51 @@ namespace GxPT
         private void SetEditDiffScroll(string key, int v)
         {
             if (!string.IsNullOrEmpty(key)) _editDiffScroll[key] = Math.Max(0, v);
+        }
+        private int GetEditDiffVScroll(string key)
+        {
+            int v; return (!string.IsNullOrEmpty(key) && _editDiffVScroll.TryGetValue(key, out v)) ? v : 0;
+        }
+        private void SetEditDiffVScroll(string key, int v)
+        {
+            if (!string.IsNullOrEmpty(key)) _editDiffVScroll[key] = Math.Max(0, v);
+        }
+        // The pixel height an expanded tool record body is capped to before it becomes vertically
+        // scrollable: ToolBodyMaxRows rows of the given line height (at least one row).
+        private int ToolBodyCap(int lineHeight)
+        {
+            return Math.Max(Math.Max(1, lineHeight), lineHeight * ToolBodyMaxRows);
+        }
+
+        // Paints the vertical scrollbar for an over-tall expanded tool record body in the reserved column
+        // to the right of the body viewport, and records the hit rects for wheel/drag. Mirrors the
+        // horizontal edit-diff scrollbar, rotated 90 degrees.
+        private void DrawToolVScrollBar(Graphics g, MessageItem owner, string key, Rectangle viewport, int contentH, int viewportH, int scrollY)
+        {
+            Rectangle track = new Rectangle(viewport.Right + 2, viewport.Y, CodeVScrollWidth - 4, viewport.Height);
+            using (var trackBrush = new SolidBrush(_clrScrollTrack))
+            using (var trackPen = new Pen(_clrScrollTrackBorder))
+            {
+                g.FillRectangle(trackBrush, track);
+                g.DrawRectangle(trackPen, track);
+            }
+            int thumbH = Math.Max(CodeVScrollThumbMin, (int)Math.Round((double)track.Height * viewportH / Math.Max(1, contentH)));
+            if (thumbH > track.Height) thumbH = track.Height;
+            int trackRange = Math.Max(1, track.Height - thumbH);
+            int maxScroll = Math.Max(0, contentH - viewportH);
+            int thumbY = track.Y + (maxScroll > 0 ? (int)Math.Round((double)scrollY / maxScroll * trackRange) : 0);
+            Rectangle thumb = new Rectangle(track.X, thumbY, track.Width, thumbH);
+            using (var thumbBrush = new SolidBrush(_clrScrollThumb))
+            using (var thumbPen = new Pen(_clrScrollThumbBorder))
+            {
+                g.FillRectangle(thumbBrush, thumb);
+                g.DrawRectangle(thumbPen, thumb);
+            }
+            if (owner != null)
+            {
+                if (owner.EditDiffVScrollHits == null) owner.EditDiffVScrollHits = new List<EditDiffVScrollHit>();
+                owner.EditDiffVScrollHits.Add(new EditDiffVScrollHit { Track = track, Body = viewport, Key = key, ContentHeight = contentH, ViewportHeight = viewportH });
+            }
         }
 
         // A collapsible "tool record": a header label plus a highlighted body in some language.
@@ -1622,9 +1683,21 @@ namespace GxPT
                         int h = headerH;
                         if (hasBody && !collapsed && data.BodyIsMarkdown)
                         {
-                            Size body = MeasureMarkdownBlocks(g, MarkdownParser.ParseMarkdown(data.Body), maxWidth);
-                            h += EditDiffBodyGap + body.Height + EditDiffBodyPad;
-                            w = Math.Max(w, body.Width);
+                            List<Block> bodyBlocks = MarkdownParser.ParseMarkdown(data.Body);
+                            Size body = MeasureMarkdownBlocks(g, bodyBlocks, maxWidth);
+                            int cap = ToolBodyCap(_baseFont.Height);
+                            if (body.Height > cap)
+                            {
+                                // Over-tall: reserve a scrollbar column on the right and cap the shown
+                                // height to the viewport (the full body is drawn clipped and scrollable).
+                                h += EditDiffBodyGap + cap + EditDiffBodyPad;
+                                w = Math.Max(w, maxWidth);
+                            }
+                            else
+                            {
+                                h += EditDiffBodyGap + body.Height + EditDiffBodyPad;
+                                w = Math.Max(w, body.Width);
+                            }
                         }
                         else if (hasBody && !collapsed)
                         {
@@ -1633,9 +1706,14 @@ namespace GxPT
                             var colored = SyntaxHighlightingRenderer.GetColoredSegments(data.Body, data.Language, _monoFont, _isDarkTheme);
                             Size content = SyntaxHighlightingRenderer.MeasureColoredSegmentsNoWrap(g, colored);
                             int bodyH = Math.Max(_monoFont.Height, content.Height);
-                            bool needH = content.Width > maxWidth + EditDiffScrollSlack;
-                            h += EditDiffBodyGap + bodyH + (needH ? CodeHScrollHeight : 0) + EditDiffBodyPad;
-                            w = Math.Max(w, Math.Min(maxWidth, content.Width));
+                            int cap = ToolBodyCap(_monoFont.Height);
+                            bool needV = bodyH > cap;
+                            int shownH = needV ? cap : bodyH;
+                            int viewportW = maxWidth - (needV ? CodeVScrollWidth : 0);
+                            bool needH = content.Width > viewportW + EditDiffScrollSlack;
+                            h += EditDiffBodyGap + shownH + (needH ? CodeHScrollHeight : 0) + EditDiffBodyPad;
+                            // Reserve room for the vertical scrollbar column so the bubble grows to fit it.
+                            w = Math.Max(w, Math.Min(maxWidth, content.Width + (needV ? CodeVScrollWidth : 0)));
                         }
                         return new Size(Math.Max(24, Math.Min(maxWidth, w)), h);
                     }
@@ -2076,6 +2154,7 @@ namespace GxPT
             // Reset edit-diff header hit rectangles before drawing
             if (it.EditDiffHits == null) it.EditDiffHits = new List<EditDiffHit>(); else it.EditDiffHits.Clear();
             if (it.EditDiffScrollHits == null) it.EditDiffScrollHits = new List<EditDiffScrollHit>(); else it.EditDiffScrollHits.Clear();
+            if (it.EditDiffVScrollHits == null) it.EditDiffVScrollHits = new List<EditDiffVScrollHit>(); else it.EditDiffVScrollHits.Clear();
             // Reset drawn text segments list (for selection)
             if (it.DrawnSegments == null) it.DrawnSegments = new List<DrawnSeg>(); else it.DrawnSegments.Clear();
             // Reset the retry button hit rect; the error-block draw re-captures it when shown
@@ -2323,14 +2402,37 @@ namespace GxPT
                     {
                         y += EditDiffBodyGap;
                         List<Block> bodyBlocks = MarkdownParser.ParseMarkdown(data.Body);
-                        int bodyH = MeasureMarkdownBlocks(g, bodyBlocks, maxWidth).Height;
+                        int cap = ToolBodyCap(_baseFont.Height);
+                        int fullH = MeasureMarkdownBlocks(g, bodyBlocks, maxWidth).Height;
+                        bool needV = fullH > cap;
+                        int viewportW = needV ? Math.Max(24, maxWidth - CodeVScrollWidth) : maxWidth;
+                        int bodyH = needV ? MeasureMarkdownBlocks(g, bodyBlocks, viewportW).Height : fullH;
                         // Pass the owner so tables (TableScroll state) and copy work; the body's blocks
                         // carry no EditDiff sentinels, so there's no re-entrancy.
-                        DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, owner);
-                        y += bodyH + EditDiffBodyPad;
+                        if (needV)
+                        {
+                            int shownH = cap;
+                            int maxScroll = Math.Max(0, bodyH - shownH);
+                            int scrollY = Math.Max(0, Math.Min(maxScroll, GetEditDiffVScroll(ed.Key)));
+                            SetEditDiffVScroll(ed.Key, scrollY);
+                            Rectangle viewport = new Rectangle(x0, y, viewportW, shownH);
+                            // Clip to the visible window (visual only) and draw the body shifted up by the
+                            // scroll offset; content above/below the window is clipped out.
+                            var state = g.Save();
+                            g.IntersectClip(viewport);
+                            DrawBlocks(g, new Rectangle(x0, y - scrollY, viewportW, bodyH), bodyBlocks, owner);
+                            g.Restore(state);
+                            DrawToolVScrollBar(g, owner, ed.Key, viewport, bodyH, shownH, scrollY);
+                            y += shownH + EditDiffBodyPad;
+                        }
+                        else
+                        {
+                            DrawBlocks(g, new Rectangle(x0, y, maxWidth, bodyH), bodyBlocks, owner);
+                            y += bodyH + EditDiffBodyPad;
+                        }
                     }
                     // Expanded: chromeless highlighted body, clipped to width (with horizontal scroll
-                    // for over-wide content).
+                    // for over-wide content) and to ToolBodyMaxRows (vertical scroll for over-tall content).
                     else if (hasBody && !collapsed)
                     {
                         y += EditDiffBodyGap;
@@ -2338,7 +2440,10 @@ namespace GxPT
                         var colored = SyntaxHighlightingRenderer.GetColoredSegments(data.Body, data.Language, _monoFont, _isDarkTheme);
                         Size content = SyntaxHighlightingRenderer.MeasureColoredSegmentsNoWrap(g, colored);
                         int bodyH = Math.Max(_monoFont.Height, content.Height);
-                        int viewportW = maxWidth;
+                        int cap = ToolBodyCap(_monoFont.Height);
+                        bool needV = bodyH > cap;
+                        int shownH = needV ? cap : bodyH;
+                        int viewportW = maxWidth - (needV ? CodeVScrollWidth : 0);
                         bool needH = content.Width > viewportW + EditDiffScrollSlack;
 
                         int scrollX = 0;
@@ -2348,16 +2453,25 @@ namespace GxPT
                             scrollX = Math.Max(0, Math.Min(maxScroll, GetEditDiffScroll(ed.Key)));
                             SetEditDiffScroll(ed.Key, scrollX);
                         }
+                        int scrollY = 0;
+                        if (needV)
+                        {
+                            int maxScrollY = Math.Max(0, bodyH - shownH);
+                            scrollY = Math.Max(0, Math.Min(maxScrollY, GetEditDiffVScroll(ed.Key)));
+                            SetEditDiffVScroll(ed.Key, scrollY);
+                        }
 
-                        Rectangle textRect = new Rectangle(x0, y, viewportW, bodyH);
+                        Rectangle textRect = new Rectangle(x0, y, viewportW, shownH);
                         // Neutral backing (theme-aware code-block background) so unchanged/blank lines
                         // read as part of the diff block rather than the transcript background; the
                         // per-line red/green bands paint over this. History-record only — the shared
                         // "diff" highlighter (used by ```diff fences) is unchanged.
                         using (var bg = new SolidBrush(_clrCodeBack))
                             g.FillRectangle(bg, textRect);
-                        SyntaxHighlightingRenderer.DrawColoredSegmentsNoWrap(g, colored, textRect, scrollX);
-                        y += bodyH;
+                        SyntaxHighlightingRenderer.DrawColoredSegmentsNoWrap(g, colored, textRect, scrollX, scrollY);
+                        if (needV)
+                            DrawToolVScrollBar(g, owner, ed.Key, textRect, bodyH, shownH, scrollY);
+                        y += shownH;
 
                         if (needH)
                         {
@@ -3159,6 +3273,26 @@ namespace GxPT
         {
             base.OnMouseWheel(e);
 
+            // Plain wheel over an over-tall (clipped) tool record body scrolls that body first; once it
+            // reaches its top/bottom bound the wheel falls through to the transcript scrollbar below.
+            try
+            {
+                if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
+                {
+                    EditDiffVScrollHit evh;
+                    if (HitTestEditDiffVScrollArea(e.Location, out evh) && evh.ContentHeight > evh.ViewportHeight)
+                    {
+                        int maxScroll = Math.Max(0, evh.ContentHeight - evh.ViewportHeight);
+                        int cur = GetEditDiffVScroll(evh.Key);
+                        int deltaY = (int)System.Math.Round(-(e.Delta / 120.0) * ScrollStep, MidpointRounding.AwayFromZero);
+                        int next = Math.Max(0, Math.Min(maxScroll, cur + deltaY));
+                        if (next != cur) { SetEditDiffVScroll(evh.Key, next); Invalidate(); return; }
+                        // At the top/bottom bound: fall through to transcript scrolling.
+                    }
+                }
+            }
+            catch { }
+
             // If Shift is pressed and we're hovering a horizontally scrollable code block or table,
             // apply wheel to horizontal scroll instead of the transcript vertical scrollbar.
             try
@@ -3218,6 +3352,11 @@ namespace GxPT
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            if (_draggingEditDiffVScroll)
+            {
+                _draggingEditDiffVScroll = false; _dragEditDiffVKey = null; Capture = false; Invalidate();
+                return;
+            }
             if (_draggingEditDiffScroll)
             {
                 _draggingEditDiffScroll = false; _dragEditDiffKey = null; Capture = false; Invalidate();
@@ -3403,6 +3542,34 @@ namespace GxPT
                     _pressAttachItem = pill.Item; _pressAttachIndex = pill.Index; Invalidate();
                     return;
                 }
+                // Edit-diff vertical scrollbar: thumb drag or track jump.
+                EditDiffVScrollHit evh;
+                if (HitTestEditDiffVScroll(e.Location, out evh))
+                {
+                    Point virt = new Point(e.X, e.Y + _scrollOffset);
+                    int trackH = Math.Max(1, evh.Track.Height);
+                    int thumbH = Math.Max(CodeVScrollThumbMin, (int)Math.Round((double)trackH * evh.ViewportHeight / Math.Max(1, evh.ContentHeight)));
+                    if (thumbH > trackH) thumbH = trackH;
+                    int trackRange = Math.Max(1, trackH - thumbH);
+                    int maxScroll = Math.Max(0, evh.ContentHeight - evh.ViewportHeight);
+                    int thumbY = evh.Track.Y + (maxScroll > 0 ? (int)Math.Round((double)GetEditDiffVScroll(evh.Key) / maxScroll * trackRange) : 0);
+                    bool onThumb = virt.Y >= thumbY && virt.Y <= thumbY + thumbH;
+                    if (!onThumb)
+                    {
+                        int clickOffset = Math.Max(0, Math.Min(trackRange, virt.Y - evh.Track.Y - thumbH / 2));
+                        SetEditDiffVScroll(evh.Key, (int)Math.Round((double)clickOffset / trackRange * maxScroll));
+                    }
+                    _draggingEditDiffVScroll = true;
+                    _dragEditDiffVKey = evh.Key;
+                    _dragEditDiffVTrack = evh.Track;
+                    _dragEditDiffVContentHeight = evh.ContentHeight;
+                    _dragEditDiffVViewportHeight = evh.ViewportHeight;
+                    _dragEditDiffVStartMouseY = e.Y;
+                    _dragEditDiffVStartScroll = GetEditDiffVScroll(evh.Key);
+                    Capture = true;
+                    Invalidate();
+                    return;
+                }
                 // Edit-diff horizontal scrollbar: thumb drag or track jump.
                 EditDiffScrollHit edh;
                 if (HitTestEditDiffScroll(e.Location, out edh))
@@ -3514,6 +3681,20 @@ namespace GxPT
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
+            // An active vertical edit-diff scrollbar drag takes precedence over selection/hover.
+            if (_draggingEditDiffVScroll && !string.IsNullOrEmpty(_dragEditDiffVKey))
+            {
+                int vdy = e.Y - _dragEditDiffVStartMouseY;
+                int vtrackHeight = Math.Max(1, _dragEditDiffVTrack.Height);
+                int vthumbH = Math.Max(CodeVScrollThumbMin, (int)Math.Round((double)vtrackHeight * _dragEditDiffVViewportHeight / Math.Max(1, _dragEditDiffVContentHeight)));
+                if (vthumbH > vtrackHeight) vthumbH = vtrackHeight;
+                int vtrackRange = Math.Max(1, vtrackHeight - vthumbH);
+                int vmaxScroll = Math.Max(0, _dragEditDiffVContentHeight - _dragEditDiffVViewportHeight);
+                int vdelta = (int)Math.Round((double)vdy / vtrackRange * vmaxScroll);
+                SetEditDiffVScroll(_dragEditDiffVKey, Math.Max(0, Math.Min(vmaxScroll, _dragEditDiffVStartScroll + vdelta)));
+                Invalidate();
+                return;
+            }
             // An active edit-diff scrollbar drag takes precedence over selection/hover so dragging past
             // the selection threshold doesn't get hijacked into a text selection.
             if (_draggingEditDiffScroll && !string.IsNullOrEmpty(_dragEditDiffKey))
@@ -3796,6 +3977,41 @@ namespace GxPT
                 for (int i = 0; i < it.EditDiffScrollHits.Count; i++)
                 {
                     var h = it.EditDiffScrollHits[i];
+                    if (h.Body.Contains(virt) || h.Track.Contains(virt)) { hit = h; return true; }
+                }
+            }
+            return false;
+        }
+
+        // Vertical edit-diff scrollbar: matches the track only (for thumb-drag / track-jump on mouse down).
+        private bool HitTestEditDiffVScroll(Point clientPt, out EditDiffVScrollHit hit)
+        {
+            hit = default(EditDiffVScrollHit);
+            Point virt = new Point(clientPt.X, clientPt.Y + _scrollOffset);
+            foreach (var it in _items)
+            {
+                if (it.EditDiffVScrollHits == null || it.EditDiffVScrollHits.Count == 0) continue;
+                if (!it.Bounds.Contains(virt)) continue;
+                for (int i = 0; i < it.EditDiffVScrollHits.Count; i++)
+                {
+                    if (it.EditDiffVScrollHits[i].Track.Contains(virt)) { hit = it.EditDiffVScrollHits[i]; return true; }
+                }
+            }
+            return false;
+        }
+
+        // Like HitTestEditDiffVScroll but matches the body too (for wheel over the clipped content).
+        private bool HitTestEditDiffVScrollArea(Point clientPt, out EditDiffVScrollHit hit)
+        {
+            hit = default(EditDiffVScrollHit);
+            Point virt = new Point(clientPt.X, clientPt.Y + _scrollOffset);
+            foreach (var it in _items)
+            {
+                if (it.EditDiffVScrollHits == null || it.EditDiffVScrollHits.Count == 0) continue;
+                if (!it.Bounds.Contains(virt)) continue;
+                for (int i = 0; i < it.EditDiffVScrollHits.Count; i++)
+                {
+                    var h = it.EditDiffVScrollHits[i];
                     if (h.Body.Contains(virt) || h.Track.Contains(virt)) { hit = h; return true; }
                 }
             }

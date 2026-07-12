@@ -472,6 +472,13 @@ namespace GxPT
         /// </summary>
         public static void DrawColoredSegmentsNoWrap(Graphics g, List<ColoredSegment> segments, Rectangle viewport, int scrollX)
         {
+            DrawColoredSegmentsNoWrap(g, segments, viewport, scrollX, 0);
+        }
+
+        // As above, but also offsets the content vertically by scrollY (for bodies clipped to a fixed
+        // number of rows and scrolled vertically). Content above/below the viewport is clipped out.
+        public static void DrawColoredSegmentsNoWrap(Graphics g, List<ColoredSegment> segments, Rectangle viewport, int scrollX, int scrollY)
+        {
             if (segments == null || segments.Count == 0)
                 return;
 
@@ -487,7 +494,7 @@ namespace GxPT
                     g.SetClip(viewport);
 
                     float x = viewport.X - scrollX;
-                    float y = viewport.Y;
+                    float y = viewport.Y - scrollY;
                     float lineHeight = segments[0].Font != null ? segments[0].Font.Height : 0f;
 
                     foreach (var segment in segments)
