@@ -40,6 +40,7 @@ namespace GxPT
             "openai/gpt-4o",
             "deepseek/deepseek-v4-pro",
             "deepseek/deepseek-v4-flash",
+            "moonshotai/kimi-k3",
             "moonshotai/kimi-k2.6",
             "moonshotai/kimi-k2.7-code",
             "qwen/qwen3.7-max",
