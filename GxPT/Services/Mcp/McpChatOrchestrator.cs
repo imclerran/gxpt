@@ -389,6 +389,12 @@ namespace GxPT
             // which mean the user wants to take control rather than have the model work around them.
             // Reset each iteration once consumed.
             bool forceTextThisCall = false;
+            // Periodic doom-loop detection (A18), one detector per turn: bounds *repetition* the way
+            // the budget bounds *total* work. It records each executed tool call's `name:normalized-args`
+            // signature and, when the recent window collapses into a repeating cycle, wraps the turn up
+            // as content rather than draining the whole budget spinning - the valve an unattended
+            // sub-agent (no continuation prompt) most needs, and a backstop for the main agent too.
+            DoomLoopDetector doomLoop = new DoomLoopDetector();
             for (int iter = 0; ; iter++)
             {
                 // Stop requested between iterations (e.g. while the previous iteration's tools ran):
@@ -588,6 +594,10 @@ namespace GxPT
                 // none do. That keeps the displayed count exact even when a denial cuts the batch short.
                 int runOrdinal = 0; // 1-based position within the current ask_user run (0 = not in a run)
                 int runTotal = 0;   // length of the current run
+                // Set when an executed call closes a repeating cycle. The batch still runs to
+                // completion (every tool_call needs a matching tool result, or the next request is
+                // malformed); the wrap-up fires only after, once history is well-formed.
+                bool doomLoopHit = false;
                 for (int c = 0; c < asm.Calls.Count; c++)
                 {
                     ToolCall call = asm.Calls[c];
@@ -637,6 +647,14 @@ namespace GxPT
                             batchDenied = true;
                             forceTextThisCall = true;
                         }
+                        else if (doomLoop.Record(call.Name, call.ArgumentsJson))
+                        {
+                            // This executed call closed a repeating cycle. Note it and let the batch
+                            // finish; the wrap-up runs once the loop below is done and history is valid.
+                            doomLoopHit = true;
+                            _log.Log("mcp", "[turn " + turnId + "] doom-loop detected at iteration "
+                                + (iter + 1) + " (cycle on '" + call.Name + "'); wrapping up");
+                        }
                     }
 
                     if (ui != null) ui.OnToolResult(call.Name, result, isError, call.Id);
@@ -651,6 +669,17 @@ namespace GxPT
                         && AgentDispatcher.GroupCancellation != null
                         && AgentDispatcher.GroupCancellation.IsCancelled)
                         forceTextThisCall = true;
+                }
+
+                // A repeating cycle closed during this batch: the whole batch has now run (history is
+                // well-formed), so end the turn with a text-only wrap-up instead of spinning through the
+                // rest of the budget. A user Stop that landed while the tools ran takes precedence.
+                if (doomLoopHit)
+                {
+                    if (CancelRequested()) { FinishCancelled(history, null, ui, turnId); return; }
+                    RunWrapUp(history, _lastOfferedTools, ui, turnId,
+                              DoomLoopWrapUpInstruction, DoomLoopWrapUpFallback, "doom-loop");
+                    return;
                 }
                 // Loop: re-call the model with the tool results in context.
             }
@@ -739,6 +768,23 @@ namespace GxPT
                 + (asm.Truncated ? " [TRUNCATED: model output cut off by length]" : ""));
         }
 
+        // Wrap-up instruction + fallback for the two forced-stop paths (iteration cap, doom loop). Both
+        // end the turn the same way: force a text-only answer that summarizes and hands back to the user.
+        private const string CapWrapUpInstruction =
+            "You have reached the maximum number of tool calls allowed for this turn. Do not "
+            + "request any more tools now. Briefly summarize what you have done so far and what "
+            + "still remains, then ask the user how they would like to proceed.";
+        private const string CapWrapUpFallback =
+            "I've reached the tool-call limit for this turn. Let me know how you'd like to proceed.";
+        private const string DoomLoopWrapUpInstruction =
+            "You appear to be repeating the same sequence of tool calls without making progress - a "
+            + "loop. Stop and do not request any more tools now. Briefly summarize what you were "
+            + "trying to accomplish and what seems to be blocking progress, then ask the user how they "
+            + "would like to proceed.";
+        private const string DoomLoopWrapUpFallback =
+            "I seem to be repeating the same steps without making progress. Let me know how you'd like "
+            + "to proceed.";
+
         // Cap reached and not continued: one final model call (tool_choice "none") asking it to
         // summarize and ask how to proceed, so the turn ends with a readable assistant message
         // rather than a cryptic dead-end. The user can simply reply to keep going (a fresh budget
@@ -749,6 +795,15 @@ namespace GxPT
         // turn (back on tool_choice auto) still extends the loop's cached prefix unharmed.
         private void RunCapWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
                                   string turnId)
+        {
+            RunWrapUp(history, tools, ui, turnId, CapWrapUpInstruction, CapWrapUpFallback, "cap");
+        }
+
+        // Force the model to text-only closure. Shared by the iteration-cap and doom-loop stops: append
+        // a trailing instruction, re-send the same (cached) tools array under tool_choice "none", and
+        // record the model's summary - or a fallback - as the turn's final assistant message.
+        private void RunWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
+                               string turnId, string instruction, string fallback, string kind)
         {
             List<ChatMessage> requestMessages = BuildStableHead(SkillsActive, AgentsActive);
             int headCount = requestMessages.Count;
@@ -761,10 +816,7 @@ namespace GxPT
             // on a tool result and the model with nothing in-position to answer (it replies with a
             // near-empty acknowledgment). A trailing user turn keeps the instruction in place so the
             // model actually summarizes.
-            requestMessages.Add(new ChatMessage("user",
-                "You have reached the maximum number of tool calls allowed for this turn. Do not "
-                + "request any more tools now. Briefly summarize what you have done so far and what "
-                + "still remains, then ask the user how they would like to proceed."));
+            requestMessages.Add(new ChatMessage("user", instruction));
 
             // tool_choice "none": the model must answer with text, while the unchanged tools array
             // keeps the cached prefix intact.
@@ -776,15 +828,17 @@ namespace GxPT
             if (errored || IsEmptyText(asm.Text))
             {
                 if (errored)
-                    _log.Log("mcp", "[turn " + turnId + "] wrap-up stream error: " + (errMessage ?? "(none)"));
-                text = "I've reached the tool-call limit for this turn. Let me know how you'd like to proceed.";
+                    _log.Log("mcp", "[turn " + turnId + "] " + kind + " wrap-up stream error: "
+                        + (errMessage ?? "(none)"));
+                text = fallback;
                 // StreamOnce streamed nothing usable, so emit the fallback to the UI ourselves.
                 if (ui != null) ui.AppendTextDelta(text);
             }
             else
             {
                 text = asm.Text;
-                _log.Log("mcp", "[turn " + turnId + "] wrap-up complete (" + text.Length + " chars)");
+                _log.Log("mcp", "[turn " + turnId + "] " + kind + " wrap-up complete ("
+                    + text.Length + " chars)");
             }
 
             history.Add(new ChatMessage("assistant", text));

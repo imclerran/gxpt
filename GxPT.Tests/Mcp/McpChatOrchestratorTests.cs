@@ -911,6 +911,93 @@ namespace GxPT.Tests.Mcp
             Assert.False(ui.Completed);
             Assert.Single(history); // only the user message was added
         }
+
+        [Fact]
+        public void Doom_loop_of_identical_calls_wraps_up_before_draining_the_budget()
+        {
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("x"); };
+
+            // The model calls the same tool with the same args over and over. The detector fires when
+            // the third identical call executes; the batch finishes, then the turn wraps up. A generous
+            // iteration cap (default 25) proves the doom-loop valve - not the cap - stopped the turn.
+            var streamer = new ScriptedStreamer();
+            for (int i = 0; i < 3; i++) streamer.Turns.Add(Chunks.OneToolCall("c" + i, "files__read", "{}"));
+            streamer.Fallback = delegate(int i) { return Chunks.Text("I'm repeating myself; how should I proceed?"); };
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            New(streamer, reg).RunTurn(history, "loop forever", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(4, streamer.Calls);                 // 3 looping iterations + 1 wrap-up
+            Assert.Equal(3, ft.CalledTools.Count);           // the loop ran three times, then stopped
+            // The wrap-up forbids further tools while keeping the cached tools array (as the cap does).
+            Assert.NotNull(streamer.SeenTools[3]);
+            Assert.Equal("none", streamer.SeenProps[3].ToolChoice);
+            Assert.Null(streamer.SeenProps[2].ToolChoice);   // loop iterations leave tool choice default
+            // The wrap-up instruction rides as a trailing user turn (Anthropic hoists in-array system).
+            var wrapMsgs = streamer.SeenMessages[3];
+            var lastSent = wrapMsgs[wrapMsgs.Count - 1];
+            Assert.Equal("user", lastSent.Role);
+            Assert.Contains("loop", lastSent.Content);
+            Assert.Equal("assistant", history[history.Count - 1].Role);
+            Assert.Equal("I'm repeating myself; how should I proceed?", history[history.Count - 1].Content);
+        }
+
+        [Fact]
+        public void Doom_loop_catches_an_A_B_A_B_oscillation()
+        {
+            // The value over a naive "N identical in a row" check: an edit->test->edit->test oscillation
+            // never repeats a single call three times, but is a period-2 cycle. It must be caught.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"), new ToolDef("list"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("r:" + name); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c0", "files__read", "{}"));
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__list", "{}"));
+            streamer.Turns.Add(Chunks.OneToolCall("c2", "files__read", "{}"));
+            streamer.Turns.Add(Chunks.OneToolCall("c3", "files__list", "{}"));   // closes the period-2 cycle
+            streamer.Fallback = delegate(int i) { return Chunks.Text("Stuck oscillating; how should I proceed?"); };
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            New(streamer, reg).RunTurn(history, "oscillate", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(5, streamer.Calls);   // 4 oscillating iterations + 1 wrap-up
+            Assert.Equal(new[] { "read", "list", "read", "list" }, ft.CalledTools.ToArray());
+            Assert.Equal("none", streamer.SeenProps[4].ToolChoice);
+            Assert.Equal("Stuck oscillating; how should I proceed?", history[history.Count - 1].Content);
+        }
+
+        [Fact]
+        public void Varied_calls_are_not_a_doom_loop_and_the_turn_completes_normally()
+        {
+            // Same tool, different args each time: distinct signatures, so no false positive - the turn
+            // reaches its own final answer instead of a wrap-up.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("x"); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c0", "files__read", "{\"path\":\"a\"}"));
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__read", "{\"path\":\"b\"}"));
+            streamer.Turns.Add(Chunks.OneToolCall("c2", "files__read", "{\"path\":\"c\"}"));
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            New(streamer, reg).RunTurn(history, "read three files", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(4, streamer.Calls);
+            Assert.Equal("done", ui.Text.ToString());                      // the model's own answer...
+            Assert.Equal("done", history[history.Count - 1].Content);      // ...not a wrap-up
+            Assert.Null(streamer.SeenProps[3].ToolChoice);                 // never forced to text-only
+        }
     }
 
     internal sealed class DenyAllApprovalPolicy : IToolApprovalPolicy

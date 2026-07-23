@@ -237,6 +237,7 @@
     <Compile Include="Services\Mcp\HostTool.cs" />
     <Compile Include="Services\Mcp\McpToolRegistry.cs" />
     <Compile Include="Services\Mcp\McpChatOrchestrator.cs" />
+    <Compile Include="Services\Mcp\DoomLoopDetector.cs" />
     <Compile Include="Services\Mcp\McpServerSpec.cs" />
     <Compile Include="Services\Mcp\McpConfig.cs" />
     <Compile Include="Services\Mcp\MemoryInjection.cs" />
