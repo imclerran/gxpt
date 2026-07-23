@@ -470,7 +470,10 @@ namespace GxPT.Tests.Mcp
             ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("x"); };
 
             var streamer = new ScriptedStreamer();
-            for (int i = 0; i < 3; i++) streamer.Turns.Add(Chunks.OneToolCall("c" + i, "files__read", "{}"));
+            // Distinct args per iteration so this exercises the iteration cap specifically - identical
+            // repeated calls would trip the doom-loop guard (its own tests) before the cap is reached.
+            for (int i = 0; i < 3; i++)
+                streamer.Turns.Add(Chunks.OneToolCall("c" + i, "files__read", "{\"path\":\"" + i + "\"}"));
             // The tool-less wrap-up call (after the cap) gets this text.
             streamer.Fallback = delegate(int i) { return Chunks.Text("Summary; how should I proceed?"); };
 
@@ -506,7 +509,9 @@ namespace GxPT.Tests.Mcp
             ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("x"); };
 
             var streamer = new ScriptedStreamer();
-            streamer.Fallback = delegate(int i) { return Chunks.OneToolCall("c" + i, "files__read", "{}"); };
+            // Vary the args per call so the budget/continuation path is what's under test, not the
+            // doom-loop guard (which would fire first on identical repeats).
+            streamer.Fallback = delegate(int i) { return Chunks.OneToolCall("c" + i, "files__read", "{\"n\":" + i + "}"); };
 
             var orch = new McpChatOrchestrator(streamer, reg, null, "m", null, 2, 1000);
             int asked = 0;
