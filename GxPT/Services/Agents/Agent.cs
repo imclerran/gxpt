@@ -23,7 +23,7 @@ namespace GxPT
         Destructive
     }
 
-    // The model "effort" an agent prefers (design A18): a user-configurable capability level the host maps
+    // The model "effort" an agent prefers (design A21): a user-configurable capability level the host maps
     // to a concrete model in settings (Settings > Models: low/medium/high -> a model id each). It lets an
     // agent - or a single dispatch - ask for "high effort" without naming a model slug, so the author/model
     // never has to know provider ids. Unset => no effort hint (resolution falls through to an explicit model,
