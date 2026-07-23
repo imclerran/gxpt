@@ -1003,11 +1003,98 @@ namespace GxPT.Tests.Mcp
             Assert.Equal("done", history[history.Count - 1].Content);      // ...not a wrap-up
             Assert.Null(streamer.SeenProps[3].ToolChoice);                 // never forced to text-only
         }
+
+        [Fact]
+        public void Doom_loop_that_closes_mid_batch_finishes_the_batch_before_wrapping_up()
+        {
+            // A cycle can close on a non-final call of a multi-call batch. The batch must still run to
+            // completion so every tool_call keeps a matching tool result (history stays well-formed),
+            // and only then does the turn wrap up.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"), new ToolDef("list"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("r:" + name); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("r0", "files__read", "{}"));   // primes the detector...
+            streamer.Turns.Add(Chunks.OneToolCall("r1", "files__read", "{}"));   // ...with two reads
+            streamer.Turns.Add(new[]                                            // batch: the cycle closes
+            {                                                                   // on the FIRST call (the
+                Chunks.ToolChunk(0, "b0", "files__read", "{}", null),           // 3rd read), but the 2nd
+                Chunks.ToolChunk(1, "b1", "files__list", "{}", "tool_calls")    // call must still run
+            });
+            streamer.Fallback = delegate(int i) { return Chunks.Text("I'm looping; how should I proceed?"); };
+
+            var history = new List<ChatMessage>();
+            var ui = new RecordingUi();
+            New(streamer, reg).RunTurn(history, "go", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(4, streamer.Calls);   // 3 model iterations + 1 wrap-up
+            // The whole batch ran even though the cycle closed on its first call.
+            Assert.Equal(new[] { "read", "read", "read", "list" }, ft.CalledTools.ToArray());
+            // History is well-formed: the batch's assistant message carries 2 tool_calls, each answered.
+            var asst = history[5];
+            Assert.Equal("assistant", asst.Role);
+            Assert.Equal(2, asst.ToolCalls.Count);
+            Assert.Equal("tool", history[6].Role);
+            Assert.Equal("tool", history[7].Role);
+            Assert.Equal(asst.ToolCalls[0].Id, history[6].ToolCallId);
+            Assert.Equal(asst.ToolCalls[1].Id, history[7].ToolCallId);
+            // Then the doom-loop wrap-up closes the turn (tool_choice "none").
+            Assert.Equal("none", streamer.SeenProps[3].ToolChoice);
+            Assert.Equal("assistant", history[8].Role);
+            Assert.Equal("I'm looping; how should I proceed?", history[8].Content);
+        }
+
+        [Fact]
+        public void Denied_calls_do_not_feed_the_doom_loop_detector()
+        {
+            // The detector records only executed calls. Three identical calls where the third is denied
+            // must NOT trip the loop guard on that third call - the denial path (halt + ask) handles it.
+            // If denied calls were recorded, the third identical signature would fire a doom-loop wrap-up
+            // instead of the scripted denial reply we assert on below.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+            ft.OnCall = delegate(string name, JObject args) { return RegistryFakeTransport.TextResult("x"); };
+
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c0", "files__read", "{}"));   // allowed
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "files__read", "{}"));   // allowed
+            streamer.Turns.Add(Chunks.OneToolCall("c2", "files__read", "{}"));   // denied (the 3rd signature)
+            streamer.Turns.Add(Chunks.Text("You denied that; how should I proceed?"));
+
+            var ui = new RecordingUi();
+            var orch = new McpChatOrchestrator(streamer, reg, new AllowTwiceThenDenyPolicy(), "m", null);
+            orch.RevealedToolNames = new List<string> { "files__read" }; // revealed, so calls reach the gate
+            var history = new List<ChatMessage>();
+            orch.RunTurn(history, "go", ui);
+
+            Assert.True(ui.Completed);
+            Assert.Equal(4, streamer.Calls);
+            Assert.Equal(new[] { "read", "read" }, ft.CalledTools.ToArray());   // only the 2 allowed ran
+            // The 3rd call was denied, not looped.
+            Assert.True(ui.ToolErrors[2]);
+            Assert.Equal("[Call denied by user.]", ui.ToolResults[2]);
+            // After the denial the loop forces text-only (the denial path), not a doom-loop wrap-up.
+            Assert.Equal("none", streamer.SeenProps[3].ToolChoice);
+            Assert.Equal("You denied that; how should I proceed?", history[history.Count - 1].Content);
+        }
     }
 
     internal sealed class DenyAllApprovalPolicy : IToolApprovalPolicy
     {
         public ApprovalDecision Check(string functionName, JObject args) { return ApprovalDecision.Deny; }
+    }
+
+    // Allows the first two calls it is asked about and denies every later one. Used to prove that a
+    // call denied at the approval gate is excluded from the doom-loop detector's signature window.
+    internal sealed class AllowTwiceThenDenyPolicy : IToolApprovalPolicy
+    {
+        private int _seen;
+        public ApprovalDecision Check(string functionName, JObject args)
+        {
+            return (_seen++ < 2) ? ApprovalDecision.Allow : ApprovalDecision.Deny;
+        }
     }
 
     // Denies the first call it is asked about and allows every later one. Used to prove that a denial

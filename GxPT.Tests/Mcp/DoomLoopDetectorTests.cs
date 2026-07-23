@@ -138,5 +138,25 @@ namespace GxPT.Tests.Mcp
             Assert.False(d.Record("a", "{}"));
             Assert.True(d.Record("a", "{}"));    // three fresh calls close the cycle
         }
+
+        [Fact]
+        public void Detection_survives_window_eviction()
+        {
+            // Fill and rotate the bounded window (MaxHistory=12) with distinct calls, then a fresh
+            // period-1 tail: trimming the ring must not corrupt detection - the third identical call
+            // still fires (index 14 of the 15-call sequence).
+            Assert.Equal(14, FirstHit("d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10",
+                                      "d11", "z", "z", "z"));
+        }
+
+        [Fact]
+        public void Widest_cycle_still_fires_after_eviction()
+        {
+            // The 12-entry window must leave room for the widest cycle (period 4 needs 8 signatures)
+            // even after older entries are evicted: an A B C D A B C D tail behind a full window still
+            // fires, on its final call (index 15).
+            Assert.Equal(15, FirstHit("p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
+                                      "a", "b", "c", "d", "a", "b", "c", "d"));
+        }
     }
 }
