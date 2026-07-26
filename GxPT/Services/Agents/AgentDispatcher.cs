@@ -446,7 +446,7 @@ namespace GxPT
             return ExtractFinalAnswer(msgs);
         }
 
-        // Resolves the model a child runs under, in decreasing precedence (design A18). Dispatch-level args
+        // Resolves the model a child runs under, in decreasing precedence (design A21). Dispatch-level args
         // beat the agent's own frontmatter, and an explicit model beats an effort tier within each level:
         //   1. dispatch `model` arg            (caller named an exact id for this call)
         //   2. dispatch `effort` arg           (caller asked for a tier; mapped via settings)

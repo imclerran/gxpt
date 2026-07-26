@@ -100,6 +100,7 @@ tabs — `McpChatOrchestrator` RunTurn, MainForm's per-tab `ThreadPool` dispatch
 | A18 | **Periodic doom-loop detection in the orchestrator**: over a short rolling window of recent `name:normalized-args` signatures, abort with a wrap-up when a cycle of period *p* (1–4) repeats (≥3× for *p*=1, ≥2× for *p*=2–4) | The `MaxIterations` cap bounds *total* work but a stuck agent still burns the whole budget on a cycle — worse for an unattended sub-agent (A14). The OpenMono `DoomLoopDetector` (from source: `MaxPeriod=4`, `MaxHistory=12`, `reps = period==1 ? 3 : 2`, args JSON-normalized with sorted keys) is smarter than "N identical in a row": it catches **oscillations** (edit→test-fail→revert→edit…, an A→B→A→B period-2 cycle) a consecutive-only check misses. Cheap (a ~12-entry signature ring in `RunTurn`), benefits the **main** agent too, ends as content not a throw. |
 | A19 | **Allowlist `tools` supports glob wildcards** (`files__*`, `mcp__*`, `*__read`, `*`) matched against the qualified catalog | Server-qualified names (`files__read`, `git__status`) make prefix/suffix globs natural and far less brittle than enumerating every tool — "all file tools" is `files__*`, "everything a server exposes" is `mcp__myserver__*`. The OpenMono precedent ("allow-lists support `*`, `mcp__*`"). Still intersected with parent-available and `max_tier` (A11), so a wildcard never widens past the parent or the ceiling. |
 | A20 | **Running agents are surfaced in-transcript (the dispatch panel) and stopped all-at-once by repurposing the turn's Stop button to `Stop N agents`** (v1: stop-all; N includes queued) | A fan-out the user can't see or stop is unacceptable for an unattended feature. The status bar can't host an `Agents: N` count — mid-turn that region is the marquee + Stop button — and the dispatch is the *latest* thing in the transcript, so it's already on screen (no nav affordance needed). Visibility is the `AgentActivityPanel` (one row per child: glyph + slug + live status), modeled on `ToolApprovalPanel`/`TranscriptContinuationPrompt`. Control is the existing Stop button, relabeled to **`Stop N agents`** while the fan-out runs (N = all not-yet-finished children, running *and* queued, ticking down) and reverted to plain **`Stop`** when the model resumes. The children share a **group `RequestCancellation`** (distinct from the parent turn's), so `Stop N agents` cancels the fan-out — *not* the turn: each child finalizes via `FinishCancelled` (keeps partial), its result is marked `[stopped by user]`, and the parent model resumes with a **tailored wrap-up directive** (sibling of the cap wrap-up, phrased for an interrupted fan-out: summarize partials + ask how to proceed, don't silently restart). A full turn abort is then one more click on the reverted `Stop`. Per-agent stop is deferred (§12). Full design + tiers in §14. |
+| A21 | **Per-dispatch model selection via `model` + `effort`**, resolved by a fixed precedence in `ResolveModel` | An agent should be able to ask for a stronger or cheaper/faster model **by intent** without hard-coding a slug. Both a frontmatter default and a per-dispatch override are supported; `ResolveModel` picks the first that resolves to a concrete model: `model` arg → `effort` arg → frontmatter `model` → frontmatter `effort` → parent turn's model. An `effort` tier (`low`\|`medium`\|`high`) maps to a concrete id via the user's `model_effort_low/medium/high` settings; a tier that maps to nothing is skipped, so resolution always lands on a real model. (Distinct from the doom-loop guard A18 — the two were briefly conflated under one number.) |
 
 ---
 
@@ -170,7 +171,7 @@ find something after a genuine search, say so and name where you looked.
     ~30, so an unattended specialist's cost is bounded *to its job*, not the parent's.
   - `model` *(optional)* — explicit model id override; omitted ⇒ the parent turn's
     model. Prefer `effort` unless a specific id is required.
-  - `effort` *(optional, A18)* — capability tier `low` \| `medium` \| `high`, mapped
+  - `effort` *(optional, A21)* — capability tier `low` \| `medium` \| `high`, mapped
     to a concrete model id by the user's settings (`model_effort_low/medium/high`).
     Lets an agent ask for a cheaper/faster or a stronger model **by intent**, without
     hard-coding a slug. Unrecognized ⇒ ignored (no hint). An explicit `model` is more
@@ -242,7 +243,7 @@ resolution (like `IsOpenSkill`), so it never hits a server.
 dispatch_agent(agents: [ { name: string, task: string, effort?: string, model?: string }, … ])   // batch (A9)
 ```
 The optional per-entry `effort` (`low`\|`medium`\|`high`) and `model` override that
-agent's own frontmatter for this dispatch only. Full precedence (A18), dispatch-level
+agent's own frontmatter for this dispatch only. Full precedence (A21), dispatch-level
 beating frontmatter and an explicit model beating an effort tier within each level:
 `model` arg → `effort` arg → frontmatter `model` → frontmatter `effort` → parent
 turn's model. An effort tier maps to a model via the user's settings; a tier that maps
@@ -261,7 +262,7 @@ conversation."*
    - history = `[ system: standing-guidance + workspace-block + agent.Body ]`
      then `[ user: task ]`;
    - `WorkingDir` = parent's (so scoped servers route to the same folder);
-   - `model` = `ResolveModel` (A18): `model` arg → `effort` arg → `agent.Model` →
+   - `model` = `ResolveModel` (A21): `model` arg → `effort` arg → `agent.Model` →
      `agent.Effort` → `parentModel` (effort tiers mapped via settings);
    - **exposed tools restricted** via `AgentToolResolver` (A11) — for a *small*
      declared allowlist the child skips progressive disclosure and is handed those
