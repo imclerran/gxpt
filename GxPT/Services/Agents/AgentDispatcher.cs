@@ -425,6 +425,15 @@ namespace GxPT
                 for (int i = 0; i < parentNames.Count; i++)
                     if (!hidden.Contains(parentNames[i])) allowed.Add(parentNames[i]);
                 child.RevealedToolNames = allowed;
+
+                // Freeze the child's MCP defs NOW (A11: an allowlisted child is handed its tool defs
+                // whole, no reveal_tools dance). Snapshotting the concrete defs — not just the names —
+                // means the child's exposure no longer re-reads the registry each iteration, so registry
+                // churn during a long parent turn can't strip a running child's tools out from under it.
+                child.FrozenToolDefs = _registry.FunctionDefsForNames(_workingDir, allowed);
+                if (child.FrozenToolDefs.Count == 0 && allowed.Count > 0)
+                    _log.Log("agents", "child '" + agent.Slug + "' froze 0 tool defs from " + allowed.Count
+                        + " allowed name(s) (workdir=" + (_workingDir ?? "") + ") - registry empty or servers down?");
             }
 
             List<ChatMessage> msgs = new List<ChatMessage>();

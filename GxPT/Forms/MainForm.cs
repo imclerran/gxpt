@@ -1121,6 +1121,10 @@ namespace GxPT
                     SyncGenerationIndicatorFromActiveTab();
             }
             catch { }
+            // Every turn-finalization site funnels through here right after clearing ctx.IsSending
+            // (this method has no other callers), making it the single "a turn just ended" point:
+            // apply any MCP host work that was deferred because a turn was in flight.
+            FlushDeferredMcpWork();
         }
 
         // Called by AgentActivityUiBridge (on the UI thread) when a fan-out starts/ends on a tab, so the
@@ -1783,6 +1787,54 @@ namespace GxPT
         // host assembly back onto the launch path.
         private bool _mcpHostStartupDeferred = true;
 
+        // A RebuildMcpHost was requested while a turn was in flight and is waiting for the last turn
+        // to end. Rebuilding mid-turn swaps the host AND the registry object out from under the
+        // running orchestrator — its AgentDispatcher and child agents keep the old, force-emptied
+        // registry and never re-bind (only the NEXT user turn reads the fresh field), so every
+        // sub-agent dispatched after the swap is born with no MCP tools (the "cd-only agent" doom
+        // loop). FlushDeferredMcpWork applies the rebuild when the last turn finalizes.
+        private bool _mcpRebuildDeferred;
+
+        // A skills-server enablement flip was requested while a turn was in flight (same rationale:
+        // stopping the extensions server mid-turn strips its tools out of the live registry).
+        private bool _skillsRefreshDeferred;
+
+        // True while any tab's turn is running. Detached turns count: a recycled tab's context stays
+        // in TabContexts with IsSending held until the turn finalizes. UI-thread only, like every
+        // IsSending write.
+        private bool AnyTurnInFlight()
+        {
+            try
+            {
+                if (_tabManager == null) return false;
+                foreach (var c in _tabManager.TabContexts.Values)
+                    if (c != null && c.IsSending) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        // Apply MCP host work that was deferred because a turn was in flight. Called from the shared
+        // turn-finalization tail (HideGenerationBar); no-ops until the LAST in-flight turn has ended.
+        // A full rebuild subsumes the skills refresh (it recomputes skills enablement itself), and the
+        // skills path re-checks the enablement boundary, so a stale deferral self-cancels.
+        private void FlushDeferredMcpWork()
+        {
+            if (_mcpHostStartupDeferred) return;
+            if (!_mcpRebuildDeferred && !_skillsRefreshDeferred) return;
+            if (AnyTurnInFlight()) return;
+            bool rebuild = _mcpRebuildDeferred;
+            _mcpRebuildDeferred = false;
+            _skillsRefreshDeferred = false;
+            if (rebuild)
+            {
+                try { Logger.Log("mcp", "applying deferred host rebuild (last turn ended)"); }
+                catch { }
+                RebuildMcpHost();
+            }
+            else ApplySkillsServerEnablement();
+        }
+
         // Assembles MCP server specs from settings and (re)starts the host. Safe to call repeatedly
         // (e.g. after Settings is saved). Workdir-independent servers (web + GitHub + custom) connect
         // here; files/git/command are deferred until a working-directory UX exists.
@@ -1792,6 +1844,19 @@ namespace GxPT
             // of _mcpHost is null-tolerant, and the post-Shown build reads the same settings/skill
             // enablement any gated early call would have.
             if (_mcpHostStartupDeferred) return;
+            // Never rebuild while a turn is running: disposing the host force-empties the registry the
+            // in-flight orchestrator (and its sub-agents) still hold, and the new registry object is
+            // only picked up by the NEXT user turn — so a mid-turn rebuild strands the rest of the
+            // running turn with no MCP tools. Defer; the shared turn-finalization tail flushes it.
+            if (AnyTurnInFlight())
+            {
+                _mcpRebuildDeferred = true;
+                try { Logger.Log("mcp", "RebuildMcpHost deferred: a turn is in flight"); }
+                catch { }
+                return;
+            }
+            _mcpRebuildDeferred = false;
+            _skillsRefreshDeferred = false; // a full rebuild recomputes skills enablement too
             try
             {
                 // Tear down any previous host (servers from the old settings).
@@ -2295,15 +2360,49 @@ namespace GxPT
                 AppDomain.CurrentDomain.BaseDirectory, workdir, convFeatureOff, convOverrides);
         }
 
-        // The Skills MCP server tracks skill enablement; rebuild the host only when that crosses the
+        // The Skills MCP server (extensions) tracks skill enablement; act only when that crosses the
         // on/off boundary (so per-skill toggles that don't change whether ANY skill is enabled cost
-        // nothing). Called after skills slash-command changes and on tab switches.
+        // nothing). Called after skills slash-command changes and on tab switches. Deliberately NARROW:
+        // this used to run a full RebuildMcpHost, which tore down and recreated every server AND the
+        // tool registry on each tab switch between conversations with differing skills state — and a
+        // mid-turn rebuild strands the running orchestrator (and its sub-agents) on the old, emptied
+        // registry: the "cd-only sub-agent" doom loop. Now only the extensions server starts/stops,
+        // and even that is deferred while any turn is in flight (stopping it would strip its tools
+        // out of the live registry mid-turn).
         internal void SlashRefreshSkillsServer()
         {
             if (ActiveConversationHasEnabledSkills() != _skillsServerEnabled)
-                RebuildMcpHost();
+            {
+                if (AnyTurnInFlight()) _skillsRefreshDeferred = true;
+                else ApplySkillsServerEnablement();
+            }
             // Per-skill toggles change the counts even when they don't cross the server boundary.
             UpdateToolSkillCounts();
+        }
+
+        // Start or stop JUST the extensions (skills/agents) server to match the active conversation's
+        // skill enablement. No-ops while the host doesn't exist yet (startup-deferred): the post-Shown
+        // RebuildMcpHost reads live enablement itself. Re-checks the boundary so a stale deferred
+        // request self-cancels when the state flipped back meanwhile (e.g. the user returned to the
+        // original tab before the turn ended).
+        private void ApplySkillsServerEnablement()
+        {
+            McpHost hostRef = _mcpHost;
+            if (hostRef == null) return;
+            bool want = ActiveConversationHasEnabledSkills();
+            if (want == _skillsServerEnabled) return;
+            _skillsServerEnabled = want;
+            // Connecting (process spawn + handshake) can block — do it off the UI thread, like
+            // RebuildMcpHost's start path.
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { hostRef.SetBuiltInServerEnabled(McpConfig.ExtensionsName, want); }
+                catch (Exception ex)
+                {
+                    try { Logger.Log("mcp", "skills server refresh failed: " + ex.Message); }
+                    catch { }
+                }
+            });
         }
 
         internal IDictionary<string, bool> SlashGetConversationSkillOverrides()

@@ -234,6 +234,17 @@ namespace GxPT
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
         public ICollection<string> HiddenToolNames { get; set; }
 
+        // When set (sub-agent turns; AgentDispatcher.RunChild), the MCP tool defs offered to the model
+        // are EXACTLY this list, frozen at dispatch time, instead of being re-derived from the live
+        // registry every loop iteration. A child's tool set is fixed by its frontmatter (A11), and
+        // deriving it live made the child's exposure depend on registry state that can shift under a
+        // long-running parent turn (a mid-turn host rebuild empties the old registry), which stranded
+        // children with no tools at all. reveal_tools is deliberately absent from the frozen list — an
+        // allowlisted child skips progressive disclosure — and no names manifest is emitted (nothing to
+        // discover). Host tools are still appended and HiddenToolNames still filters. Tool CALLS still
+        // resolve against the live registry (execution needs a live server); only exposure is frozen.
+        public IList<JObject> FrozenToolDefs { get; set; }
+
         // Sticky provider routing (prompt caching): the provider endpoint that last DEMONSTRATED a
         // cache hit for this conversation (cached_tokens > 0 on its response), seeded by the host
         // from Conversation.CacheWarmProvider. Prompt caches live per provider, so on
@@ -427,13 +438,27 @@ namespace GxPT
                 // actually contributes tools; a skills-only turn skips both and offers just open_skill.
                 // Filter by THIS turn's workdir so a folderless turn never advertises another folder's
                 // scoped tools (files/git/run_skill_script, ...) that it couldn't actually call.
+                // A sub-agent turn with FrozenToolDefs set bypasses the registry derivation entirely:
+                // its defs were fixed at dispatch (no reveal_tools, no manifest — nothing to discover),
+                // so registry churn during the turn cannot change what the child sees.
                 string resolveDir = ResolutionWorkdir;
-                bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
-                IList<JObject> tools = hasMcpTools
-                    ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
-                // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-call
-                // rule is static framing and lives in the cached agent system prompt, not re-sent here.
-                string manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
+                IList<JObject> tools;
+                string manifest;
+                if (FrozenToolDefs != null)
+                {
+                    tools = FrozenToolDefs.Count > 0 ? new List<JObject>(FrozenToolDefs) : null;
+                    manifest = null;
+                }
+                else
+                {
+                    bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
+                    tools = hasMcpTools
+                        ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
+                    // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-
+                    // call rule is static framing and lives in the cached agent system prompt, not re-sent
+                    // here.
+                    manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
+                }
                 // Append the host ("meta") tool defs from the SAME table ExecuteCall dispatches against, so
                 // a tool is exposed here exactly when it is dispatch-exempt there (see BuildHostTools).
                 // reveal_tools is skipped: ExposedFunctionDefs already emitted it in lead position 0 (an
