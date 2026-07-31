@@ -247,25 +247,182 @@ namespace GxPT
             }
             finally
             {
-                bool discard;
+                List<McpServerConnection> drop = null;
                 lock (_lock)
                 {
                     _connecting.Remove(workdir);
                     if (_disposed || _scopedByWorkdir.ContainsKey(workdir))
                     {
-                        discard = true;
+                        drop = conns;
                     }
                     else
                     {
-                        for (int i = 0; i < conns.Count; i++) _registry.AddConnection(conns[i], workdir);
-                        _scopedByWorkdir[workdir] = conns;
-                        discard = false;
+                        List<McpServerConnection> keep = new List<McpServerConnection>();
+                        for (int i = 0; i < conns.Count; i++)
+                        {
+                            // A spec disabled while this connect was in flight (SetBuiltInServerEnabled
+                            // ran between our spec snapshot and this publish) must not be published —
+                            // that would orphan a live instance the disable pass couldn't see, exposing
+                            // its tools to a conversation the flip meant to hide them from.
+                            if (SpecDisabledLocked(conns[i].Name))
+                            {
+                                if (drop == null) drop = new List<McpServerConnection>();
+                                drop.Add(conns[i]);
+                                continue;
+                            }
+                            _registry.AddConnection(conns[i], workdir);
+                            keep.Add(conns[i]);
+                        }
+                        _scopedByWorkdir[workdir] = keep;
                     }
                 }
-                if (discard)
-                    for (int i = 0; i < conns.Count; i++) Teardown(conns[i], true);
+                if (drop != null)
+                    for (int i = 0; i < drop.Count; i++) Teardown(drop[i], true);
                 reservation.Set();
             }
+        }
+
+        // Enable or disable ONE named workdir-scoped built-in server at runtime, without touching any
+        // other server or the registry identity. Used by the skills-enablement refresh: the extensions
+        // server follows "any enabled skill" per conversation, and flipping it used to run a full host
+        // rebuild — which swaps the registry object out from under an in-flight turn (the running
+        // orchestrator/dispatcher/children keep the old, emptied registry and lose every tool: the
+        // "cd-only sub-agent" doom loop). Enabling connects the server's eager workdir-less instance
+        // (if the spec runs one) plus one instance per live workdir — including workdirs whose scoped
+        // set is CONNECTING right now (their ConnectScoped snapshot may have seen the spec disabled;
+        // we wait for the publish, then top the set up). Disabling tears down just that server's
+        // instances; a mid-connect instance of a disabled spec is discarded by ConnectScoped's own
+        // publish step (SpecDisabledLocked). Returns false when nothing could be committed (disposed,
+        // not started, unknown spec) so the caller can retract optimistic state; true when the spec
+        // was flipped (or already matched). Blocking (spawns/handshakes) — call off the UI thread.
+        public bool SetBuiltInServerEnabled(string name, bool enabled)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+
+            McpServerSpec spec = null;
+            List<McpServerConnection> toClose = null;
+            List<string> ensureDirs = null;
+            List<string> pendingDirs = null;
+            List<ManualResetEvent> pendingEvents = null;
+            bool ensureEager = false;
+            lock (_lock)
+            {
+                if (_disposed || !_started) return false;
+                for (int i = 0; i < _scopedSpecs.Count; i++)
+                {
+                    McpServerSpec s = _scopedSpecs[i];
+                    if (s != null && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+                    { spec = s; break; }
+                }
+                if (spec == null) return false;
+                if (spec.Enabled == enabled) return true;
+                spec.Enabled = enabled; // future ConnectScoped calls follow the new state
+
+                if (!enabled)
+                {
+                    // Collect this server's live instances (eager + every workdir) for teardown below.
+                    toClose = new List<McpServerConnection>();
+                    for (int i = _eager.Count - 1; i >= 0; i--)
+                        if (string.Equals(_eager[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                        { toClose.Add(_eager[i]); _eager.RemoveAt(i); }
+                    foreach (List<McpServerConnection> conns in _scopedByWorkdir.Values)
+                        for (int i = conns.Count - 1; i >= 0; i--)
+                            if (string.Equals(conns[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                            { toClose.Add(conns[i]); conns.RemoveAt(i); }
+                }
+                else
+                {
+                    ensureEager = spec.RunsWithoutWorkdir;
+                    ensureDirs = new List<string>(_scopedByWorkdir.Keys);
+                    foreach (KeyValuePair<string, ManualResetEvent> kv in _connecting)
+                    {
+                        if (pendingDirs == null)
+                        {
+                            pendingDirs = new List<string>();
+                            pendingEvents = new List<ManualResetEvent>();
+                        }
+                        pendingDirs.Add(kv.Key);
+                        pendingEvents.Add(kv.Value);
+                    }
+                }
+            }
+
+            if (toClose != null)
+                for (int i = 0; i < toClose.Count; i++) Teardown(toClose[i]);
+
+            if (enabled)
+            {
+                if (ensureEager) EnsureInstance(spec, null);
+                for (int i = 0; i < ensureDirs.Count; i++) EnsureInstance(spec, ensureDirs[i]);
+                if (pendingDirs != null)
+                {
+                    // Workdirs that were mid-connect when the flip landed: wait (unlocked) for their
+                    // owner to publish, then top the published set up with this server.
+                    for (int i = 0; i < pendingDirs.Count; i++)
+                    {
+                        pendingEvents[i].WaitOne();
+                        EnsureInstance(spec, pendingDirs[i]);
+                    }
+                }
+            }
+            return true;
+        }
+
+        // Connect and publish one instance of `spec` for `workdir` (null = the eager, workdir-less
+        // instance). Idempotent and race-safe: skips the spawn when an instance with the same name is
+        // already present, the spec is disabled, the workdir's set is gone, or the workdir is a
+        // scratch dir the spec isn't eligible for — and re-checks all of that under the lock before
+        // publishing, discarding the freshly opened connection if anything changed meanwhile.
+        private void EnsureInstance(McpServerSpec spec, string workdir)
+        {
+            lock (_lock)
+            {
+                if (_disposed || !spec.Enabled) return;
+                List<McpServerConnection> have;
+                if (workdir == null) have = _eager;
+                else if (!_scopedByWorkdir.TryGetValue(workdir, out have)) return; // set gone
+                if (HasNamed(have, spec.Name)) return;
+                if (workdir != null && _scratchWorkdirs.ContainsKey(workdir) && !spec.RunsInScratch) return;
+            }
+
+            McpServerConnection conn = CreateAndOpen(spec, workdir);
+            if (conn == null) return;
+            bool discard;
+            lock (_lock)
+            {
+                List<McpServerConnection> list;
+                if (workdir == null) list = _eager;
+                else if (!_scopedByWorkdir.TryGetValue(workdir, out list)) list = null;
+                if (_disposed || !spec.Enabled || list == null || HasNamed(list, spec.Name))
+                    discard = true;
+                else
+                {
+                    _registry.AddConnection(conn, workdir);
+                    list.Add(conn);
+                    discard = false;
+                }
+            }
+            if (discard) Teardown(conn, true);
+        }
+
+        private static bool HasNamed(List<McpServerConnection> conns, string name)
+        {
+            if (conns == null) return false;
+            for (int i = 0; i < conns.Count; i++)
+                if (string.Equals(conns[i].Name, name, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // True when a scoped spec with this name exists and is currently disabled. Caller holds _lock.
+        private bool SpecDisabledLocked(string name)
+        {
+            for (int i = 0; i < _scopedSpecs.Count; i++)
+            {
+                McpServerSpec s = _scopedSpecs[i];
+                if (s != null && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return !s.Enabled;
+            }
+            return false;
         }
 
         // Tear down the scoped servers for a single working directory (e.g. its last tab closed).
@@ -378,7 +535,28 @@ namespace GxPT
             if (e.NewState == ConnectionState.Faulted || e.NewState == ConnectionState.Closed)
             {
                 McpServerConnection conn = sender as McpServerConnection;
-                if (conn != null) _registry.RemoveConnection(conn);
+                if (conn == null) return;
+                _registry.RemoveConnection(conn);
+                // Also forget the dead connection in the host's OWN collections. Leaving it in
+                // _scopedByWorkdir made EnsureWorkingDir a permanent no-op for that folder ("already
+                // connected" by key) even though the registry had dropped its tools — reconnection
+                // was impossible until an app restart. When a workdir's LAST connection dies, its key
+                // goes too, so the next EnsureWorkingDir relaunches the full set. Taking _lock here
+                // is safe: every deliberate Teardown unsubscribes this handler before shutting the
+                // connection down, so no caller already holding _lock can re-enter through it.
+                lock (_lock)
+                {
+                    if (_disposed) return;
+                    _eager.Remove(conn);
+                    List<string> emptied = null;
+                    foreach (KeyValuePair<string, List<McpServerConnection>> kv in _scopedByWorkdir)
+                    {
+                        if (kv.Value.Remove(conn) && kv.Value.Count == 0)
+                            (emptied ?? (emptied = new List<string>())).Add(kv.Key);
+                    }
+                    if (emptied != null)
+                        for (int i = 0; i < emptied.Count; i++) _scopedByWorkdir.Remove(emptied[i]);
+                }
             }
         }
 

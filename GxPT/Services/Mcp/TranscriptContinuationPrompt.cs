@@ -23,6 +23,18 @@ namespace GxPT
         // if the UI is unavailable (e.g. the tab is closing) so the turn still ends cleanly.
         public bool Ask(int iterationsSoFar)
         {
+            return AskCore(iterationsSoFar, false);
+        }
+
+        // Doom-loop variant: same blocking flow, doom-loop wording on the panel ("repeating tool
+        // calls detected" instead of "limit reached").
+        public bool AskDoomLoop(int iterationsSoFar)
+        {
+            return AskCore(iterationsSoFar, true);
+        }
+
+        private bool AskCore(int iterationsSoFar, bool doomLoop)
+        {
             if (_uiMarshal == null || _getPanel == null) return false;
 
             bool[] result = { false };
@@ -38,7 +50,7 @@ namespace GxPT
                         {
                             ToolApprovalPanel panel = _getPanel();
                             if (panel == null) { done.Set(); return; }
-                            panel.ShowContinuation(iterationsSoFar, delegate(bool cont)
+                            panel.ShowContinuation(iterationsSoFar, doomLoop, delegate(bool cont)
                             {
                                 result[0] = cont;
                                 done.Set();

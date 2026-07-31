@@ -60,6 +60,56 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Scope_salt_distinguishes_identical_calls_in_different_directories()
+        {
+            // A directory walk up a tree: "list ." then "cd .." repeated VERBATIM while moving through
+            // different directories. Without the scope salt this read as a period-2 cycle and wrapped
+            // a legitimately exploring agent up early (observed false positive).
+            var d = new DoomLoopDetector();
+            Assert.False(d.Record("files__list", "{\"path\":\".\"}", "C:\\r\\a\\b\\c"));
+            Assert.False(d.Record("cd", "{\"path\":\"..\"}", "C:\\r\\a\\b"));
+            Assert.False(d.Record("files__list", "{\"path\":\".\"}", "C:\\r\\a\\b"));
+            Assert.False(d.Record("cd", "{\"path\":\"..\"}", "C:\\r\\a"));
+            Assert.False(d.Record("files__list", "{\"path\":\".\"}", "C:\\r\\a"));
+            Assert.False(d.Record("cd", "{\"path\":\"..\"}", "C:\\r"));
+            Assert.False(d.Record("files__list", "{\"path\":\".\"}", "C:\\r"));
+        }
+
+        [Fact]
+        public void Same_place_repetition_still_fires()
+        {
+            var d = new DoomLoopDetector();
+            Assert.False(d.Record("files__write", "{\"path\":\"x\"}", "C:\\r\\sub"));
+            Assert.False(d.Record("files__write", "{\"path\":\"x\"}", "C:\\r\\sub"));
+            Assert.True(d.Record("files__write", "{\"path\":\"x\"}", "C:\\r\\sub"));
+        }
+
+        [Fact]
+        public void Cycle_that_returns_to_the_same_places_still_fires()
+        {
+            // Oscillating between two directories doing the same things: the scopes repeat along with
+            // the calls, so the salted period-4 cycle is still caught on its second full repetition.
+            var d = new DoomLoopDetector();
+            Assert.False(d.Record("cd", "{\"path\":\"sub\"}", "C:\\r\\sub"));
+            Assert.False(d.Record("files__edit", "{\"path\":\"f\"}", "C:\\r\\sub"));
+            Assert.False(d.Record("cd", "{\"path\":\"..\"}", "C:\\r"));
+            Assert.False(d.Record("command__run", "{\"cmd\":\"test\"}", "C:\\r"));
+            Assert.False(d.Record("cd", "{\"path\":\"sub\"}", "C:\\r\\sub"));
+            Assert.False(d.Record("files__edit", "{\"path\":\"f\"}", "C:\\r\\sub"));
+            Assert.False(d.Record("cd", "{\"path\":\"..\"}", "C:\\r"));
+            Assert.True(d.Record("command__run", "{\"cmd\":\"test\"}", "C:\\r"));
+        }
+
+        [Fact]
+        public void Null_scope_and_the_two_arg_overload_are_equivalent()
+        {
+            var d = new DoomLoopDetector();
+            Assert.False(d.Record("a", "{}"));
+            Assert.False(d.Record("a", "{}", null));
+            Assert.True(d.Record("a", "{}"));
+        }
+
+        [Fact]
         public void Same_tool_with_different_args_is_not_a_cycle()
         {
             var d = new DoomLoopDetector();

@@ -38,6 +38,7 @@ namespace GxPT
 
         // The host `cd` meta-tool: moves the conversation's current directory within the workspace anchor.
         internal const string CdToolName = "cd";
+        internal const string PwdToolName = "pwd";
 
         // Request-only "keep going" message used once when a response comes back empty even after the
         // inline bare retry (see the empty-response handling in RunTurn). Appended to that one request
@@ -234,6 +235,17 @@ namespace GxPT
         // Set per send (the orchestrator is built fresh each turn), so it's not shared/racy.
         public ICollection<string> HiddenToolNames { get; set; }
 
+        // When set (sub-agent turns; AgentDispatcher.RunChild), the MCP tool defs offered to the model
+        // are EXACTLY this list, frozen at dispatch time, instead of being re-derived from the live
+        // registry every loop iteration. A child's tool set is fixed by its frontmatter (A11), and
+        // deriving it live made the child's exposure depend on registry state that can shift under a
+        // long-running parent turn (a mid-turn host rebuild empties the old registry), which stranded
+        // children with no tools at all. reveal_tools is deliberately absent from the frozen list — an
+        // allowlisted child skips progressive disclosure — and no names manifest is emitted (nothing to
+        // discover). Host tools are still appended and HiddenToolNames still filters. Tool CALLS still
+        // resolve against the live registry (execution needs a live server); only exposure is frozen.
+        public IList<JObject> FrozenToolDefs { get; set; }
+
         // Sticky provider routing (prompt caching): the provider endpoint that last DEMONSTRATED a
         // cache hit for this conversation (cached_tokens > 0 on its response), seeded by the host
         // from Conversation.CacheWarmProvider. Prompt caches live per provider, so on
@@ -274,6 +286,13 @@ namespace GxPT
         // in-transcript confirmation similar to the tool-approval prompt; it blocks the turn until the
         // user answers, which is correct (the user is present).
         public Func<int, bool> ContinuationDecider { get; set; }
+
+        // Like ContinuationDecider, but consulted when the doom-loop detector fires mid-turn: return
+        // true to clear the detector's window and keep going (the user judges the repetition
+        // intentional), false to wrap the turn up as content. Null => wrap up, which is what
+        // sub-agents get by design — an unattended child needs the automatic valve (A18); only the
+        // interactive main turn has a person to ask.
+        public Func<int, bool> DoomLoopContinuationDecider { get; set; }
 
         // Per-turn cancellation handle for the in-flight model request (may be null). When the user
         // stops the turn, Cancel() kills the current model stream via the streamer; this loop also
@@ -365,7 +384,12 @@ namespace GxPT
             _hostTools = BuildHostTools();
             // Provider-gated eviction, at turn boundaries only (mid-loop eviction would churn the
             // tools array between iterations for no benefit). See RevealedToolNames for the rationale.
-            if (RevealedToolNames.Count > RevealEvictionCap
+            // A frozen-def turn (sub-agents) is exempt: its exposure never shrinks with this list, so
+            // evicting here would only desync the reveal-enforcement gate from the schemas the model
+            // can plainly see — and the gate's recovery hint points at reveal_tools, which a frozen
+            // child deliberately doesn't have.
+            if (FrozenToolDefs == null
+                && RevealedToolNames.Count > RevealEvictionCap
                 && !OpenRouterClient.ModelSupportsPromptCaching(_model))
             {
                 int evicted = 0;
@@ -418,7 +442,12 @@ namespace GxPT
                     {
                         _log.Log("mcp", "[turn " + turnId + "] iteration cap reached at " + iter
                             + "; wrapping up");
-                        RunCapWrapUp(history, _lastOfferedTools, ui, turnId);
+                        // Cap reached and not continued: one final model call (tool_choice "none")
+                        // asking it to summarize and ask how to proceed, so the turn ends with a
+                        // readable assistant message rather than a cryptic dead-end. The user can
+                        // simply reply to keep going (a fresh budget next turn).
+                        RunWrapUp(history, _lastOfferedTools, ui, turnId,
+                                  CapWrapUpInstruction, CapWrapUpFallback, "cap");
                         return;
                     }
                 }
@@ -427,13 +456,47 @@ namespace GxPT
                 // actually contributes tools; a skills-only turn skips both and offers just open_skill.
                 // Filter by THIS turn's workdir so a folderless turn never advertises another folder's
                 // scoped tools (files/git/run_skill_script, ...) that it couldn't actually call.
+                // A sub-agent turn with FrozenToolDefs set bypasses the registry derivation entirely:
+                // its defs were fixed at dispatch (no reveal_tools, no manifest — nothing to discover),
+                // so registry churn during the turn cannot change what the child sees.
                 string resolveDir = ResolutionWorkdir;
-                bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
-                IList<JObject> tools = hasMcpTools
-                    ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
-                // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-call
-                // rule is static framing and lives in the cached agent system prompt, not re-sent here.
-                string manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
+                IList<JObject> tools;
+                string manifest;
+                if (FrozenToolDefs != null)
+                {
+                    tools = FrozenToolDefs.Count > 0 ? new List<JObject>(FrozenToolDefs) : null;
+                    manifest = null;
+                }
+                else
+                {
+                    bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
+                    if (hasMcpTools)
+                    {
+                        tools = _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames);
+                        // The tail carries the tool INVENTORY only (names + git steering); the reveal-
+                        // before-call rule is static framing and lives in the cached agent system
+                        // prompt, not re-sent here.
+                        manifest = _registry.NamesManifestList(resolveDir);
+                    }
+                    else if (_registry != null)
+                    {
+                        // Registry present but nothing resolvable for this workdir right now (servers
+                        // faulted or mid-(re)connect). Still expose reveal_tools: it is the turn's only
+                        // recovery handle — without it, a turn that starts (or goes) toolless has no
+                        // way to pull tools back in when the servers return. Previously the def was
+                        // emitted solely via ExposedFunctionDefs behind the hasMcpTools gate (the
+                        // host-tool loop below always skips it), so exactly the turns that most needed
+                        // recovery had no handle.
+                        tools = new List<JObject>();
+                        tools.Add(McpToolRegistry.RevealToolsDef());
+                        manifest = null;
+                    }
+                    else
+                    {
+                        tools = null;
+                        manifest = null;
+                    }
+                }
                 // Append the host ("meta") tool defs from the SAME table ExecuteCall dispatches against, so
                 // a tool is exposed here exactly when it is dispatch-exempt there (see BuildHostTools).
                 // reveal_tools is skipped: ExposedFunctionDefs already emitted it in lead position 0 (an
@@ -647,13 +710,16 @@ namespace GxPT
                             batchDenied = true;
                             forceTextThisCall = true;
                         }
-                        else if (doomLoop.Record(call.Name, call.ArgumentsJson))
+                        // The current dir (post-call: an executed cd has already moved it) scopes the
+                        // signature, so a legitimate directory walk — identical name+args repeated
+                        // from different places — never reads as a cycle.
+                        else if (doomLoop.Record(call.Name, call.ArgumentsJson, CurrentDir))
                         {
                             // This executed call closed a repeating cycle. Note it and let the batch
                             // finish; the wrap-up runs once the loop below is done and history is valid.
                             doomLoopHit = true;
                             _log.Log("mcp", "[turn " + turnId + "] doom-loop detected at iteration "
-                                + (iter + 1) + " (cycle on '" + call.Name + "'); wrapping up");
+                                + (iter + 1) + " (cycle on '" + call.Name + "')");
                         }
                     }
 
@@ -672,14 +738,28 @@ namespace GxPT
                 }
 
                 // A repeating cycle closed during this batch: the whole batch has now run (history is
-                // well-formed), so end the turn with a text-only wrap-up instead of spinning through the
-                // rest of the budget. A user Stop that landed while the tools ran takes precedence.
+                // well-formed). Like the iteration cap, the interactive main turn asks the user first
+                // (they may know the repetition is intentional); a sub-agent has no decider and wraps
+                // up unattended — the A18 valve. A user Stop that landed while the tools ran takes
+                // precedence over both.
                 if (doomLoopHit)
                 {
                     if (CancelRequested()) { FinishCancelled(history, null, ui, turnId); return; }
-                    RunWrapUp(history, _lastOfferedTools, ui, turnId,
-                              DoomLoopWrapUpInstruction, DoomLoopWrapUpFallback, "doom-loop");
-                    return;
+                    if (DoomLoopContinuationDecider != null && DoomLoopContinuationDecider(iter))
+                    {
+                        // Fresh window: the user chose to push on, so the calls recorded so far must
+                        // not immediately re-trigger on the next iteration.
+                        doomLoop.Clear();
+                        _log.Log("mcp", "[turn " + turnId
+                            + "] user chose to continue after doom-loop detection");
+                    }
+                    else
+                    {
+                        _log.Log("mcp", "[turn " + turnId + "] wrapping up after doom-loop detection");
+                        RunWrapUp(history, _lastOfferedTools, ui, turnId,
+                                  DoomLoopWrapUpInstruction, DoomLoopWrapUpFallback, "doom-loop");
+                        return;
+                    }
                 }
                 // Loop: re-call the model with the tool results in context.
             }
@@ -785,23 +865,14 @@ namespace GxPT
             "I seem to be repeating the same steps without making progress. Let me know how you'd like "
             + "to proceed.";
 
-        // Cap reached and not continued: one final model call (tool_choice "none") asking it to
-        // summarize and ask how to proceed, so the turn ends with a readable assistant message
-        // rather than a cryptic dead-end. The user can simply reply to keep going (a fresh budget
-        // next turn). The request reuses the loop's prompt shape - same stable head, same history,
-        // same tools array - rather than dropping tools: on Anthropic a tool_choice change
-        // invalidates only the message-tier cache, while removing the tools array would change
-        // position 0 of the prompt and invalidate the tools+system tiers as well. The next user
-        // turn (back on tool_choice auto) still extends the loop's cached prefix unharmed.
-        private void RunCapWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
-                                  string turnId)
-        {
-            RunWrapUp(history, tools, ui, turnId, CapWrapUpInstruction, CapWrapUpFallback, "cap");
-        }
-
         // Force the model to text-only closure. Shared by the iteration-cap and doom-loop stops: append
         // a trailing instruction, re-send the same (cached) tools array under tool_choice "none", and
-        // record the model's summary - or a fallback - as the turn's final assistant message.
+        // record the model's summary - or a fallback - as the turn's final assistant message. The
+        // request reuses the loop's prompt shape - same stable head, same history, same tools array -
+        // rather than dropping tools: on Anthropic a tool_choice change invalidates only the
+        // message-tier cache, while removing the tools array would change position 0 of the prompt and
+        // invalidate the tools+system tiers as well. The next user turn (back on tool_choice auto)
+        // still extends the loop's cached prefix unharmed.
         private void RunWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
                                string turnId, string instruction, string fallback, string kind)
         {
@@ -1002,8 +1073,17 @@ namespace GxPT
                     delegate { return McpToolRegistry.RevealToolsDef(); },
                     delegate(ToolCall c, out bool err)
                     {
+                        string[] revealNames = ParseRevealNames(c.ArgumentsJson);
+                        // No usable names is a usage error, said out loud. It used to return a silent
+                        // "[]", which the model read as "those tools don't exist" and retried forever.
+                        if (revealNames.Length == 0)
+                        {
+                            err = true;
+                            return "[reveal_tools: no tool names given. Pass a JSON array of tool-name "
+                                + "strings from the available-tools list, e.g. {\"names\":[\"files__read\"]}.]";
+                        }
                         err = false;
-                        return _registry.Reveal(ParseRevealNames(c.ArgumentsJson), ResolutionWorkdir, RevealedToolNames);
+                        return _registry.Reveal(revealNames, ResolutionWorkdir, RevealedToolNames);
                     }));
             }
             // cd: move the conversation's current directory within the workspace anchor. Offered only when
@@ -1014,6 +1094,11 @@ namespace GxPT
                 list.Add(new HostTool(CdToolName,
                     delegate { return CdDef(); },
                     delegate(ToolCall c, out bool err) { return HandleCd(c, out err); }));
+                // pwd rides along with cd: wherever the model can move, it can also ASK where it is
+                // (observability the original path doom loop lacked). Host state only — instant.
+                list.Add(new HostTool(PwdToolName,
+                    delegate { return PwdDef(); },
+                    delegate(ToolCall c, out bool err) { return HandlePwd(out err); }));
             }
             if (SkillsActive)
             {
@@ -1097,6 +1182,13 @@ namespace GxPT
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] unresolved tool '" + call.Name + "' (workdir="
                     + (string.IsNullOrEmpty(resolveDir) ? "(none)" : resolveDir) + ")");
+                // Distinguish "the name is wrong" from "the server is gone". A server-qualified name
+                // (server__tool) whose server currently contributes NOTHING for this workdir did not
+                // stop existing — its server is down, restarting, or disabled. Reporting that as
+                // "[Unknown tool]" taught models the tool was never real, and they doom-looped
+                // improvising around it instead of simply retrying.
+                string unavailable = _registry != null ? DescribeUnresolved(call.Name, resolveDir) : null;
+                if (unavailable != null) return unavailable;
                 return "[Unknown tool: " + call.Name + "]";
             }
 
@@ -1111,6 +1203,10 @@ namespace GxPT
             {
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] blocked unrevealed tool '" + call.Name + "'");
+                // A frozen-def turn has no reveal_tools, so the standard "reveal it first" hint would
+                // send the model chasing a tool it cannot call; its tool set is fixed, full stop.
+                if (FrozenToolDefs != null)
+                    return "[Tool '" + call.Name + "' is not in this agent's tool set.]";
                 return "[Tool '" + call.Name + "' is not revealed yet, so its parameters are unknown. "
                     + "Call reveal_tools({\"names\":[\"" + call.Name + "\"]}) first to load its schema, "
                     + "then call " + call.Name + " with the correct arguments.]";
@@ -1123,12 +1219,19 @@ namespace GxPT
             RevealedToolNames.Add(call.Name);
 
             JObject args;
-            if (!TryParseArgs(call.ArgumentsJson, out args))
+            string parseError;
+            if (!TryParseArgs(call.ArgumentsJson, out args, out parseError))
             {
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] invalid arguments for '" + call.Name
-                    + "' (not valid JSON)");
-                return "[Invalid tool arguments: not valid JSON.]";
+                    + "': " + parseError);
+                // The parser's own diagnosis (what it saw, and where: line/position/path) rides
+                // along. The old bare "not valid JSON" gave the model nothing to fix, so it would
+                // re-generate the same broken payload — typically a large inline file body with one
+                // escaping slip — and loop on the identical failure.
+                return "[Invalid tool arguments for '" + call.Name + "': " + parseError
+                    + " Fix the JSON (check quote/backslash/newline escaping inside large string "
+                    + "values) and re-issue the call.]";
             }
 
             // Logged before the approval check: if the next line for this call is far behind in
@@ -1190,9 +1293,13 @@ namespace GxPT
 
         // ---- helpers ----
 
-        private static bool TryParseArgs(string argumentsJson, out JObject args)
+        // On failure, `parseError` carries the parser's own diagnosis — Newtonsoft's message includes
+        // the offending character, line, position, and JSON path — so the model can FIX its payload
+        // instead of blindly regenerating it (the inline-file-content escaping doom loop).
+        private static bool TryParseArgs(string argumentsJson, out JObject args, out string parseError)
         {
             args = null;
+            parseError = null;
             try
             {
                 if (string.IsNullOrEmpty(argumentsJson))
@@ -1202,12 +1309,40 @@ namespace GxPT
                 }
                 JToken t = JToken.Parse(argumentsJson);
                 if (t.Type == JTokenType.Object) { args = (JObject)t; return true; }
+                parseError = "the arguments must be a JSON object, but a " + t.Type + " was sent.";
                 return false;
             }
-            catch
+            catch (Exception ex)
             {
+                parseError = ex.Message;
                 return false;
             }
+        }
+
+        // For a resolution failure: when the called name is server-qualified (server__tool) and that
+        // server currently contributes NO tools for this workdir, the honest diagnosis is an outage,
+        // not a bad name — return a retryable "unavailable" message naming the server. Returns null
+        // when the failure should be reported as a plain unknown tool (host-tool names without the
+        // server prefix, or the server IS present and the tool name is simply wrong).
+        private string DescribeUnresolved(string name, string resolveDir)
+        {
+            int sep = name != null ? name.IndexOf("__", StringComparison.Ordinal) : -1;
+            if (sep <= 0) return null; // not server-qualified — a genuinely unknown (or host) name
+
+            if (!_registry.HasToolsForWorkdir(resolveDir))
+                return "[Tool '" + name + "' is temporarily unavailable: no workspace tool servers are "
+                    + "connected for this conversation right now (they may be restarting). Retry shortly, "
+                    + "or finish without it.]";
+
+            string prefix = name.Substring(0, sep + 2);
+            IList<string> names = _registry.NamesForWorkdir(resolveDir);
+            for (int i = 0; i < names.Count; i++)
+                if (names[i] != null && names[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return null; // the server is present; the tool name itself is wrong
+
+            return "[Tool '" + name + "' is temporarily unavailable: the '" + name.Substring(0, sep)
+                + "' server has no tools connected for this workspace right now (down, restarting, or "
+                + "disabled). Retry shortly, or finish without it.]";
         }
 
         private static string[] ParseRevealNames(string argumentsJson)
@@ -1217,6 +1352,24 @@ namespace GxPT
             {
                 JObject o = JObject.Parse(argumentsJson);
                 JToken arr = o["names"];
+                // Liberal in what we accept: the canonical form is a JSON array of strings, but models
+                // recurrently send the array STRINGIFIED ("names": "[\"a\",\"b\"]") or a single bare
+                // name ("names": "files__read"). Both used to fall through to an empty list and a
+                // silent [] result — which reads as "these tools don't exist" and seeds retry loops.
+                if (arr != null && arr.Type == JTokenType.String)
+                {
+                    string s = ((string)arr).Trim();
+                    if (s.StartsWith("[", StringComparison.Ordinal))
+                    {
+                        try { arr = JArray.Parse(s); }
+                        catch { /* not an array after all — fall through to the bare-name case */ }
+                    }
+                    if (arr.Type == JTokenType.String)
+                    {
+                        if (s.Length > 0) names.Add(s);
+                        return names.ToArray();
+                    }
+                }
                 if (arr != null && arr.Type == JTokenType.Array)
                 {
                     foreach (JToken n in (JArray)arr)
@@ -1227,7 +1380,7 @@ namespace GxPT
             }
             catch
             {
-                // malformed reveal args → no names; Reveal returns an empty def list.
+                // malformed reveal args → no names; the caller reports the usage error.
             }
             return names.ToArray();
         }
@@ -1254,15 +1407,16 @@ namespace GxPT
 
         // ---- cd host tool ----
 
-        // The cd tool's schema: an optional `path` (relative to the current directory). Omitting it
-        // returns to the workspace root (the anchor = "home"). Absolute paths are rejected.
+        // The cd tool's schema: an optional `path` (relative to the current directory, or absolute
+        // inside the workspace). Omitting it returns to the workspace root (the anchor = "home").
         internal static JObject CdDef()
         {
             JObject pathProp = new JObject();
             pathProp["type"] = "string";
             pathProp["description"] =
-                "A subdirectory to change into, relative to the current directory (shell-like; '..' is "
-                + "allowed but cannot rise above the workspace root). Omit to return to the workspace root.";
+                "A directory to change into: relative to the current directory (shell-like; '..' is "
+                + "allowed but cannot rise above the workspace root), or an absolute path inside the "
+                + "workspace. Omit to return to the workspace root.";
 
             JObject props = new JObject();
             props["path"] = pathProp;
@@ -1274,9 +1428,44 @@ namespace GxPT
 
             return McpToolRegistryFunctionDef(CdToolName,
                 "Change the conversation's current working directory within the workspace. Subsequent "
-                + "file, git, and command operations run there until you cd again. You can only move at or "
-                + "below the workspace root; cd with no argument returns to the workspace root.",
+                + "file, git, and command operations run there — their path arguments resolve relative to "
+                + "the CURRENT directory, not the workspace root — until you cd again. You can only move at "
+                + "or below the workspace root; cd with no argument returns to the workspace root. Use pwd "
+                + "to check where you are without moving.",
                 schema);
+        }
+
+        // pwd: report the current directory without changing anything. Purely observational — the
+        // antidote to the model losing track of where it is (the original path doom loop had no way
+        // to ask, and a no-arg cd RESETS to the root as a side effect, so "checking" relocated it).
+        internal static JObject PwdDef()
+        {
+            JObject schema = new JObject();
+            schema["type"] = "object";
+            schema["properties"] = new JObject();
+            return McpToolRegistryFunctionDef(PwdToolName,
+                "Report the conversation's current working directory (workspace-root-relative and "
+                + "absolute) without changing it. File, git, and command operations resolve their path "
+                + "arguments relative to this directory.",
+                schema);
+        }
+
+        private string HandlePwd(out bool isError)
+        {
+            isError = false;
+            string anchor = WorkingDir;
+            if (string.IsNullOrEmpty(anchor))
+            {
+                isError = true;
+                return "[pwd is unavailable: this conversation has no workspace folder.]";
+            }
+            PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
+            string cur = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
+            string relDisp = anchorSb.ToRelative(cur);
+            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
+            relDisp = relDisp.Replace('\\', '/');
+            return "Current directory: `" + relDisp + "` (relative to the workspace root; absolute: "
+                + cur + "). Workspace root: " + anchorSb.Root + ".";
         }
 
         // Builds an OpenAI-format function def (mirrors McpToolRegistry.FunctionDef, which is private).
@@ -1292,12 +1481,16 @@ namespace GxPT
             return def;
         }
 
-        // Move the current directory. Resolves `path` relative to the CURRENT directory (shell-like),
-        // canonicalizes, and requires the result to be an EXISTING directory at or below the workspace
-        // anchor. Rising above the anchor is an error (the floor is kept visible, not silently clamped);
-        // absolute paths are rejected (mirrors PathSandbox, one mental model). On success it updates the
-        // current directory, notifies the host (CurrentDirChanged), and echoes the new location as an
-        // anchor-relative string. Host state only - no server contact - so it is instant.
+        // Move the current directory. Resolves `path` relative to the CURRENT directory (shell-like) —
+        // or takes it verbatim when absolute — canonicalizes, and requires the result to be an EXISTING
+        // directory at or below the workspace anchor. Rising above the anchor is an error (the floor is
+        // kept visible, not silently clamped). Absolute paths inside the workspace are ACCEPTED: the
+        // host echoes absolute paths in its results, and models reasonably paste them back — the old
+        // outright rejection contradicted those echoes and fed retry loops. Errors and the success echo
+        // both carry the RESOLVED absolute path, so a mis-framed path (e.g. workspace-root-relative
+        // issued from a subfolder) is visible immediately instead of surfacing as a bare "not found".
+        // On success it updates the current directory, notifies the host (CurrentDirChanged), and echoes
+        // the new location. Host state only - no server contact - so it is instant.
         private string HandleCd(ToolCall call, out bool isError)
         {
             isError = false;
@@ -1310,6 +1503,7 @@ namespace GxPT
 
             PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
             string rel = ParseCdPath(call.ArgumentsJson);
+            string baseDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
 
             string target;
             if (string.IsNullOrEmpty(rel))
@@ -1318,26 +1512,32 @@ namespace GxPT
             }
             else
             {
-                if (Path.IsPathRooted(rel) || rel.IndexOf(':') >= 0)
-                {
-                    isError = true;
-                    return "[cd: absolute paths are not allowed; pass a path relative to the current directory.]";
-                }
-                string baseDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
                 string full;
-                try { full = Path.GetFullPath(Path.Combine(baseDir, rel)); }
-                catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                if (Path.IsPathRooted(rel))
+                {
+                    try { full = Path.GetFullPath(rel); }
+                    catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                }
+                else
+                {
+                    try { full = Path.GetFullPath(Path.Combine(baseDir, rel)); }
+                    catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                }
 
                 if (!anchorSb.IsWithin(full))
                 {
                     isError = true;
-                    return "[cd: '" + rel + "' is above the workspace root, which is the floor. cd with no "
-                        + "argument to return to the workspace root and regain full-workspace access.]";
+                    return "[cd: '" + rel + "' resolves to " + full + ", which is above the workspace root ("
+                        + anchorSb.Root + ") - the floor. cd with no argument to return to the workspace "
+                        + "root and regain full-workspace access.]";
                 }
                 if (!Directory.Exists(full))
                 {
                     isError = true;
-                    return "[cd: directory not found: " + rel + "]";
+                    string curDisp = anchorSb.ToRelative(baseDir);
+                    if (string.IsNullOrEmpty(curDisp)) curDisp = ".";
+                    return "[cd: directory not found: " + rel + " (resolves to " + full
+                        + "; the current directory is `" + curDisp.Replace('\\', '/') + "`).]";
                 }
                 target = full;
             }
@@ -1350,8 +1550,9 @@ namespace GxPT
             string relDisp = anchorSb.ToRelative(target);
             if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
             relDisp = relDisp.Replace('\\', '/');
-            return "Current directory is now `" + relDisp + "` (relative to the workspace root). File, git, "
-                + "and command operations now run there.";
+            return "Current directory is now `" + relDisp + "` (relative to the workspace root; absolute: "
+                + target + "). File, git, and command operations now run there, and their path arguments "
+                + "resolve relative to it.";
         }
 
         // Reads the cd tool's optional `path` string argument; missing/malformed -> null (return to anchor).

@@ -49,7 +49,7 @@ namespace FilesMcpServer
             // subdirectory, every read/write/list/search is hard-confined to it (D2 enforcement). Absent a
             // current dir the sandbox falls back to the workspace root, exactly as before.
 
-            server.AddTool("read", "Read the UTF-8 text contents of a file under the workspace root. "
+            server.AddTool("read", "Read the UTF-8 text contents of a file under the current directory. "
                 + "Optionally read a line range (1-based, inclusive) and/or prefix each line with its number. "
                 + "Reads larger than the size cap are TRUNCATED rather than failing: the result is then a JSON "
                 + "object {content, truncated:true, next_start_line?, next_offset}. To continue a truncated "
@@ -57,7 +57,7 @@ namespace FilesMcpServer
                 + "only next_offset is returned (a single line longer than the cap), pass just offset. Loop "
                 + "until a read comes back as plain (non-truncated) text.",
                 SchemaBuilder.Object()
-                    .Str("path", true, "Path relative to the workspace root")
+                    .Str("path", true, "Path relative to the current directory (the workspace root until you cd)")
                     .Int("start_line", false, "First line to return (1-based, inclusive)")
                     .Int("end_line", false, "Last line to return (1-based, inclusive)")
                     .Bool("line_numbers", false, "Prefix each returned line with its 1-based line number")
@@ -68,33 +68,33 @@ namespace FilesMcpServer
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Read(sb, ctx); }); });
 
-            server.AddTool("list", "List entries of a directory under the workspace root.",
+            server.AddTool("list", "List entries of a directory under the current directory.",
                 SchemaBuilder.Object()
-                    .Str("path", true, "Directory path relative to the workspace root")
+                    .Str("path", true, "Directory path relative to the current directory (the workspace root until you cd)")
                     .Bool("recursive", false, "Recurse into subdirectories (bounded depth)")
                     .Build(),
                 ToolAnnotations.ReadOnly(),
                 delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return List(sb, ctx); }); });
 
-            server.AddTool("write", "Create or overwrite a text file under the workspace root.",
+            server.AddTool("write", "Create or overwrite a text file under the current directory.",
                 SchemaBuilder.Object()
-                    .Str("path", true, "Path relative to the workspace root")
+                    .Str("path", true, "Path relative to the current directory (the workspace root until you cd)")
                     .Str("content", true, "UTF-8 text content to write")
                     .Bool("create_dirs", false, "Create missing parent directories")
                     .Build(),
                 ToolAnnotations.Write(),
                 delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Write(sb, ctx); }); });
 
-            server.AddTool("delete", "Delete a file or an empty directory under the workspace root.",
-                SchemaBuilder.Object().Str("path", true, "Path relative to the workspace root").Build(),
+            server.AddTool("delete", "Delete a file or an empty directory under the current directory.",
+                SchemaBuilder.Object().Str("path", true, "Path relative to the current directory (the workspace root until you cd)").Build(),
                 ToolAnnotations.Destructive(),
                 delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Delete(sb, ctx); }); });
 
-            server.AddTool("edit", "Replace an exact text span in a file under the workspace root. "
+            server.AddTool("edit", "Replace an exact text span in a file under the current directory. "
                 + "Prefer this over write for large files: it is targeted and never rewrites the whole file. "
                 + "old_string must match exactly and be unique unless replace_all is set.",
                 SchemaBuilder.Object()
-                    .Str("path", true, "Path relative to the workspace root")
+                    .Str("path", true, "Path relative to the current directory (the workspace root until you cd)")
                     .Str("old_string", true, "Exact text to find (must be unique unless replace_all is set)")
                     .Str("new_string", true, "Replacement text")
                     .Bool("replace_all", false, "Replace every occurrence instead of requiring a unique match")
@@ -102,13 +102,13 @@ namespace FilesMcpServer
                 ToolAnnotations.Write(),
                 delegate(ToolCallContext ctx) { return WithCwd(config, ctx, delegate(PathSandbox sb) { return Edit(sb, ctx); }); });
 
-            server.AddTool("search", "Search file contents for a string or regex under the workspace root, "
+            server.AddTool("search", "Search file contents for a string or regex under the current directory, "
                 + "returning matching {path, line, text}. Recursive, skips binary files. Line-oriented by "
                 + "default (each line is matched with its terminator stripped, so a pattern cannot match a "
                 + "newline or span lines); set multiline to match across line boundaries (grep -U style).",
                 SchemaBuilder.Object()
                     .Str("query", true, "Text or regex to search for")
-                    .Str("path", false, "Directory (or file) to search under; defaults to the workspace root")
+                    .Str("path", false, "Directory (or file) to search under, relative to the current directory; defaults to the current directory")
                     .Bool("regex", false, "Treat query as a .NET regular expression (default: literal substring)")
                     .Bool("ignore_case", false, "Case-insensitive match")
                     .Str("glob", false, "Only search files whose name matches this wildcard (e.g. *.cs)")
@@ -148,7 +148,7 @@ namespace FilesMcpServer
             CallToolResult err = ResolvePath(sandbox, ctx, out full);
             if (err != null) return err;
 
-            if (!File.Exists(full)) return ToolResults.Error("file not found");
+            if (!File.Exists(full)) return ToolResults.Error("file not found: " + full);
 
             bool lineNumbers = BoolArg(ctx, "line_numbers", false);
 
@@ -493,7 +493,7 @@ namespace FilesMcpServer
             CallToolResult err = ResolvePath(sandbox, ctx, out full);
             if (err != null) return err;
 
-            if (!Directory.Exists(full)) return ToolResults.Error("directory not found");
+            if (!Directory.Exists(full)) return ToolResults.Error("directory not found: " + full);
 
             bool recursive = BoolArg(ctx, "recursive", false);
 
@@ -551,7 +551,7 @@ namespace FilesMcpServer
             CallToolResult err = ResolvePath(sandbox, ctx, out full);
             if (err != null) return err;
 
-            if (Directory.Exists(full)) return ToolResults.Error("path is a directory");
+            if (Directory.Exists(full)) return ToolResults.Error("path is a directory: " + full);
 
             string content = ctx.Arguments.Value<string>("content");
             if (content == null) return ToolResults.Error("content is required");
@@ -560,7 +560,8 @@ namespace FilesMcpServer
             string parent = Path.GetDirectoryName(full);
             if (!Directory.Exists(parent))
             {
-                if (!createDirs) return ToolResults.Error("parent directory does not exist (set create_dirs to create it)");
+                if (!createDirs) return ToolResults.Error("parent directory does not exist: " + parent
+                    + " (set create_dirs to create it)");
                 Directory.CreateDirectory(parent);
             }
 
@@ -568,7 +569,19 @@ namespace FilesMcpServer
 
             JObject result = new JObject();
             result["path"] = sandbox.ToRelative(full);
+            // The resolved target, absolute, so a mis-framed path (workspace-root-relative passed
+            // while cd'd) is visible in the very result that "succeeded" instead of much later.
+            result["absolute_path"] = full;
             result["bytesWritten"] = bytesWritten;
+            // The doubling signature: the path's leading segments re-state the current directory's
+            // own tail (cwd ...\x\y with path "x/y/..."), which nests a copy of the tree under
+            // itself. Warn rather than reject — a genuinely intended nested write stays possible.
+            string restated = PathFrames.RestatedRootTail(sandbox.Root, ctx.Arguments.Value<string>("path"));
+            if (restated != null)
+                result["warning"] = "the path's leading '" + restated + "' re-states the current directory's "
+                    + "own tail, so this wrote INSIDE the current directory (see absolute_path). If you meant "
+                    + "the workspace-root-relative location, cd with no argument to return to the workspace "
+                    + "root and re-issue the write.";
             return ToolResults.Json(result);
         }
 
@@ -605,8 +618,8 @@ namespace FilesMcpServer
             CallToolResult err = ResolvePath(sandbox, ctx, out full);
             if (err != null) return err;
 
-            if (Directory.Exists(full)) return ToolResults.Error("path is a directory");
-            if (!File.Exists(full)) return ToolResults.Error("file not found");
+            if (Directory.Exists(full)) return ToolResults.Error("path is a directory: " + full);
+            if (!File.Exists(full)) return ToolResults.Error("file not found: " + full);
 
             string oldString = ctx.Arguments.Value<string>("old_string");
             if (string.IsNullOrEmpty(oldString)) return ToolResults.Error("old_string is required");
@@ -748,7 +761,7 @@ namespace FilesMcpServer
                 catch (SandboxException ex) { return ToolResults.Error(ex.Message); }
             }
             if (!Directory.Exists(root) && !File.Exists(root))
-                return ToolResults.Error("path not found");
+                return ToolResults.Error("path not found: " + root);
 
             bool useRegex = BoolArg(ctx, "regex", false);
             bool ignoreCase = BoolArg(ctx, "ignore_case", false);
@@ -934,7 +947,7 @@ namespace FilesMcpServer
             }
             else
             {
-                return ToolResults.Error("path not found");
+                return ToolResults.Error("path not found: " + full);
             }
 
             JObject result = new JObject();
@@ -947,6 +960,9 @@ namespace FilesMcpServer
         // Resolve this call's effective path sandbox (rooted at the host current dir, re-validated
         // against GXPT_WORKDIR) and invoke the handler with it. A current dir outside the anchor, or one
         // that no longer exists, is rejected as an isError result rather than silently widening the root.
+        // A FAILED call made while cd'd below the anchor additionally gets a frame-orientation note (the
+        // model's most common mistake there is a workspace-root-relative path, which resolves nowhere or
+        // to a nested duplicate) — see AppendFrameHint.
         private static CallToolResult WithCwd(FilesConfig config, ToolCallContext ctx, Func<PathSandbox, CallToolResult> op)
         {
             string root;
@@ -954,7 +970,47 @@ namespace FilesMcpServer
             string err;
             if (!CwdScope.TryResolve(ctx, config.WorkDir, "workspace root", out root, out sandbox, out err))
                 return ToolResults.Error(err);
-            return op(sandbox);
+            CallToolResult result = op(sandbox);
+            try { AppendFrameHint(config, ctx, root, result); }
+            catch { }
+            return result;
+        }
+
+        // On an error result produced while the call's sandbox was re-rooted below the anchor (the model
+        // has cd'd), fold an orientation note into the result's text: which directory paths resolve
+        // against, and — when the failing `path` argument DOES exist taken from the workspace root — a
+        // targeted "did you mean" with the root-frame location. This is the antidote to the observed
+        // doom loop where a model kept re-issuing root-relative paths from inside a subfolder, reading
+        // each bare "not found" as the file being gone rather than the frame being wrong.
+        private static void AppendFrameHint(FilesConfig config, ToolCallContext ctx, string root, CallToolResult result)
+        {
+            if (result == null || !result.IsError) return;
+            if (result.Content == null || result.Content.Count == 0) return;
+            PathSandbox anchor = new PathSandbox(config.WorkDir, "workspace root");
+            if (string.Equals(root, anchor.Root, StringComparison.OrdinalIgnoreCase)) return; // one frame only
+
+            string cwdRel = anchor.ToRelative(root).Replace('\\', '/');
+            StringBuilder note = new StringBuilder();
+            note.Append("\n[note: paths resolve relative to the current directory '").Append(cwdRel)
+                .Append("' (set by cd), not the workspace root.");
+            string rel = ctx.Arguments != null ? ctx.Arguments.Value<string>("path") : null;
+            if (!string.IsNullOrEmpty(rel))
+            {
+                try
+                {
+                    string fromAnchor = anchor.Resolve(rel);
+                    if (File.Exists(fromAnchor) || Directory.Exists(fromAnchor))
+                        note.Append(" '").Append(rel).Append("' does exist relative to the workspace root (")
+                            .Append(fromAnchor).Append("); cd with no argument to return to the workspace ")
+                            .Append("root, or re-state the path relative to the current directory.");
+                }
+                catch (SandboxException) { }
+            }
+            note.Append("]");
+
+            string text;
+            if (result.Content[0] != null && result.Content[0].TryGetText(out text))
+                result.Content[0] = Mcp35.Core.Protocol.ContentBlock.FromText(text + note.ToString());
         }
 
         private static CallToolResult ResolvePath(PathSandbox sandbox, ToolCallContext ctx, out string full)

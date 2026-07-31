@@ -424,7 +424,40 @@ namespace GxPT
                 List<string> allowed = new List<string>();
                 for (int i = 0; i < parentNames.Count; i++)
                     if (!hidden.Contains(parentNames[i])) allowed.Add(parentNames[i]);
+
+                // A child whose frontmatter promises SPECIFIC tools but whose effective set resolved to
+                // nothing would burn its whole MaxTurns budget improvising with host tools alone (the
+                // observed cd-only doom loop: 40 iterations of directory-walking with no way to work).
+                // Fail the dispatch loudly instead — the parent can retry once the workspace servers
+                // are back, or surface the misconfiguration to the user. A bare "*" allowlist (or none)
+                // inherits "whatever the parent has", so an empty result there is consistent rather
+                // than a broken promise, and such children still run (e.g. text-only agents).
+                if (allowed.Count == 0 && DeclaresConcreteTools(agent.Tools))
+                {
+                    history = new List<ChatMessage>();
+                    _log.Log("agents", "child '" + agent.Slug + "' not dispatched: its declared tool "
+                        + "allowlist resolved to 0 available tools (workdir=" + (_workingDir ?? "") + ")");
+                    return "[agent error: '" + agent.Slug + "' declares specific tools in its frontmatter, "
+                        + "but none of them are currently available in this workspace (the workspace tool "
+                        + "servers may be down or restarting). The agent was NOT dispatched — retry once "
+                        + "tools are available.]";
+                }
                 child.RevealedToolNames = allowed;
+
+                // Freeze the child's MCP defs NOW (A11: an allowlisted child is handed its tool defs
+                // whole, no reveal_tools dance). Snapshotting the concrete defs — not just the names —
+                // means the child's exposure no longer re-reads the registry each iteration, so registry
+                // churn during a long parent turn can't strip a running child's tools out from under it.
+                // Never freeze EMPTINESS, though: 0 defs at dispatch means the registry is empty or the
+                // servers are mid-(re)connect, and pinning that would leave the child toolless for its
+                // whole budget. Falling back to live derivation lets it recover as the registry refills
+                // (the pre-seeded RevealedToolNames make its tools appear without a reveal round-trip).
+                IList<JObject> frozen = _registry.FunctionDefsForNames(_workingDir, allowed);
+                if (frozen.Count > 0) child.FrozenToolDefs = frozen;
+                else if (allowed.Count > 0)
+                    _log.Log("agents", "child '" + agent.Slug + "' resolved 0 tool defs from " + allowed.Count
+                        + " allowed name(s) (workdir=" + (_workingDir ?? "") + ") - registry empty or servers"
+                        + " down? Falling back to live derivation.");
             }
 
             List<ChatMessage> msgs = new List<ChatMessage>();
@@ -444,6 +477,21 @@ namespace GxPT
                 return "[agent error: " + ex.Message + "]";
             }
             return ExtractFinalAnswer(msgs);
+        }
+
+        // True when the frontmatter allowlist names at least one CONCRETE tool pattern ("files__*",
+        // "git__status") — i.e. the agent definition promises specific tools. A bare "*" only says
+        // "whatever the parent has", so an empty effective set is consistent with it, not a broken
+        // promise.
+        private static bool DeclaresConcreteTools(string[] tools)
+        {
+            if (tools == null) return false;
+            for (int i = 0; i < tools.Length; i++)
+            {
+                string t = tools[i];
+                if (!string.IsNullOrEmpty(t) && t.Trim() != "*") return true;
+            }
+            return false;
         }
 
         // Resolves the model a child runs under, in decreasing precedence (design A21). Dispatch-level args

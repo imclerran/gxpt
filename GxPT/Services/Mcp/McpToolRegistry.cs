@@ -387,9 +387,22 @@ namespace GxPT
         {
             List<JObject> result = new List<JObject>();
             result.Add(RevealToolsDef());
-            if (revealed == null) return result;
+            IList<JObject> defs = FunctionDefsForNames(workdir, revealed);
+            for (int i = 0; i < defs.Count; i++) result.Add(defs[i]);
+            return result;
+        }
 
-            List<string> fns = new List<string>(revealed);
+        // The concrete function defs for `names` usable on a turn with this working directory — the
+        // same defs (and the same by-name ordering) ExposedFunctionDefs emits, WITHOUT the leading
+        // reveal_tools def. Used to freeze a sub-agent's tool set at dispatch time (A11: an
+        // allowlisted child skips progressive disclosure and is handed its defs whole), so a child's
+        // exposure can't shift with later registry churn.
+        public IList<JObject> FunctionDefsForNames(string workdir, IEnumerable<string> names)
+        {
+            List<JObject> result = new List<JObject>();
+            if (names == null) return result;
+
+            List<string> fns = new List<string>(names);
             fns.Sort(StringComparer.Ordinal);
             lock (_lock)
             {

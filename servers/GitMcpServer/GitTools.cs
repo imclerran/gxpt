@@ -38,8 +38,9 @@ namespace GitMcpServer
         private const int OutputCap = 100000; // chars; trims runaway diffs/logs
 
         private const string CwdHelp =
-            "Run git in this subdirectory of the workspace (e.g. a worktree created with the worktree "
-            + "tool), relative to the workspace root. Defaults to the workspace root.";
+            "Run git in this subdirectory (e.g. a worktree created with the worktree tool), relative "
+            + "to the current directory (the workspace root until you cd) — it selects a deeper "
+            + "directory beneath it, never above. Defaults to the current directory.";
 
         public static void Register(McpServer server, GitConfig config)
         {
@@ -143,10 +144,10 @@ namespace GitMcpServer
                 ToolAnnotations.Write(),
                 delegate(ToolCallContext ctx) { return Branch(config, runner, sandbox, ctx); });
 
-            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees live in a subdirectory of the workspace root; by convention place them under .worktrees/ (e.g. .worktrees/feat).",
+            server.AddTool("worktree", "Manage linked working trees (git worktree): list, add, remove, or prune. Added worktrees are carved out under the CURRENT directory — cd to the workspace root before managing worktrees, and by convention place them under .worktrees/ (e.g. .worktrees/feat).",
                 SchemaBuilder.Object()
                     .Str("action", false, "list | add | remove | prune (default: list)")
-                    .Str("path", false, "Worktree directory, relative to the workspace root (required for add/remove). Prefer .worktrees/<name> (e.g. .worktrees/feat) to keep worktrees in one tidy, dotfile-hidden location.")
+                    .Str("path", false, "Worktree directory, relative to the current directory (required for add/remove) — cd to the workspace root first so the path is workspace-root-relative. Prefer .worktrees/<name> (e.g. .worktrees/feat) to keep worktrees in one tidy, dotfile-hidden location.")
                     .Str("ref", false, "Commit/branch to check out in the new worktree (action=add)")
                     .Str("branch", false, "Create a new branch with this name in the new worktree (action=add, git worktree add -b)")
                     .Bool("force", false, "Force the operation (action=add/remove)")
@@ -478,6 +479,18 @@ namespace GitMcpServer
             full = null;
             string rel = ctx.Arguments.Value<string>("path");
             if (string.IsNullOrEmpty(rel)) return ToolResults.Error("path is required for this worktree action");
+            // The doubling signature: the path's leading segments re-state the current directory's own
+            // tail (cwd ...\.worktrees\x with path ".worktrees/x/..."), i.e. a workspace-root-relative
+            // path issued while cd'd into that very folder. Resolved, it would carve a worktree INSIDE
+            // the existing one (....\.worktrees\x\.worktrees\x) — the observed doom-loop disaster that
+            // created doubled trees on disk. Unlike a plain file write, this is never intended: reject
+            // with the fix instead of creating it.
+            string restated = PathFrames.RestatedRootTail(sandbox.Root, rel);
+            if (restated != null)
+                return ToolResults.Error("path '" + rel + "' begins by re-stating the current directory's own "
+                    + "tail ('" + restated + "'), so it would nest a worktree inside the current directory. "
+                    + "Paths resolve relative to the current directory — cd with no argument to return to the "
+                    + "workspace root first, then re-issue this worktree action.");
             try { full = sandbox.Resolve(rel); }
             catch (SandboxException ex) { return ToolResults.Error(ex.Message); }
             return null;
@@ -707,7 +720,9 @@ namespace GitMcpServer
             string full;
             try { full = currentSandbox.Resolve(rel); }
             catch (SandboxException ex) { return ToolResults.Error(ex.Message); }
-            if (!Directory.Exists(full)) return ToolResults.Error("cwd not found: " + rel);
+            if (!Directory.Exists(full))
+                return ToolResults.Error("cwd not found: " + rel + " (resolves to " + full
+                    + "; cwd is taken relative to the current directory, not the workspace root)");
             workDir = full;
             return null;
         }
