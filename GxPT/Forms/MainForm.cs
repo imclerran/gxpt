@@ -870,6 +870,14 @@ namespace GxPT
             string activeRef = active;
             bool activeScratchRef = activeScratch;
             string[] inUseArr = inUse.ToArray();
+            // The RELEASE half of the reconcile (RetainOnly) is deferred while any turn is in flight:
+            // tearing down a folder's servers removes their tools from the live registry the running
+            // turn — or a detached turn whose tab just closed, the usual reason a folder leaves the
+            // in-use set — still holds, stranding its remaining calls exactly like a mid-turn rebuild
+            // would. The ENSURE half stays immediate: it only ever adds. The deferred release re-runs
+            // this whole reconcile (fresh tab state) when the last turn ends.
+            bool deferRelease = AnyTurnInFlight();
+            if (deferRelease) _workdirReleaseDeferred = true;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 try
@@ -879,7 +887,8 @@ namespace GxPT
                         if (activeScratchRef) hostRef.EnsureScratchDir(activeRef);
                         else hostRef.EnsureWorkingDir(activeRef);
                     }
-                    hostRef.RetainOnly(inUseArr); // release folders whose last tab closed
+                    if (!deferRelease)
+                        hostRef.RetainOnly(inUseArr); // release folders whose last tab closed
                 }
                 catch (Exception ex) { try { Logger.Log("mcp", "MCP workdir reconcile failed: " + ex.Message); } catch { } }
             });
@@ -1776,7 +1785,9 @@ namespace GxPT
             // can send a tool call before the window is visible - RestoreSessionAfterShown does the
             // first build post-Shown). On every LATER call - the Settings dialog's close paths run
             // InitializeClient to apply changes - the gate is already lifted, so new keys, server
-            // toggles, and mcp.json edits take effect immediately, as they did before the deferral.
+            // toggles, and mcp.json edits take effect immediately UNLESS a turn is in flight, in
+            // which case the rebuild is deferred until the last turn ends (rebuilding mid-turn would
+            // strand the running turn's registry - see RebuildMcpHost).
             RebuildMcpHost();
         }
 
@@ -1799,13 +1810,37 @@ namespace GxPT
         // stopping the extensions server mid-turn strips its tools out of the live registry).
         private bool _skillsRefreshDeferred;
 
-        // True while any tab's turn is running. Detached turns count: a recycled tab's context stays
-        // in TabContexts with IsSending held until the turn finalizes. UI-thread only, like every
-        // IsSending write.
+        // A workdir-server release (SyncMcpWorkingDirFromActiveTab's RetainOnly) was skipped because a
+        // turn was in flight; the reconcile re-runs when the last turn ends.
+        private bool _workdirReleaseDeferred;
+
+        // Contexts whose tab was closed out from under a running send (TabManager.CloseConversationTab
+        // removes them from TabContexts unconditionally, but the turn keeps running detached and still
+        // holds the registry). Tracked here so AnyTurnInFlight keeps deferring host churn until they
+        // finalize; pruned on every check once IsSending clears (finalization always runs — the close
+        // path resolves any blocking approval prompt first). The LAST-tab close is different: its
+        // context is recycled in place and stays in TabContexts, so the normal scan covers it.
+        private readonly List<TabManager.ChatTabContext> _detachedTurnCtxs =
+            new List<TabManager.ChatTabContext>();
+
+        // Called by TabManager just before it drops a still-sending context from TabContexts.
+        internal void TrackDetachedTurn(TabManager.ChatTabContext ctx)
+        {
+            if (ctx == null || !ctx.IsSending) return;
+            if (!_detachedTurnCtxs.Contains(ctx)) _detachedTurnCtxs.Add(ctx);
+        }
+
+        // True while any turn is running: a tab's send (IsSending; the last-tab recycle path keeps its
+        // context in TabContexts with IsSending held), or a detached turn whose tab was closed
+        // (_detachedTurnCtxs). UI-thread only, like every IsSending write.
         private bool AnyTurnInFlight()
         {
             try
             {
+                for (int i = _detachedTurnCtxs.Count - 1; i >= 0; i--)
+                    if (_detachedTurnCtxs[i] == null || !_detachedTurnCtxs[i].IsSending)
+                        _detachedTurnCtxs.RemoveAt(i);
+                if (_detachedTurnCtxs.Count > 0) return true;
                 if (_tabManager == null) return false;
                 foreach (var c in _tabManager.TabContexts.Values)
                     if (c != null && c.IsSending) return true;
@@ -1821,18 +1856,23 @@ namespace GxPT
         private void FlushDeferredMcpWork()
         {
             if (_mcpHostStartupDeferred) return;
-            if (!_mcpRebuildDeferred && !_skillsRefreshDeferred) return;
+            if (!_mcpRebuildDeferred && !_skillsRefreshDeferred && !_workdirReleaseDeferred) return;
             if (AnyTurnInFlight()) return;
             bool rebuild = _mcpRebuildDeferred;
+            bool skills = _skillsRefreshDeferred;
+            bool workdirs = _workdirReleaseDeferred;
             _mcpRebuildDeferred = false;
             _skillsRefreshDeferred = false;
+            _workdirReleaseDeferred = false;
             if (rebuild)
             {
                 try { Logger.Log("mcp", "applying deferred host rebuild (last turn ended)"); }
                 catch { }
-                RebuildMcpHost();
+                RebuildMcpHost(); // subsumes the skills flip AND rebinds/releases workdirs itself
+                return;
             }
-            else ApplySkillsServerEnablement();
+            if (skills) ApplySkillsServerEnablement();
+            if (workdirs) SyncMcpWorkingDirFromActiveTab(); // re-runs the reconcile with fresh tab state
         }
 
         // Assembles MCP server specs from settings and (re)starts the host. Safe to call repeatedly
@@ -2380,11 +2420,22 @@ namespace GxPT
             UpdateToolSkillCounts();
         }
 
+        // Monotonic id of the newest skills-server flip request. ThreadPool work items are not
+        // guaranteed to run in queue order, so without this two rapid flips (tab A -> B -> A) could
+        // apply out of order and leave the server in the OLDER state while the flag claims the newer.
+        // A stale applier sees a newer generation and drops out; the lock serializes the appliers
+        // themselves. UI thread increments; workers read under the lock.
+        private int _skillsFlipGen;
+        private readonly object _skillsFlipLock = new object();
+
         // Start or stop JUST the extensions (skills/agents) server to match the active conversation's
         // skill enablement. No-ops while the host doesn't exist yet (startup-deferred): the post-Shown
         // RebuildMcpHost reads live enablement itself. Re-checks the boundary so a stale deferred
         // request self-cancels when the state flipped back meanwhile (e.g. the user returned to the
-        // original tab before the turn ended).
+        // original tab before the turn ended). The flag is committed optimistically on the UI thread
+        // (the boundary check needs it synchronous) but ROLLED BACK if the async apply reports it
+        // committed nothing — otherwise a silent no-op (host mid-rebuild, spawn failure) would leave
+        // the flag lying and the boundary check would suppress every retry forever.
         private void ApplySkillsServerEnablement()
         {
             McpHost hostRef = _mcpHost;
@@ -2392,16 +2443,38 @@ namespace GxPT
             bool want = ActiveConversationHasEnabledSkills();
             if (want == _skillsServerEnabled) return;
             _skillsServerEnabled = want;
+            int gen = ++_skillsFlipGen;
             // Connecting (process spawn + handshake) can block — do it off the UI thread, like
             // RebuildMcpHost's start path.
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                try { hostRef.SetBuiltInServerEnabled(McpConfig.ExtensionsName, want); }
+                bool applied = false;
+                try
+                {
+                    lock (_skillsFlipLock)
+                    {
+                        if (gen != _skillsFlipGen) return; // superseded by a newer flip
+                        applied = hostRef.SetBuiltInServerEnabled(McpConfig.ExtensionsName, want);
+                    }
+                }
                 catch (Exception ex)
                 {
                     try { Logger.Log("mcp", "skills server refresh failed: " + ex.Message); }
                     catch { }
                 }
+                if (applied) return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        // Roll the flag back only if nothing newer moved it and the host is still the
+                        // one we tried to flip (a rebuild recomputes the flag itself).
+                        if (gen == _skillsFlipGen && ReferenceEquals(_mcpHost, hostRef)
+                            && _skillsServerEnabled == want)
+                            _skillsServerEnabled = !want;
+                    });
+                }
+                catch { }
             });
         }
 

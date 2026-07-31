@@ -430,10 +430,16 @@ namespace GxPT
                 // whole, no reveal_tools dance). Snapshotting the concrete defs — not just the names —
                 // means the child's exposure no longer re-reads the registry each iteration, so registry
                 // churn during a long parent turn can't strip a running child's tools out from under it.
-                child.FrozenToolDefs = _registry.FunctionDefsForNames(_workingDir, allowed);
-                if (child.FrozenToolDefs.Count == 0 && allowed.Count > 0)
-                    _log.Log("agents", "child '" + agent.Slug + "' froze 0 tool defs from " + allowed.Count
-                        + " allowed name(s) (workdir=" + (_workingDir ?? "") + ") - registry empty or servers down?");
+                // Never freeze EMPTINESS, though: 0 defs at dispatch means the registry is empty or the
+                // servers are mid-(re)connect, and pinning that would leave the child toolless for its
+                // whole budget. Falling back to live derivation lets it recover as the registry refills
+                // (the pre-seeded RevealedToolNames make its tools appear without a reveal round-trip).
+                IList<JObject> frozen = _registry.FunctionDefsForNames(_workingDir, allowed);
+                if (frozen.Count > 0) child.FrozenToolDefs = frozen;
+                else if (allowed.Count > 0)
+                    _log.Log("agents", "child '" + agent.Slug + "' resolved 0 tool defs from " + allowed.Count
+                        + " allowed name(s) (workdir=" + (_workingDir ?? "") + ") - registry empty or servers"
+                        + " down? Falling back to live derivation.");
             }
 
             List<ChatMessage> msgs = new List<ChatMessage>();

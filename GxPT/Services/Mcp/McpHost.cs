@@ -247,23 +247,37 @@ namespace GxPT
             }
             finally
             {
-                bool discard;
+                List<McpServerConnection> drop = null;
                 lock (_lock)
                 {
                     _connecting.Remove(workdir);
                     if (_disposed || _scopedByWorkdir.ContainsKey(workdir))
                     {
-                        discard = true;
+                        drop = conns;
                     }
                     else
                     {
-                        for (int i = 0; i < conns.Count; i++) _registry.AddConnection(conns[i], workdir);
-                        _scopedByWorkdir[workdir] = conns;
-                        discard = false;
+                        List<McpServerConnection> keep = new List<McpServerConnection>();
+                        for (int i = 0; i < conns.Count; i++)
+                        {
+                            // A spec disabled while this connect was in flight (SetBuiltInServerEnabled
+                            // ran between our spec snapshot and this publish) must not be published —
+                            // that would orphan a live instance the disable pass couldn't see, exposing
+                            // its tools to a conversation the flip meant to hide them from.
+                            if (SpecDisabledLocked(conns[i].Name))
+                            {
+                                if (drop == null) drop = new List<McpServerConnection>();
+                                drop.Add(conns[i]);
+                                continue;
+                            }
+                            _registry.AddConnection(conns[i], workdir);
+                            keep.Add(conns[i]);
+                        }
+                        _scopedByWorkdir[workdir] = keep;
                     }
                 }
-                if (discard)
-                    for (int i = 0; i < conns.Count; i++) Teardown(conns[i], true);
+                if (drop != null)
+                    for (int i = 0; i < drop.Count; i++) Teardown(drop[i], true);
                 reservation.Set();
             }
         }
@@ -274,28 +288,34 @@ namespace GxPT
         // rebuild — which swaps the registry object out from under an in-flight turn (the running
         // orchestrator/dispatcher/children keep the old, emptied registry and lose every tool: the
         // "cd-only sub-agent" doom loop). Enabling connects the server's eager workdir-less instance
-        // (if the spec runs one) plus one instance per already-live workdir; disabling tears down just
-        // that server's instances. Blocking (spawns/handshakes) — call off the UI thread. Races with a
-        // concurrent ConnectScoped are benign: it re-reads spec.Enabled per server, and the publish
-        // steps below re-check the live collections under the lock before adding.
-        public void SetBuiltInServerEnabled(string name, bool enabled)
+        // (if the spec runs one) plus one instance per live workdir — including workdirs whose scoped
+        // set is CONNECTING right now (their ConnectScoped snapshot may have seen the spec disabled;
+        // we wait for the publish, then top the set up). Disabling tears down just that server's
+        // instances; a mid-connect instance of a disabled spec is discarded by ConnectScoped's own
+        // publish step (SpecDisabledLocked). Returns false when nothing could be committed (disposed,
+        // not started, unknown spec) so the caller can retract optimistic state; true when the spec
+        // was flipped (or already matched). Blocking (spawns/handshakes) — call off the UI thread.
+        public bool SetBuiltInServerEnabled(string name, bool enabled)
         {
-            if (string.IsNullOrEmpty(name)) return;
+            if (string.IsNullOrEmpty(name)) return false;
 
             McpServerSpec spec = null;
             List<McpServerConnection> toClose = null;
-            List<string> connectDirs = null;
-            bool needEager = false;
+            List<string> ensureDirs = null;
+            List<string> pendingDirs = null;
+            List<ManualResetEvent> pendingEvents = null;
+            bool ensureEager = false;
             lock (_lock)
             {
-                if (_disposed || !_started) return;
+                if (_disposed || !_started) return false;
                 for (int i = 0; i < _scopedSpecs.Count; i++)
                 {
                     McpServerSpec s = _scopedSpecs[i];
                     if (s != null && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
                     { spec = s; break; }
                 }
-                if (spec == null || spec.Enabled == enabled) return;
+                if (spec == null) return false;
+                if (spec.Enabled == enabled) return true;
                 spec.Enabled = enabled; // future ConnectScoped calls follow the new state
 
                 if (!enabled)
@@ -312,22 +332,17 @@ namespace GxPT
                 }
                 else
                 {
-                    needEager = spec.RunsWithoutWorkdir;
-                    if (needEager)
-                        for (int i = 0; i < _eager.Count; i++)
-                            if (string.Equals(_eager[i].Name, name, StringComparison.OrdinalIgnoreCase))
-                            { needEager = false; break; }
-                    // Launch an instance for every workdir that already has a live scoped set (skipping
-                    // scratch dirs the spec isn't eligible for, and dirs that somehow already have one).
-                    connectDirs = new List<string>();
-                    foreach (KeyValuePair<string, List<McpServerConnection>> kv in _scopedByWorkdir)
+                    ensureEager = spec.RunsWithoutWorkdir;
+                    ensureDirs = new List<string>(_scopedByWorkdir.Keys);
+                    foreach (KeyValuePair<string, ManualResetEvent> kv in _connecting)
                     {
-                        if (_scratchWorkdirs.ContainsKey(kv.Key) && !spec.RunsInScratch) continue;
-                        bool has = false;
-                        for (int i = 0; i < kv.Value.Count; i++)
-                            if (string.Equals(kv.Value[i].Name, name, StringComparison.OrdinalIgnoreCase))
-                            { has = true; break; }
-                        if (!has) connectDirs.Add(kv.Key);
+                        if (pendingDirs == null)
+                        {
+                            pendingDirs = new List<string>();
+                            pendingEvents = new List<ManualResetEvent>();
+                        }
+                        pendingDirs.Add(kv.Key);
+                        pendingEvents.Add(kv.Value);
                     }
                 }
             }
@@ -335,57 +350,79 @@ namespace GxPT
             if (toClose != null)
                 for (int i = 0; i < toClose.Count; i++) Teardown(toClose[i]);
 
-            if (needEager && !_disposed)
+            if (enabled)
             {
-                McpServerConnection conn = CreateAndOpen(spec, null);
-                if (conn != null)
+                if (ensureEager) EnsureInstance(spec, null);
+                for (int i = 0; i < ensureDirs.Count; i++) EnsureInstance(spec, ensureDirs[i]);
+                if (pendingDirs != null)
                 {
-                    bool discard;
-                    lock (_lock)
+                    // Workdirs that were mid-connect when the flip landed: wait (unlocked) for their
+                    // owner to publish, then top the published set up with this server.
+                    for (int i = 0; i < pendingDirs.Count; i++)
                     {
-                        // Re-check under the lock: a concurrent disable (or Dispose) may have run
-                        // while the unlocked handshake was in progress.
-                        discard = _disposed || !spec.Enabled;
-                        if (!discard)
-                        {
-                            _registry.AddConnection(conn, null);
-                            _eager.Add(conn);
-                        }
+                        pendingEvents[i].WaitOne();
+                        EnsureInstance(spec, pendingDirs[i]);
                     }
-                    if (discard) Teardown(conn, true);
                 }
             }
-            if (connectDirs != null)
+            return true;
+        }
+
+        // Connect and publish one instance of `spec` for `workdir` (null = the eager, workdir-less
+        // instance). Idempotent and race-safe: skips the spawn when an instance with the same name is
+        // already present, the spec is disabled, the workdir's set is gone, or the workdir is a
+        // scratch dir the spec isn't eligible for — and re-checks all of that under the lock before
+        // publishing, discarding the freshly opened connection if anything changed meanwhile.
+        private void EnsureInstance(McpServerSpec spec, string workdir)
+        {
+            lock (_lock)
             {
-                for (int w = 0; w < connectDirs.Count; w++)
+                if (_disposed || !spec.Enabled) return;
+                List<McpServerConnection> have;
+                if (workdir == null) have = _eager;
+                else if (!_scopedByWorkdir.TryGetValue(workdir, out have)) return; // set gone
+                if (HasNamed(have, spec.Name)) return;
+                if (workdir != null && _scratchWorkdirs.ContainsKey(workdir) && !spec.RunsInScratch) return;
+            }
+
+            McpServerConnection conn = CreateAndOpen(spec, workdir);
+            if (conn == null) return;
+            bool discard;
+            lock (_lock)
+            {
+                List<McpServerConnection> list;
+                if (workdir == null) list = _eager;
+                else if (!_scopedByWorkdir.TryGetValue(workdir, out list)) list = null;
+                if (_disposed || !spec.Enabled || list == null || HasNamed(list, spec.Name))
+                    discard = true;
+                else
                 {
-                    if (_disposed) break;
-                    McpServerConnection conn = CreateAndOpen(spec, connectDirs[w]);
-                    if (conn == null) continue;
-                    bool discard;
-                    lock (_lock)
-                    {
-                        // Publish only if the workdir's set still exists, the spec wasn't re-disabled
-                        // while we connected, and nothing raced in a duplicate instance.
-                        List<McpServerConnection> conns;
-                        if (_disposed || !spec.Enabled || !_scopedByWorkdir.TryGetValue(connectDirs[w], out conns))
-                            discard = true;
-                        else
-                        {
-                            discard = false;
-                            for (int i = 0; i < conns.Count; i++)
-                                if (string.Equals(conns[i].Name, name, StringComparison.OrdinalIgnoreCase))
-                                { discard = true; break; }
-                            if (!discard)
-                            {
-                                _registry.AddConnection(conn, connectDirs[w]);
-                                conns.Add(conn);
-                            }
-                        }
-                    }
-                    if (discard) Teardown(conn, true);
+                    _registry.AddConnection(conn, workdir);
+                    list.Add(conn);
+                    discard = false;
                 }
             }
+            if (discard) Teardown(conn, true);
+        }
+
+        private static bool HasNamed(List<McpServerConnection> conns, string name)
+        {
+            if (conns == null) return false;
+            for (int i = 0; i < conns.Count; i++)
+                if (string.Equals(conns[i].Name, name, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // True when a scoped spec with this name exists and is currently disabled. Caller holds _lock.
+        private bool SpecDisabledLocked(string name)
+        {
+            for (int i = 0; i < _scopedSpecs.Count; i++)
+            {
+                McpServerSpec s = _scopedSpecs[i];
+                if (s != null && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return !s.Enabled;
+            }
+            return false;
         }
 
         // Tear down the scoped servers for a single working directory (e.g. its last tab closed).

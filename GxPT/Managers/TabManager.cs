@@ -623,6 +623,13 @@ namespace GxPT
                     catch { }
                 }
 
+                // The context is about to leave TabContexts while its turn may still be running
+                // detached (the Deny above unblocks it; it wraps up on its own worker). Hand it to
+                // the host so "any turn in flight" checks — which gate MCP host rebuilds and server
+                // teardowns — keep seeing it until that turn finalizes.
+                try { if (ctx != null && ctx.IsSending) _mainForm.TrackDetachedTurn(ctx); }
+                catch { }
+
                 if (_tabContexts.ContainsKey(page))
                     _tabContexts.Remove(page);
 

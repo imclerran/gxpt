@@ -376,7 +376,12 @@ namespace GxPT
             _hostTools = BuildHostTools();
             // Provider-gated eviction, at turn boundaries only (mid-loop eviction would churn the
             // tools array between iterations for no benefit). See RevealedToolNames for the rationale.
-            if (RevealedToolNames.Count > RevealEvictionCap
+            // A frozen-def turn (sub-agents) is exempt: its exposure never shrinks with this list, so
+            // evicting here would only desync the reveal-enforcement gate from the schemas the model
+            // can plainly see — and the gate's recovery hint points at reveal_tools, which a frozen
+            // child deliberately doesn't have.
+            if (FrozenToolDefs == null
+                && RevealedToolNames.Count > RevealEvictionCap
                 && !OpenRouterClient.ModelSupportsPromptCaching(_model))
             {
                 int evicted = 0;
@@ -1136,6 +1141,10 @@ namespace GxPT
             {
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] blocked unrevealed tool '" + call.Name + "'");
+                // A frozen-def turn has no reveal_tools, so the standard "reveal it first" hint would
+                // send the model chasing a tool it cannot call; its tool set is fixed, full stop.
+                if (FrozenToolDefs != null)
+                    return "[Tool '" + call.Name + "' is not in this agent's tool set.]";
                 return "[Tool '" + call.Name + "' is not revealed yet, so its parameters are unknown. "
                     + "Call reveal_tools({\"names\":[\"" + call.Name + "\"]}) first to load its schema, "
                     + "then call " + call.Name + " with the correct arguments.]";
