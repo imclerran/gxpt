@@ -37,6 +37,7 @@
   <ItemGroup>
     <Compile Include="GxptMeta.cs" />
     <Compile Include="CwdScope.cs" />
+    <Compile Include="PathFrames.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

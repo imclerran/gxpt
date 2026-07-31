@@ -38,6 +38,7 @@ namespace GxPT
 
         // The host `cd` meta-tool: moves the conversation's current directory within the workspace anchor.
         internal const string CdToolName = "cd";
+        internal const string PwdToolName = "pwd";
 
         // Request-only "keep going" message used once when a response comes back empty even after the
         // inline bare retry (see the empty-response handling in RunTurn). Appended to that one request
@@ -1032,8 +1033,17 @@ namespace GxPT
                     delegate { return McpToolRegistry.RevealToolsDef(); },
                     delegate(ToolCall c, out bool err)
                     {
+                        string[] revealNames = ParseRevealNames(c.ArgumentsJson);
+                        // No usable names is a usage error, said out loud. It used to return a silent
+                        // "[]", which the model read as "those tools don't exist" and retried forever.
+                        if (revealNames.Length == 0)
+                        {
+                            err = true;
+                            return "[reveal_tools: no tool names given. Pass a JSON array of tool-name "
+                                + "strings from the available-tools list, e.g. {\"names\":[\"files__read\"]}.]";
+                        }
                         err = false;
-                        return _registry.Reveal(ParseRevealNames(c.ArgumentsJson), ResolutionWorkdir, RevealedToolNames);
+                        return _registry.Reveal(revealNames, ResolutionWorkdir, RevealedToolNames);
                     }));
             }
             // cd: move the conversation's current directory within the workspace anchor. Offered only when
@@ -1044,6 +1054,11 @@ namespace GxPT
                 list.Add(new HostTool(CdToolName,
                     delegate { return CdDef(); },
                     delegate(ToolCall c, out bool err) { return HandleCd(c, out err); }));
+                // pwd rides along with cd: wherever the model can move, it can also ASK where it is
+                // (observability the original path doom loop lacked). Host state only — instant.
+                list.Add(new HostTool(PwdToolName,
+                    delegate { return PwdDef(); },
+                    delegate(ToolCall c, out bool err) { return HandlePwd(out err); }));
             }
             if (SkillsActive)
             {
@@ -1251,6 +1266,24 @@ namespace GxPT
             {
                 JObject o = JObject.Parse(argumentsJson);
                 JToken arr = o["names"];
+                // Liberal in what we accept: the canonical form is a JSON array of strings, but models
+                // recurrently send the array STRINGIFIED ("names": "[\"a\",\"b\"]") or a single bare
+                // name ("names": "files__read"). Both used to fall through to an empty list and a
+                // silent [] result — which reads as "these tools don't exist" and seeds retry loops.
+                if (arr != null && arr.Type == JTokenType.String)
+                {
+                    string s = ((string)arr).Trim();
+                    if (s.StartsWith("[", StringComparison.Ordinal))
+                    {
+                        try { arr = JArray.Parse(s); }
+                        catch { /* not an array after all — fall through to the bare-name case */ }
+                    }
+                    if (arr.Type == JTokenType.String)
+                    {
+                        if (s.Length > 0) names.Add(s);
+                        return names.ToArray();
+                    }
+                }
                 if (arr != null && arr.Type == JTokenType.Array)
                 {
                     foreach (JToken n in (JArray)arr)
@@ -1261,7 +1294,7 @@ namespace GxPT
             }
             catch
             {
-                // malformed reveal args → no names; Reveal returns an empty def list.
+                // malformed reveal args → no names; the caller reports the usage error.
             }
             return names.ToArray();
         }
@@ -1288,15 +1321,16 @@ namespace GxPT
 
         // ---- cd host tool ----
 
-        // The cd tool's schema: an optional `path` (relative to the current directory). Omitting it
-        // returns to the workspace root (the anchor = "home"). Absolute paths are rejected.
+        // The cd tool's schema: an optional `path` (relative to the current directory, or absolute
+        // inside the workspace). Omitting it returns to the workspace root (the anchor = "home").
         internal static JObject CdDef()
         {
             JObject pathProp = new JObject();
             pathProp["type"] = "string";
             pathProp["description"] =
-                "A subdirectory to change into, relative to the current directory (shell-like; '..' is "
-                + "allowed but cannot rise above the workspace root). Omit to return to the workspace root.";
+                "A directory to change into: relative to the current directory (shell-like; '..' is "
+                + "allowed but cannot rise above the workspace root), or an absolute path inside the "
+                + "workspace. Omit to return to the workspace root.";
 
             JObject props = new JObject();
             props["path"] = pathProp;
@@ -1308,9 +1342,44 @@ namespace GxPT
 
             return McpToolRegistryFunctionDef(CdToolName,
                 "Change the conversation's current working directory within the workspace. Subsequent "
-                + "file, git, and command operations run there until you cd again. You can only move at or "
-                + "below the workspace root; cd with no argument returns to the workspace root.",
+                + "file, git, and command operations run there — their path arguments resolve relative to "
+                + "the CURRENT directory, not the workspace root — until you cd again. You can only move at "
+                + "or below the workspace root; cd with no argument returns to the workspace root. Use pwd "
+                + "to check where you are without moving.",
                 schema);
+        }
+
+        // pwd: report the current directory without changing anything. Purely observational — the
+        // antidote to the model losing track of where it is (the original path doom loop had no way
+        // to ask, and a no-arg cd RESETS to the root as a side effect, so "checking" relocated it).
+        internal static JObject PwdDef()
+        {
+            JObject schema = new JObject();
+            schema["type"] = "object";
+            schema["properties"] = new JObject();
+            return McpToolRegistryFunctionDef(PwdToolName,
+                "Report the conversation's current working directory (workspace-root-relative and "
+                + "absolute) without changing it. File, git, and command operations resolve their path "
+                + "arguments relative to this directory.",
+                schema);
+        }
+
+        private string HandlePwd(out bool isError)
+        {
+            isError = false;
+            string anchor = WorkingDir;
+            if (string.IsNullOrEmpty(anchor))
+            {
+                isError = true;
+                return "[pwd is unavailable: this conversation has no workspace folder.]";
+            }
+            PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
+            string cur = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
+            string relDisp = anchorSb.ToRelative(cur);
+            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
+            relDisp = relDisp.Replace('\\', '/');
+            return "Current directory: `" + relDisp + "` (relative to the workspace root; absolute: "
+                + cur + "). Workspace root: " + anchorSb.Root + ".";
         }
 
         // Builds an OpenAI-format function def (mirrors McpToolRegistry.FunctionDef, which is private).
@@ -1326,12 +1395,16 @@ namespace GxPT
             return def;
         }
 
-        // Move the current directory. Resolves `path` relative to the CURRENT directory (shell-like),
-        // canonicalizes, and requires the result to be an EXISTING directory at or below the workspace
-        // anchor. Rising above the anchor is an error (the floor is kept visible, not silently clamped);
-        // absolute paths are rejected (mirrors PathSandbox, one mental model). On success it updates the
-        // current directory, notifies the host (CurrentDirChanged), and echoes the new location as an
-        // anchor-relative string. Host state only - no server contact - so it is instant.
+        // Move the current directory. Resolves `path` relative to the CURRENT directory (shell-like) —
+        // or takes it verbatim when absolute — canonicalizes, and requires the result to be an EXISTING
+        // directory at or below the workspace anchor. Rising above the anchor is an error (the floor is
+        // kept visible, not silently clamped). Absolute paths inside the workspace are ACCEPTED: the
+        // host echoes absolute paths in its results, and models reasonably paste them back — the old
+        // outright rejection contradicted those echoes and fed retry loops. Errors and the success echo
+        // both carry the RESOLVED absolute path, so a mis-framed path (e.g. workspace-root-relative
+        // issued from a subfolder) is visible immediately instead of surfacing as a bare "not found".
+        // On success it updates the current directory, notifies the host (CurrentDirChanged), and echoes
+        // the new location. Host state only - no server contact - so it is instant.
         private string HandleCd(ToolCall call, out bool isError)
         {
             isError = false;
@@ -1344,6 +1417,7 @@ namespace GxPT
 
             PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
             string rel = ParseCdPath(call.ArgumentsJson);
+            string baseDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
 
             string target;
             if (string.IsNullOrEmpty(rel))
@@ -1352,26 +1426,32 @@ namespace GxPT
             }
             else
             {
-                if (Path.IsPathRooted(rel) || rel.IndexOf(':') >= 0)
-                {
-                    isError = true;
-                    return "[cd: absolute paths are not allowed; pass a path relative to the current directory.]";
-                }
-                string baseDir = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
                 string full;
-                try { full = Path.GetFullPath(Path.Combine(baseDir, rel)); }
-                catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                if (Path.IsPathRooted(rel))
+                {
+                    try { full = Path.GetFullPath(rel); }
+                    catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                }
+                else
+                {
+                    try { full = Path.GetFullPath(Path.Combine(baseDir, rel)); }
+                    catch (Exception) { isError = true; return "[cd: invalid path: " + rel + "]"; }
+                }
 
                 if (!anchorSb.IsWithin(full))
                 {
                     isError = true;
-                    return "[cd: '" + rel + "' is above the workspace root, which is the floor. cd with no "
-                        + "argument to return to the workspace root and regain full-workspace access.]";
+                    return "[cd: '" + rel + "' resolves to " + full + ", which is above the workspace root ("
+                        + anchorSb.Root + ") - the floor. cd with no argument to return to the workspace "
+                        + "root and regain full-workspace access.]";
                 }
                 if (!Directory.Exists(full))
                 {
                     isError = true;
-                    return "[cd: directory not found: " + rel + "]";
+                    string curDisp = anchorSb.ToRelative(baseDir);
+                    if (string.IsNullOrEmpty(curDisp)) curDisp = ".";
+                    return "[cd: directory not found: " + rel + " (resolves to " + full
+                        + "; the current directory is `" + curDisp.Replace('\\', '/') + "`).]";
                 }
                 target = full;
             }
@@ -1384,8 +1464,9 @@ namespace GxPT
             string relDisp = anchorSb.ToRelative(target);
             if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
             relDisp = relDisp.Replace('\\', '/');
-            return "Current directory is now `" + relDisp + "` (relative to the workspace root). File, git, "
-                + "and command operations now run there.";
+            return "Current directory is now `" + relDisp + "` (relative to the workspace root; absolute: "
+                + target + "). File, git, and command operations now run there, and their path arguments "
+                + "resolve relative to it.";
         }
 
         // Reads the cd tool's optional `path` string argument; missing/malformed -> null (return to anchor).

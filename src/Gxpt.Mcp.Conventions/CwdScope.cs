@@ -70,7 +70,15 @@ namespace Gxpt.Mcp.Conventions
             }
 
             workDir = full;
-            sandbox = new PathSandbox(full, lbl);
+            // Label the re-rooted sandbox honestly: an escape error after a cd must say the path
+            // escaped the CURRENT DIRECTORY, not the workspace root — with the old label a model
+            // that cd'd into a subfolder was told its path "escapes the workspace root" when it was
+            // actually confined to the subfolder, reinforcing exactly the wrong frame.
+            string relDisp = anchor.ToRelative(full);
+            string cwdLabel = string.IsNullOrEmpty(relDisp)
+                ? "current directory"
+                : "current directory ('" + relDisp.Replace('\\', '/') + "', set by cd)";
+            sandbox = new PathSandbox(full, cwdLabel);
             return true;
         }
 
