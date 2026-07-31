@@ -5422,6 +5422,9 @@ namespace GxPT
                         : "Changed directory to " + rel;
                     return true;
                 }
+                // pwd takes no arguments, so unlike cd the label can't name the directory —
+                // that's in the tool result, which records don't show (call, not result).
+                case "pwd": header = "Checked current directory"; return true;
                 case "open_skill":
                 {
                     // Post-flight (completed) record label, so past tense like the other records.
