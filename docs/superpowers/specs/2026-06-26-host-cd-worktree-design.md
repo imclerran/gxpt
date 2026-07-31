@@ -143,7 +143,9 @@ concurrency burden beyond the shared-folder case the system already handles.
 - **Current** — the conversation's effective working directory. Transient: held in
   memory per conversation, **not persisted**, and **reset to the anchor on conversation
   load** (you reopen at the consented boundary, never at some subdir the model wandered
-  into). Starts equal to the anchor.
+  into). Starts equal to the anchor. *(Superseded by the 2026-07-31 amendment: `current`
+  is now persisted anchor-relative and restored with validation — the transcript's cd
+  echoes persist, so the host state must too.)*
 
 `cd` mutates **current** only.
 
@@ -265,7 +267,9 @@ model-facing `cwd` once `cd` exists or keep it for one-off sub-scoping. The ship
   (same class as `PathSandbox` today; do it at both host clamp and server re-check).
 - Race: `cd` changes current while a call is in flight → each call carries its own
   `__cwd` snapshot; no shared mutable server state to corrupt.
-- Conversation reload → current resets to anchor (not restored).
+- Conversation reload → current resets to anchor (not restored). *(Superseded by the
+  2026-07-31 amendment: restored after validation; falls back to the anchor only when
+  the stored dir is invalid or gone, and the ephemeral tail tells the model either way.)*
 
 ## Testing strategy
 
@@ -491,3 +495,68 @@ Beyond the body's list:
   is ignored/overwritten by the host (A4).
 - Scratch: `cd` tool absent on scratch turns; `command` still honors `__cwd` (A5).
 - Default: absent `__cwd` falls back to the anchor on every scoped server (A2).
+
+---
+
+## Amendment (2026-07-31): persist `current` and advertise it per request
+
+Two decisions above are revised in light of shipped experience. **This section wins on
+conflict** with the body and the 2026-06-26 addenda.
+
+### What went wrong
+
+The body made `current` transient — "reset to the anchor on conversation load" (§Design,
+§Edge cases) — reasoning that you reopen at the consented boundary. But the model's
+belief about `current` lives in the *persisted transcript*: the `cd` tool's success echo
+("Current directory is now `src/foo` …") is saved with the history. On reopen the host
+silently reset its half of the state while the transcript kept claiming the subdir, so
+the model resolved subdir-relative paths against the anchor — a host-*induced* variant of
+the path doom loop `pwd` was added to cure. The same divergence occurred mid-session when
+the user clicked the strip's **Return to root**, which moves `current` without leaving
+any transcript trace. Separately, addendum A6's requirement that the per-request context
+show `current` ("or the model computes paths against the wrong dir") was only half
+shipped: the workspace block stayed anchor-only in the cached head, and nothing carried
+`current` at all.
+
+### Revision 1 — `current` is persisted and restored (supersedes reset-on-load)
+
+- `Conversation.CurrentDir` mirrors the tab's current dir and rides every normal
+  conversation save. On disk it is stored **anchor-relative** ('/'-separated,
+  omitted at the anchor), so a conversation file cannot express a current dir outside
+  its own anchor and the subpath survives the anchor being re-picked at a moved
+  location (`ConversationStore.SerializeCurrentDir` / `DeserializeCurrentDir`).
+- Because the mirror is written when `cd` fires and saved when the turn finalizes, the
+  host state and the transcript's cd echo **persist or are lost together** — the two
+  can no longer diverge through a save/load cycle.
+- Restore validates twice: structurally on deserialize (containment via
+  `PathSandbox.Resolve`; malformed/escaping values → null), then at adoption
+  (`MainForm.ApplyLoadedWorkingDir`): containment re-checked + the directory must still
+  **exist**, else fall back to the anchor and drop the stored value. The load-time
+  fallback is deliberate and differs from the mid-session rule (§Edge cases: in-flight
+  stale `__cwd` still errors, never silently falls back) — at load there is no in-flight
+  operation to mis-target, and Revision 2 makes the fallback visible to the model.
+- Consent is unchanged: `current` only ever narrows within the consented anchor, the
+  strip shows the restored subdir immediately with one-click Return to root, and **Set
+  Working Folder** still resets it (re-consent). Return to root now also clears the
+  persisted value (and saves), so an explicit user reset can never resurrect on reopen.
+
+### Revision 2 — A6 completed: `current` rides the ephemeral tail every request
+
+The per-request tail (Zone C, rebuilt after the cache breakpoints) now carries a
+`<current_directory>` block (`McpChatOrchestrator.CurrentDirContextBlock`) on **every
+workspace turn, including at the anchor**, stating the host's authoritative current dir
+anchor-relative. Always-on is the point: the block exists to correct a model whose
+transcript says otherwise (failed restore, user Return-to-root), and those are exactly
+the turns an "only when scoped" block would omit. The workspace block in the cached head
+(Zone A) deliberately keeps showing only the anchor — it must stay byte-identical while
+the workspace does; the volatile half lives in the tail, completing A6 without the
+cache-bust it warned about. Sub-agent children do not inherit `current` (they run at the
+anchor) and their own tails say so.
+
+### Testing
+
+- Store: relative round-trip, at-anchor omission, legacy files → null, malformed /
+  escaping / absolute stored values → null (never a load failure).
+- Tail: `<current_directory>` present at anchor and when scoped, correct
+  anchor-relative rendering, absent without a workspace, ordered before `<memory>`.
+- Adoption: within-anchor + existence enforced; fallback clears the stored value.
