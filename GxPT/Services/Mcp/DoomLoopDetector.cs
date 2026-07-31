@@ -29,10 +29,22 @@ namespace GxPT
         // repeating cycle. Call exactly once per call the model actually ran.
         public bool Record(string name, string argumentsJson)
         {
-            _sigs.Add(Signature(name, argumentsJson));
+            return Record(name, argumentsJson, null);
+        }
+
+        // `scope` is the location the call ran in — the host current directory in effect after the
+        // call (null at the workspace root). It is part of the signature because a legitimate
+        // directory WALK repeats name+args verbatim ("cd ..", then "list .") while moving through
+        // DIFFERENT directories; without the salt, walking up a tree reads as a period-1/2 cycle
+        // (an observed false positive). A genuinely stuck loop repeats in place — or cycles back
+        // through the same places, which repeats the scopes too — so true positives still match.
+        public bool Record(string name, string argumentsJson, string scope)
+        {
+            _sigs.Add(Signature(name, argumentsJson) + "@" + (scope ?? string.Empty));
             // Bound the window so an old, unrelated prefix can never combine with the recent tail to
-            // fake a cycle, and so memory stays O(1) across a long turn.
-            while (_sigs.Count > MaxHistory) _sigs.RemoveAt(0);
+            // fake a cycle, and so memory stays O(1) across a long turn. Record adds exactly one
+            // entry, so a single removal restores the bound.
+            if (_sigs.Count > MaxHistory) _sigs.RemoveAt(0);
             return HasCycle();
         }
 

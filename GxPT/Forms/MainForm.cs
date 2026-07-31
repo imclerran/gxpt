@@ -3775,6 +3775,10 @@ namespace GxPT
                             return usable ? p : null;
                         });
                         orch.ContinuationDecider = delegate(int n) { return contPrompt.Ask(n); };
+                        // Doom-loop pause gets the same in-transcript prompt with its own wording:
+                        // the user may know the repetition is intentional. Sub-agents never get a
+                        // decider — the detector wraps them up unattended (A18).
+                        orch.DoomLoopContinuationDecider = delegate(int n) { return contPrompt.AskDoomLoop(n); };
                     }
                     // ask_user: expose the question tool, routed to this tab's QuestionPanel. The panel
                     // resolver uses the same recycled-tab guard as the approval prompt - it yields null

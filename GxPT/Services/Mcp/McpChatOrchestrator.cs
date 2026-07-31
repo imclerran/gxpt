@@ -287,6 +287,13 @@ namespace GxPT
         // user answers, which is correct (the user is present).
         public Func<int, bool> ContinuationDecider { get; set; }
 
+        // Like ContinuationDecider, but consulted when the doom-loop detector fires mid-turn: return
+        // true to clear the detector's window and keep going (the user judges the repetition
+        // intentional), false to wrap the turn up as content. Null => wrap up, which is what
+        // sub-agents get by design — an unattended child needs the automatic valve (A18); only the
+        // interactive main turn has a person to ask.
+        public Func<int, bool> DoomLoopContinuationDecider { get; set; }
+
         // Per-turn cancellation handle for the in-flight model request (may be null). When the user
         // stops the turn, Cancel() kills the current model stream via the streamer; this loop also
         // reads IsCancelled to bail out cleanly between steps - the partial assistant text is kept and
@@ -435,7 +442,12 @@ namespace GxPT
                     {
                         _log.Log("mcp", "[turn " + turnId + "] iteration cap reached at " + iter
                             + "; wrapping up");
-                        RunCapWrapUp(history, _lastOfferedTools, ui, turnId);
+                        // Cap reached and not continued: one final model call (tool_choice "none")
+                        // asking it to summarize and ask how to proceed, so the turn ends with a
+                        // readable assistant message rather than a cryptic dead-end. The user can
+                        // simply reply to keep going (a fresh budget next turn).
+                        RunWrapUp(history, _lastOfferedTools, ui, turnId,
+                                  CapWrapUpInstruction, CapWrapUpFallback, "cap");
                         return;
                     }
                 }
@@ -698,13 +710,16 @@ namespace GxPT
                             batchDenied = true;
                             forceTextThisCall = true;
                         }
-                        else if (doomLoop.Record(call.Name, call.ArgumentsJson))
+                        // The current dir (post-call: an executed cd has already moved it) scopes the
+                        // signature, so a legitimate directory walk — identical name+args repeated
+                        // from different places — never reads as a cycle.
+                        else if (doomLoop.Record(call.Name, call.ArgumentsJson, CurrentDir))
                         {
                             // This executed call closed a repeating cycle. Note it and let the batch
                             // finish; the wrap-up runs once the loop below is done and history is valid.
                             doomLoopHit = true;
                             _log.Log("mcp", "[turn " + turnId + "] doom-loop detected at iteration "
-                                + (iter + 1) + " (cycle on '" + call.Name + "'); wrapping up");
+                                + (iter + 1) + " (cycle on '" + call.Name + "')");
                         }
                     }
 
@@ -723,14 +738,28 @@ namespace GxPT
                 }
 
                 // A repeating cycle closed during this batch: the whole batch has now run (history is
-                // well-formed), so end the turn with a text-only wrap-up instead of spinning through the
-                // rest of the budget. A user Stop that landed while the tools ran takes precedence.
+                // well-formed). Like the iteration cap, the interactive main turn asks the user first
+                // (they may know the repetition is intentional); a sub-agent has no decider and wraps
+                // up unattended — the A18 valve. A user Stop that landed while the tools ran takes
+                // precedence over both.
                 if (doomLoopHit)
                 {
                     if (CancelRequested()) { FinishCancelled(history, null, ui, turnId); return; }
-                    RunWrapUp(history, _lastOfferedTools, ui, turnId,
-                              DoomLoopWrapUpInstruction, DoomLoopWrapUpFallback, "doom-loop");
-                    return;
+                    if (DoomLoopContinuationDecider != null && DoomLoopContinuationDecider(iter))
+                    {
+                        // Fresh window: the user chose to push on, so the calls recorded so far must
+                        // not immediately re-trigger on the next iteration.
+                        doomLoop.Clear();
+                        _log.Log("mcp", "[turn " + turnId
+                            + "] user chose to continue after doom-loop detection");
+                    }
+                    else
+                    {
+                        _log.Log("mcp", "[turn " + turnId + "] wrapping up after doom-loop detection");
+                        RunWrapUp(history, _lastOfferedTools, ui, turnId,
+                                  DoomLoopWrapUpInstruction, DoomLoopWrapUpFallback, "doom-loop");
+                        return;
+                    }
                 }
                 // Loop: re-call the model with the tool results in context.
             }
@@ -836,23 +865,14 @@ namespace GxPT
             "I seem to be repeating the same steps without making progress. Let me know how you'd like "
             + "to proceed.";
 
-        // Cap reached and not continued: one final model call (tool_choice "none") asking it to
-        // summarize and ask how to proceed, so the turn ends with a readable assistant message
-        // rather than a cryptic dead-end. The user can simply reply to keep going (a fresh budget
-        // next turn). The request reuses the loop's prompt shape - same stable head, same history,
-        // same tools array - rather than dropping tools: on Anthropic a tool_choice change
-        // invalidates only the message-tier cache, while removing the tools array would change
-        // position 0 of the prompt and invalidate the tools+system tiers as well. The next user
-        // turn (back on tool_choice auto) still extends the loop's cached prefix unharmed.
-        private void RunCapWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
-                                  string turnId)
-        {
-            RunWrapUp(history, tools, ui, turnId, CapWrapUpInstruction, CapWrapUpFallback, "cap");
-        }
-
         // Force the model to text-only closure. Shared by the iteration-cap and doom-loop stops: append
         // a trailing instruction, re-send the same (cached) tools array under tool_choice "none", and
-        // record the model's summary - or a fallback - as the turn's final assistant message.
+        // record the model's summary - or a fallback - as the turn's final assistant message. The
+        // request reuses the loop's prompt shape - same stable head, same history, same tools array -
+        // rather than dropping tools: on Anthropic a tool_choice change invalidates only the
+        // message-tier cache, while removing the tools array would change position 0 of the prompt and
+        // invalidate the tools+system tiers as well. The next user turn (back on tool_choice auto)
+        // still extends the loop's cached prefix unharmed.
         private void RunWrapUp(IList<ChatMessage> history, IList<JObject> tools, IToolLoopUi ui,
                                string turnId, string instruction, string fallback, string kind)
         {
@@ -1199,12 +1219,19 @@ namespace GxPT
             RevealedToolNames.Add(call.Name);
 
             JObject args;
-            if (!TryParseArgs(call.ArgumentsJson, out args))
+            string parseError;
+            if (!TryParseArgs(call.ArgumentsJson, out args, out parseError))
             {
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] invalid arguments for '" + call.Name
-                    + "' (not valid JSON)");
-                return "[Invalid tool arguments: not valid JSON.]";
+                    + "': " + parseError);
+                // The parser's own diagnosis (what it saw, and where: line/position/path) rides
+                // along. The old bare "not valid JSON" gave the model nothing to fix, so it would
+                // re-generate the same broken payload — typically a large inline file body with one
+                // escaping slip — and loop on the identical failure.
+                return "[Invalid tool arguments for '" + call.Name + "': " + parseError
+                    + " Fix the JSON (check quote/backslash/newline escaping inside large string "
+                    + "values) and re-issue the call.]";
             }
 
             // Logged before the approval check: if the next line for this call is far behind in
@@ -1266,9 +1293,13 @@ namespace GxPT
 
         // ---- helpers ----
 
-        private static bool TryParseArgs(string argumentsJson, out JObject args)
+        // On failure, `parseError` carries the parser's own diagnosis — Newtonsoft's message includes
+        // the offending character, line, position, and JSON path — so the model can FIX its payload
+        // instead of blindly regenerating it (the inline-file-content escaping doom loop).
+        private static bool TryParseArgs(string argumentsJson, out JObject args, out string parseError)
         {
             args = null;
+            parseError = null;
             try
             {
                 if (string.IsNullOrEmpty(argumentsJson))
@@ -1278,10 +1309,12 @@ namespace GxPT
                 }
                 JToken t = JToken.Parse(argumentsJson);
                 if (t.Type == JTokenType.Object) { args = (JObject)t; return true; }
+                parseError = "the arguments must be a JSON object, but a " + t.Type + " was sent.";
                 return false;
             }
-            catch
+            catch (Exception ex)
             {
+                parseError = ex.Message;
                 return false;
             }
         }

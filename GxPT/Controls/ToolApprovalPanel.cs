@@ -723,21 +723,34 @@ namespace GxPT
         // onto the UI thread by TranscriptContinuationPrompt; the click signals the blocked worker.
         public void ShowContinuation(int iterationsSoFar, Action<bool> callback)
         {
+            ShowContinuation(iterationsSoFar, false, callback);
+        }
+
+        // doomLoop=true is the doom-loop variant (the detector saw a repeating call cycle): same
+        // Continue/Stop flow, wording that says WHY the turn paused — "limit reached" would be a lie
+        // there, and the user's judgement call is different ("is this repetition intentional?").
+        public void ShowContinuation(int iterationsSoFar, bool doomLoop, Action<bool> callback)
+        {
             _onChoose = null;
             _onContinue = callback;
-            // The iteration-cap prompt is not a command tool: never offer Explain here.
+            // The continuation prompt is not a command tool: never offer Explain here.
             _explainCommand = null;
             _explainIsPowerShell = false;
             UpdateExplainButton(false);
 
-            _header.Text = "Tool-call limit reached";
+            _header.Text = doomLoop ? "Repeating tool calls detected" : "Tool-call limit reached";
             _currentTier = ToolTier.Write; // informational; reuse the Write (goldenrod) badge color
             _tierBadge.Text = "Paused after " + iterationsSoFar + " tool iteration(s) this turn";
 
             _previewLabel.Text = "Details:";
-            _preview.Text = "The agent has been working for a long time. Do you want to continue?\r\n\r\n"
-                + "Choose Continue to let it keep working, or Stop to have it summarize progress and "
-                + "ask how you'd like to proceed.";
+            _preview.Text = doomLoop
+                ? "The agent appears to be repeating the same tool calls in a cycle without making "
+                    + "progress. Do you want to let it keep trying?\r\n\r\n"
+                    + "Choose Continue if the repetition looks intentional, or Stop to have it "
+                    + "summarize progress and ask how you'd like to proceed."
+                : "The agent has been working for a long time. Do you want to continue?\r\n\r\n"
+                    + "Choose Continue to let it keep working, or Stop to have it summarize progress and "
+                    + "ask how you'd like to proceed.";
             _diffPanel.Visible = false;
             _preview.Visible = true;
 
