@@ -644,6 +644,9 @@ namespace GxPT
             this.SendToBack();
             SetPromptVisible(true);
             FocusDefaultButton();
+            // The button was first pinned while the panel was still hidden (too-small width); re-pin now
+            // that it has laid out so it right-justifies instead of overhanging the panel's right edge.
+            if (!string.IsNullOrEmpty(_explainCommand)) RepositionExplainDeferred();
         }
 
         // Show or hide the top-right Explain button for the current prompt, reserving room in the header
@@ -654,7 +657,7 @@ namespace GxPT
             _explainButton.Visible = show;
             if (show)
             {
-                int reserve = _explainButton.PreferredSize.Width + 8;
+                int reserve = ExplainButtonWidth() + 8;
                 _header.Padding = new Padding(0, 0, reserve, 0);
                 PositionExplainButton();
                 _explainButton.BringToFront(); // paint over the docked header it overlaps
@@ -663,6 +666,40 @@ namespace GxPT
             {
                 _header.Padding = Padding.Empty;
             }
+        }
+
+        // The Explain button's width for the top-right layout math. Prefer the button's actual
+        // (autosized) Width once it has one, falling back to PreferredSize: Krypton's PreferredSize
+        // under-reports the button width until it has been through a real, parented+painted layout
+        // pass - and PositionExplainButton first runs from ShowFor while the panel is still hidden.
+        // Trusting that too-small PreferredSize is what pushed the button past - and clipped it at -
+        // the panel's right edge; the real Width, which is what actually paints, right-justifies it.
+        private int ExplainButtonWidth()
+        {
+            if (_explainButton == null) return 0;
+            return Math.Max(_explainButton.Width, _explainButton.PreferredSize.Width);
+        }
+
+        // Re-pin Explain once the panel (and so the button) has actually laid out. The first placement
+        // happens in ShowFor while the panel is still hidden, when the button's real autosized width
+        // isn't known yet; this deferred pass corrects the reserve + position from the settled width so
+        // the button ends up flush with the right edge instead of overhanging it. No-op if not shown.
+        private void RepositionExplainDeferred()
+        {
+            try
+            {
+                BeginInvoke((MethodInvoker)delegate
+                {
+                    try
+                    {
+                        if (_explainButton == null || !_explainButton.Visible) return;
+                        _header.Padding = new Padding(0, 0, ExplainButtonWidth() + 8, 0);
+                        PositionExplainButton();
+                    }
+                    catch { }
+                });
+            }
+            catch { }
         }
 
         // Pin the Explain button to the panel's inner top-right corner (inside the panel padding),
@@ -674,7 +711,7 @@ namespace GxPT
         private void PositionExplainButton()
         {
             if (_explainButton == null) return;
-            int bw = _explainButton.PreferredSize.Width;
+            int bw = ExplainButtonWidth();
             int x = this.ClientSize.Width - this.Padding.Right - bw;
             int y = this.Padding.Top;
             if (x < this.Padding.Left) x = this.Padding.Left;
