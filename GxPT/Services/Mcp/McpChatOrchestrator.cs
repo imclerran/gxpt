@@ -458,12 +458,32 @@ namespace GxPT
                 else
                 {
                     bool hasMcpTools = _registry != null && _registry.HasToolsForWorkdir(resolveDir);
-                    tools = hasMcpTools
-                        ? _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames) : null;
-                    // The tail carries the tool INVENTORY only (names + git steering); the reveal-before-
-                    // call rule is static framing and lives in the cached agent system prompt, not re-sent
-                    // here.
-                    manifest = hasMcpTools ? _registry.NamesManifestList(resolveDir) : null;
+                    if (hasMcpTools)
+                    {
+                        tools = _registry.ExposedFunctionDefs(resolveDir, RevealedToolNames);
+                        // The tail carries the tool INVENTORY only (names + git steering); the reveal-
+                        // before-call rule is static framing and lives in the cached agent system
+                        // prompt, not re-sent here.
+                        manifest = _registry.NamesManifestList(resolveDir);
+                    }
+                    else if (_registry != null)
+                    {
+                        // Registry present but nothing resolvable for this workdir right now (servers
+                        // faulted or mid-(re)connect). Still expose reveal_tools: it is the turn's only
+                        // recovery handle — without it, a turn that starts (or goes) toolless has no
+                        // way to pull tools back in when the servers return. Previously the def was
+                        // emitted solely via ExposedFunctionDefs behind the hasMcpTools gate (the
+                        // host-tool loop below always skips it), so exactly the turns that most needed
+                        // recovery had no handle.
+                        tools = new List<JObject>();
+                        tools.Add(McpToolRegistry.RevealToolsDef());
+                        manifest = null;
+                    }
+                    else
+                    {
+                        tools = null;
+                        manifest = null;
+                    }
                 }
                 // Append the host ("meta") tool defs from the SAME table ExecuteCall dispatches against, so
                 // a tool is exposed here exactly when it is dispatch-exempt there (see BuildHostTools).
@@ -1142,6 +1162,13 @@ namespace GxPT
                 isError = true;
                 _log.Log("mcp", "[turn " + turnId + "] unresolved tool '" + call.Name + "' (workdir="
                     + (string.IsNullOrEmpty(resolveDir) ? "(none)" : resolveDir) + ")");
+                // Distinguish "the name is wrong" from "the server is gone". A server-qualified name
+                // (server__tool) whose server currently contributes NOTHING for this workdir did not
+                // stop existing — its server is down, restarting, or disabled. Reporting that as
+                // "[Unknown tool]" taught models the tool was never real, and they doom-looped
+                // improvising around it instead of simply retrying.
+                string unavailable = _registry != null ? DescribeUnresolved(call.Name, resolveDir) : null;
+                if (unavailable != null) return unavailable;
                 return "[Unknown tool: " + call.Name + "]";
             }
 
@@ -1257,6 +1284,32 @@ namespace GxPT
             {
                 return false;
             }
+        }
+
+        // For a resolution failure: when the called name is server-qualified (server__tool) and that
+        // server currently contributes NO tools for this workdir, the honest diagnosis is an outage,
+        // not a bad name — return a retryable "unavailable" message naming the server. Returns null
+        // when the failure should be reported as a plain unknown tool (host-tool names without the
+        // server prefix, or the server IS present and the tool name is simply wrong).
+        private string DescribeUnresolved(string name, string resolveDir)
+        {
+            int sep = name != null ? name.IndexOf("__", StringComparison.Ordinal) : -1;
+            if (sep <= 0) return null; // not server-qualified — a genuinely unknown (or host) name
+
+            if (!_registry.HasToolsForWorkdir(resolveDir))
+                return "[Tool '" + name + "' is temporarily unavailable: no workspace tool servers are "
+                    + "connected for this conversation right now (they may be restarting). Retry shortly, "
+                    + "or finish without it.]";
+
+            string prefix = name.Substring(0, sep + 2);
+            IList<string> names = _registry.NamesForWorkdir(resolveDir);
+            for (int i = 0; i < names.Count; i++)
+                if (names[i] != null && names[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return null; // the server is present; the tool name itself is wrong
+
+            return "[Tool '" + name + "' is temporarily unavailable: the '" + name.Substring(0, sep)
+                + "' server has no tools connected for this workspace right now (down, restarting, or "
+                + "disabled). Retry shortly, or finish without it.]";
         }
 
         private static string[] ParseRevealNames(string argumentsJson)

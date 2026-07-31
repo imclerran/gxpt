@@ -424,6 +424,24 @@ namespace GxPT
                 List<string> allowed = new List<string>();
                 for (int i = 0; i < parentNames.Count; i++)
                     if (!hidden.Contains(parentNames[i])) allowed.Add(parentNames[i]);
+
+                // A child whose frontmatter promises SPECIFIC tools but whose effective set resolved to
+                // nothing would burn its whole MaxTurns budget improvising with host tools alone (the
+                // observed cd-only doom loop: 40 iterations of directory-walking with no way to work).
+                // Fail the dispatch loudly instead — the parent can retry once the workspace servers
+                // are back, or surface the misconfiguration to the user. A bare "*" allowlist (or none)
+                // inherits "whatever the parent has", so an empty result there is consistent rather
+                // than a broken promise, and such children still run (e.g. text-only agents).
+                if (allowed.Count == 0 && DeclaresConcreteTools(agent.Tools))
+                {
+                    history = new List<ChatMessage>();
+                    _log.Log("agents", "child '" + agent.Slug + "' not dispatched: its declared tool "
+                        + "allowlist resolved to 0 available tools (workdir=" + (_workingDir ?? "") + ")");
+                    return "[agent error: '" + agent.Slug + "' declares specific tools in its frontmatter, "
+                        + "but none of them are currently available in this workspace (the workspace tool "
+                        + "servers may be down or restarting). The agent was NOT dispatched — retry once "
+                        + "tools are available.]";
+                }
                 child.RevealedToolNames = allowed;
 
                 // Freeze the child's MCP defs NOW (A11: an allowlisted child is handed its tool defs
@@ -459,6 +477,21 @@ namespace GxPT
                 return "[agent error: " + ex.Message + "]";
             }
             return ExtractFinalAnswer(msgs);
+        }
+
+        // True when the frontmatter allowlist names at least one CONCRETE tool pattern ("files__*",
+        // "git__status") — i.e. the agent definition promises specific tools. A bare "*" only says
+        // "whatever the parent has", so an empty effective set is consistent with it, not a broken
+        // promise.
+        private static bool DeclaresConcreteTools(string[] tools)
+        {
+            if (tools == null) return false;
+            for (int i = 0; i < tools.Length; i++)
+            {
+                string t = tools[i];
+                if (!string.IsNullOrEmpty(t) && t.Trim() != "*") return true;
+            }
+            return false;
         }
 
         // Resolves the model a child runs under, in decreasing precedence (design A21). Dispatch-level args

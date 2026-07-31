@@ -535,7 +535,28 @@ namespace GxPT
             if (e.NewState == ConnectionState.Faulted || e.NewState == ConnectionState.Closed)
             {
                 McpServerConnection conn = sender as McpServerConnection;
-                if (conn != null) _registry.RemoveConnection(conn);
+                if (conn == null) return;
+                _registry.RemoveConnection(conn);
+                // Also forget the dead connection in the host's OWN collections. Leaving it in
+                // _scopedByWorkdir made EnsureWorkingDir a permanent no-op for that folder ("already
+                // connected" by key) even though the registry had dropped its tools — reconnection
+                // was impossible until an app restart. When a workdir's LAST connection dies, its key
+                // goes too, so the next EnsureWorkingDir relaunches the full set. Taking _lock here
+                // is safe: every deliberate Teardown unsubscribes this handler before shutting the
+                // connection down, so no caller already holding _lock can re-enter through it.
+                lock (_lock)
+                {
+                    if (_disposed) return;
+                    _eager.Remove(conn);
+                    List<string> emptied = null;
+                    foreach (KeyValuePair<string, List<McpServerConnection>> kv in _scopedByWorkdir)
+                    {
+                        if (kv.Value.Remove(conn) && kv.Value.Count == 0)
+                            (emptied ?? (emptied = new List<string>())).Add(kv.Key);
+                    }
+                    if (emptied != null)
+                        for (int i = 0; i < emptied.Count; i++) _scopedByWorkdir.Remove(emptied[i]);
+                }
             }
         }
 

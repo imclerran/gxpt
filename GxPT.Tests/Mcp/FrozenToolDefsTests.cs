@@ -61,12 +61,14 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
-        public void Live_derivation_collapses_when_registry_empties_mid_turn()
+        public void Live_derivation_collapses_to_the_recovery_handle_when_registry_empties_mid_turn()
         {
             // Control for the regression test above: WITHOUT freezing, the same mid-turn churn strips
-            // the next iteration's tools entirely. This documents the failure mode the freeze fixes —
-            // if this test ever starts failing because tools survive, the live path grew its own
-            // resilience and the freeze may be simplifiable.
+            // the next iteration's tools down to the bare reveal_tools recovery handle (the fail-fast
+            // guardrail keeps that one def so the turn can pull tools back in when servers return).
+            // This documents the failure mode the freeze fixes — if this test ever starts failing
+            // because the full tool set survives, the live path grew real resilience and the freeze
+            // may be simplifiable.
             RegistryFakeTransport ft;
             var conn = FakeConn.Ready("files", out ft, new ToolDef("read"), new ToolDef("write"));
             var reg = new McpToolRegistry(null);
@@ -87,7 +89,11 @@ namespace GxPT.Tests.Mcp
             orch.RunTurn(new List<ChatMessage>(), "go", new RecordingUi());
 
             Assert.Equal(2, streamer.Calls);
-            Assert.Null(streamer.SeenTools[1]); // every tool gone on the next iteration
+            // Every real tool is gone on the next iteration; only the reveal_tools recovery handle
+            // remains (the fail-fast guardrail — before it, the array was null and unrecoverable).
+            Assert.NotNull(streamer.SeenTools[1]);
+            Assert.Single(streamer.SeenTools[1]);
+            Assert.Equal("reveal_tools", (string)streamer.SeenTools[1][0]["function"]["name"]);
         }
 
         [Fact]
