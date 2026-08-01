@@ -913,7 +913,6 @@ namespace GxPT
                 strip.ChangeRequested += delegate { SetWorkingFolderForContext(ctxRef); };
                 strip.ClearRequested += delegate { ClearWorkingFolderForContext(ctxRef); };
                 strip.DismissRequested += delegate { DismissWorkspaceStripForContext(ctxRef); };
-                strip.ReturnToAnchorRequested += delegate { ReturnToAnchorForContext(ctxRef); };
                 // Dock order: the strip is Top, the approval panel is Bottom, and the transcript is
                 // Fill. WinForms lays out docked controls by REVERSE z-order, so the Fill transcript
                 // must be the frontmost child for it to fill the area *between* the Top strip and the
@@ -1403,32 +1402,6 @@ namespace GxPT
             PersistWorkingDir(ctx);
             if (ctx.WorkspaceStrip != null) ctx.WorkspaceStrip.SetWorkingDir(null);
             SyncMcpWorkingDirFromActiveTab();
-        }
-
-        // "Return to root": bring the conversation's current directory back to the workspace anchor. The
-        // model may have scoped into a subdir via `cd`; this is the user's one-click way out. Clears the
-        // tab field AND the persisted conversation value (the current dir is saved with the conversation,
-        // so leaving it would resurrect the subdir on reopen after the user explicitly left it), then
-        // refreshes the strip. The next turn seeds the orchestrator from the cleared value, and its
-        // ephemeral current-directory line tells the model about the move - the click itself leaves no
-        // transcript trace.
-        private void ReturnToAnchorForContext(TabManager.ChatTabContext ctx)
-        {
-            if (ctx == null) return;
-            ctx.CurrentDir = null;
-            if (ctx.Conversation != null)
-            {
-                ctx.Conversation.CurrentDir = null;
-                // Same save gating as PersistWorkingDir: never write a blank, never-sent conversation
-                // to disk over a strip click.
-                try
-                {
-                    if (!ctx.NoSaveUntilUserSend && ctx.Conversation.History.Count > 0)
-                        ConversationStore.Save(ctx.Conversation);
-                }
-                catch { }
-            }
-            UpdateCurrentDirStrip(ctx);
         }
 
         // Refresh a tab's workspace strip to reflect its current directory (host `cd`), shown relative to
@@ -3766,13 +3739,21 @@ namespace GxPT
                     orch.CurrentDir = ctx.CurrentDir;
                     {
                         TabManager.ChatTabContext cdCtx = ctx;
-                        // The turn's conversation, not cdCtx.Conversation: a last-tab recycle swaps
-                        // the latter mid-flight while this turn keeps running detached (#141).
+                        // The turn's conversation, snapshotted: a last-tab recycle swaps cdCtx.Conversation
+                        // mid-flight while this turn keeps running detached (#141).
                         Conversation cdConvo = convo;
                         orch.CurrentDirChanged = delegate(string newCurrent)
                         {
-                            cdCtx.CurrentDir = newCurrent;
+                            // Always mirror onto the turn's own conversation - the detached turn still
+                            // operates in cdConvo's workspace and persists it on finalize.
                             if (cdConvo != null) cdConvo.CurrentDir = newCurrent;
+                            // But only touch the live tab + strip while it STILL hosts this turn's
+                            // conversation. After a recycle the same ctx object holds a fresh conversation;
+                            // stamping the old workspace's dir onto it would strand the tab (a later send
+                            // seeds orch.CurrentDir from it, or PersistWorkingDir copies it onto a brand-new
+                            // conversation). The render timer and approval resolver guard the same way.
+                            if (!ReferenceEquals(cdCtx.Conversation, cdConvo)) return;
+                            cdCtx.CurrentDir = newCurrent;
                             try
                             {
                                 if (!IsDisposed)

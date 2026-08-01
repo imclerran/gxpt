@@ -152,22 +152,22 @@ namespace GxPT
         // (Deserialize routes through PathSandbox.Resolve, which also rejects absolute/drive-form
         // input from a hand-edited file), and the stored subpath survives the anchor being re-picked
         // at a moved location. Both directions fail SOFT to null ("at the anchor"): a current dir is
-        // a convenience worth dropping, never worth failing a conversation save/load over.
+        // a convenience worth dropping, never worth failing a conversation save/load over. Serialize
+        // and Revalidate share PathSandbox.RelativeSubdirOrNull for the containment + at-anchor test,
+        // so save, load, and the model-facing tail (CurrentDirContextBlock) can't drift on that rule.
 
         // Runtime absolute -> persisted anchor-relative. Null when at the anchor, when there is no
         // workspace, or when the value does not sit inside the anchor (a bug upstream - never
         // persist an escape).
         internal static string SerializeCurrentDir(string workingDir, string currentDirAbs)
         {
-            if (string.IsNullOrEmpty(workingDir) || string.IsNullOrEmpty(currentDirAbs)) return null;
+            if (string.IsNullOrEmpty(workingDir)) return null;
             try
             {
-                var sb = new PathSandbox(workingDir, "workspace root");
-                string full = Path.GetFullPath(currentDirAbs);
-                if (!sb.IsWithin(full)) return null;
-                string rel = sb.ToRelative(full);
-                if (string.IsNullOrEmpty(rel)) return null; // the anchor itself -> omitted
-                return rel.Replace('\\', '/');
+                string ignored;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDirAbs, out ignored);
+                return rel == null ? null : rel.Replace('\\', '/');
             }
             catch { return null; }
         }
@@ -191,21 +191,20 @@ namespace GxPT
 
         // Adoption-time revalidation of a restored current dir (MainForm.ApplyLoadedWorkingDir):
         // returns the canonicalized absolute path when it is still a live subdirectory of the anchor
-        // - within the anchor (containment re-checked here, not just trusted from
-        // DeserializeCurrentDir; the layers never assume another is the only defense, see
-        // mcp-architecture.md sec.9), not the anchor itself, and still EXISTING on disk (a worktree
-        // pruned or a subdir deleted while the app was closed) - else null ("start at the anchor").
+        // - within the anchor and not the anchor itself (containment re-checked here via the shared
+        // RelativeSubdirOrNull, not just trusted from DeserializeCurrentDir; the layers never assume
+        // another is the only defense, see mcp-architecture.md sec.9), and still EXISTING on disk (a
+        // worktree pruned or a subdir deleted while the app was closed) - else null ("start at the
+        // anchor").
         internal static string RevalidateCurrentDir(string workingDir, string currentDirAbs)
         {
-            if (string.IsNullOrEmpty(workingDir) || string.IsNullOrEmpty(currentDirAbs)) return null;
+            if (string.IsNullOrEmpty(workingDir)) return null;
             try
             {
-                var sb = new PathSandbox(workingDir, "workspace root");
-                string full = Path.GetFullPath(currentDirAbs);
-                if (!sb.IsWithin(full)) return null;
-                if (string.Equals(full, sb.Root, StringComparison.OrdinalIgnoreCase)) return null;
-                if (!Directory.Exists(full)) return null;
-                return full;
+                string full;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDirAbs, out full);
+                return (rel != null && Directory.Exists(full)) ? full : null;
             }
             catch { return null; }
         }

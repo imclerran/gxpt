@@ -334,7 +334,7 @@ namespace GxPT
         // context arrives restored (validated) from the saved conversation, so the host keeps honoring
         // what the transcript's cd echoes already claim. Advertised back to the model every request via
         // the ephemeral tail's current-directory line (CurrentDirContextBlock), which stays authoritative
-        // when the two do diverge (user reset, failed restore). Mutated only by the `cd` host tool, which
+        // when the two do diverge (a workspace change, failed restore). Mutated only by the `cd` host tool, which
         // re-validates it within the anchor. See the host-cd/worktree design and its 2026-07-31 amendment.
         public string CurrentDir { get; set; }
 
@@ -1049,37 +1049,31 @@ namespace GxPT
         // this request, shown anchor-relative. Present on EVERY workspace turn - including at the
         // anchor - because its job is to correct a model whose transcript says it cd'd somewhere the
         // host no longer honors: a reopened conversation whose restored dir failed validation, or the
-        // user clicking the strip's Return to root (which leaves no transcript trace). Omitting the
-        // at-anchor case would leave exactly those models uncorrected, resolving subdir-relative
-        // paths against the anchor (the pre-`pwd` path doom loop, host-induced). Null without a
-        // workspace (`cd` doesn't exist there). Rides Zone C rather than the cached head: `cd` moves
-        // it mid-turn, and the tail is rebuilt each request after the cache breakpoints, so it
-        // changes freely without re-billing the transcript (design addendum A6).
+        // user changing the workspace folder (which resets the current dir with no transcript trace).
+        // Omitting the at-anchor case would leave exactly those models uncorrected, resolving
+        // subdir-relative paths against the anchor (the pre-`pwd` path doom loop, host-induced). Null
+        // without a workspace (`cd` doesn't exist there). Shares PathSandbox.RelativeSubdirOrNull with
+        // the persistence path so the tail and the stored value agree on containment. Rides Zone C
+        // rather than the cached head: `cd` moves it mid-turn, and the tail is rebuilt each request
+        // after the cache breakpoints, so it changes freely without re-billing the transcript (A6).
         internal static string CurrentDirContextBlock(string workingDir, string currentDir)
         {
             if (string.IsNullOrEmpty(workingDir)) return null;
-            string where = null;
-            if (!string.IsNullOrEmpty(currentDir))
+            string where = "the workspace root";
+            try
             {
-                try
-                {
-                    PathSandbox sb = new PathSandbox(workingDir, "workspace root");
-                    string full = Path.GetFullPath(currentDir);
-                    if (sb.IsWithin(full))
-                    {
-                        string rel = sb.ToRelative(full);
-                        if (!string.IsNullOrEmpty(rel))
-                            where = "`" + rel.Replace('\\', '/') + "` (relative to the workspace root)";
-                    }
-                }
-                catch (Exception) { where = null; }
+                string ignored;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDir, out ignored);
+                if (rel != null)
+                    where = "`" + rel.Replace('\\', '/') + "` (relative to the workspace root)";
             }
-            if (where == null) where = "the workspace root";
+            catch (Exception) { where = "the workspace root"; }
             return "The conversation's current working directory is " + where + ". File, git, and "
                 + "command path arguments resolve against it. This value is authoritative: if an "
                 + "earlier cd in the conversation says otherwise, the host has since moved or reset "
-                + "the directory (e.g. the user returned to the workspace root, or a directory "
-                + "restored on reopen no longer existed).";
+                + "the directory (e.g. the workspace folder was changed, or a directory restored on "
+                + "reopen no longer existed).";
         }
 
         private static bool IsEmptyText(string s)
@@ -1513,11 +1507,24 @@ namespace GxPT
             }
             PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
             string cur = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
-            string relDisp = anchorSb.ToRelative(cur);
-            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
-            relDisp = relDisp.Replace('\\', '/');
+            // AnchorRelDisplay renders an out-of-anchor cur (a bug: all setters validate) as "." rather
+            // than leaking it labeled "relative to the workspace root" - the same guard the tail uses.
+            string relDisp = AnchorRelDisplay(anchorSb, cur);
             return "Current directory: `" + relDisp + "` (relative to the workspace root; absolute: "
                 + cur + "). Workspace root: " + anchorSb.Root + ".";
+        }
+
+        // The workspace-root-relative display form of an absolute path within the anchor: "." at the
+        // anchor itself, else the relative path with forward slashes. The single spelling shared by
+        // pwd, cd's success echo, and cd's not-found error, so those model-facing messages never
+        // describe the same location two ways. Routes through RelativeSubdirOrNull, so an empty or
+        // (defensively) out-of-anchor `abs` renders "." instead of a mislabeled absolute path - all
+        // callers pass a within-anchor path, so that arm is belt-and-suspenders.
+        private static string AnchorRelDisplay(PathSandbox sb, string abs)
+        {
+            string ignored;
+            string rel = sb.RelativeSubdirOrNull(abs, out ignored);
+            return rel != null ? rel.Replace('\\', '/') : ".";
         }
 
         // Builds an OpenAI-format function def (mirrors McpToolRegistry.FunctionDef, which is private).
@@ -1586,10 +1593,9 @@ namespace GxPT
                 if (!Directory.Exists(full))
                 {
                     isError = true;
-                    string curDisp = anchorSb.ToRelative(baseDir);
-                    if (string.IsNullOrEmpty(curDisp)) curDisp = ".";
+                    string curDisp = AnchorRelDisplay(anchorSb, baseDir);
                     return "[cd: directory not found: " + rel + " (resolves to " + full
-                        + "; the current directory is `" + curDisp.Replace('\\', '/') + "`).]";
+                        + "; the current directory is `" + curDisp + "`).]";
                 }
                 target = full;
             }
@@ -1599,9 +1605,7 @@ namespace GxPT
             Action<string> cb = CurrentDirChanged;
             if (cb != null) { try { cb(CurrentDir); } catch { } }
 
-            string relDisp = anchorSb.ToRelative(target);
-            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
-            relDisp = relDisp.Replace('\\', '/');
+            string relDisp = AnchorRelDisplay(anchorSb, target);
             return "Current directory is now `" + relDisp + "` (relative to the workspace root; absolute: "
                 + target + "). File, git, and command operations now run there, and their path arguments "
                 + "resolve relative to it.";

@@ -235,7 +235,8 @@ A host tool (e.g. `cd`) the model can call:
 
 - Surface the current directory on the workspace strip (distinct from the anchor) so
   the user can see when a conversation is scoped into a subdir, with a one-click return
-  to the anchor.
+  to the anchor. *(Superseded by the 2026-07-31 amendment: the indicator ships, but the
+  one-click return was removed — the model returns to the anchor with a bare `cd`.)*
 - Sandbox-rejection errors should be `cd`-aware: *"you are in `<current>`; `cd` to the
   workspace root to reach `<path>`"* — otherwise a model that scoped deep then asks for
   an anchor-level file gets an opaque "escapes the workspace root."
@@ -536,9 +537,11 @@ shipped: the workspace block stayed anchor-only in the cached head, and nothing 
   stale `__cwd` still errors, never silently falls back) — at load there is no in-flight
   operation to mis-target, and Revision 2 makes the fallback visible to the model.
 - Consent is unchanged: `current` only ever narrows within the consented anchor, the
-  strip shows the restored subdir immediately with one-click Return to root, and **Set
-  Working Folder** still resets it (re-consent). Return to root now also clears the
-  persisted value (and saves), so an explicit user reset can never resurrect on reopen.
+  strip shows the restored subdir as a read-only indicator, and **Set Working Folder**
+  still resets it to the new anchor (re-consent). *(The earlier one-click "Return to
+  root" strip affordance was removed — scope creep that also carried a mid-turn-save
+  race; the model still returns to the anchor with a bare `cd`, and changing the
+  workspace folder resets `current`.)*
 
 ### Revision 2 — A6 completed: `current` rides the ephemeral tail every request
 
@@ -546,8 +549,9 @@ The per-request tail (Zone C, rebuilt after the cache breakpoints) now carries a
 `<current_directory>` block (`McpChatOrchestrator.CurrentDirContextBlock`) on **every
 workspace turn, including at the anchor**, stating the host's authoritative current dir
 anchor-relative. Always-on is the point: the block exists to correct a model whose
-transcript says otherwise (failed restore, user Return-to-root), and those are exactly
-the turns an "only when scoped" block would omit. The workspace block in the cached head
+transcript says otherwise (a failed restore that fell back to the anchor, or a workspace
+change that reset `current`), and those are exactly the turns an "only when scoped" block
+would omit. The workspace block in the cached head
 (Zone A) deliberately keeps showing only the anchor — it must stay byte-identical while
 the workspace does; the volatile half lives in the tail, completing A6 without the
 cache-bust it warned about. Sub-agent children do not inherit `current` (they run at the

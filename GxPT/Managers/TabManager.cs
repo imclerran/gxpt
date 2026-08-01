@@ -71,7 +71,7 @@ namespace GxPT
             // echoes in the saved transcript claim this location, so the host must keep honoring it on
             // reopen or the model computes paths against a directory that was silently reset. The user's
             // consented boundary is unchanged by restoring: current only ever NARROWS within the anchor,
-            // the strip shows it with a one-click Return to root, and the ephemeral tail tells the model
+            // the strip shows it as a read-only indicator, and the ephemeral tail tells the model
             // whenever the host and transcript do diverge. The MCP server set is still pooled per
             // WorkingDir (the anchor); this rides each call as out-of-band metadata.
             public string CurrentDir;

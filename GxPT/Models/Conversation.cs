@@ -42,8 +42,7 @@ namespace GxPT
         // the saved history, so restoring the host state keeps the model's belief and the host's
         // enforcement in agreement instead of silently resetting one of them. Validated on load
         // (within-anchor structurally in FromDto; existence at adoption in ApplyLoadedWorkingDir,
-        // which falls back to the anchor) and cleared by the same actions that clear the tab state
-        // (Set/Clear Working Folder, the strip's Return to root).
+        // which falls back to the anchor) and cleared when the anchor moves (Set/Clear Working Folder).
         public string CurrentDir { get; set; }
         // Whether the user dismissed the (unset) workspace strip for this conversation; persisted so
         // the strip stays hidden on reopen until they set a folder.
