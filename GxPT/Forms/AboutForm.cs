@@ -122,7 +122,7 @@ namespace GxPT
 
         private void link3rdPartyLicenses_MouseClick(object sender, MouseEventArgs e)
         {
-            string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Licenses");
+            string path = System.IO.Path.Combine(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources"), "Licenses");
             try
             {
                 if (System.IO.Directory.Exists(path))
