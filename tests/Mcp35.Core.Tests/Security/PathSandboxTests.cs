@@ -140,5 +140,69 @@ namespace Mcp35.Core.Tests.Security
             Assert.Equal(Path.Combine("sub", "a.txt"), sandbox.ToRelative(full));
             Assert.Equal(string.Empty, sandbox.ToRelative(sandbox.Root));
         }
+
+        // ---- RelativeSubdirOrNull: the shared "is this a real subdir, and what is it called"
+        // primitive the host's current-dir serialize / revalidate / display paths route through. ----
+
+        [Fact]
+        public void RelativeSubdirOrNull_returns_relative_and_canonical_for_a_subdir()
+        {
+            var sandbox = new PathSandbox(_root);
+            string abs = Path.Combine(_root, Path.Combine("sub", "app"));
+            string canonical;
+            string rel = sandbox.RelativeSubdirOrNull(abs, out canonical);
+
+            Assert.Equal(Path.Combine("sub", "app"), rel);
+            Assert.Equal(Path.GetFullPath(abs), canonical);
+        }
+
+        [Fact]
+        public void RelativeSubdirOrNull_collapses_interior_dotdot_within_root()
+        {
+            var sandbox = new PathSandbox(_root);
+            string abs = Path.Combine(_root, Path.Combine("sub", "..", "app"));
+            string canonical;
+            string rel = sandbox.RelativeSubdirOrNull(abs, out canonical);
+
+            Assert.Equal("app", rel);
+            Assert.Equal(Path.Combine(_root, "app"), canonical);
+        }
+
+        [Fact]
+        public void RelativeSubdirOrNull_returns_null_at_the_root_itself()
+        {
+            var sandbox = new PathSandbox(_root);
+            string canonical;
+            Assert.Null(sandbox.RelativeSubdirOrNull(_root, out canonical));
+            Assert.Null(canonical);
+            // A trailing separator still resolves to the root, so still "at anchor" -> null.
+            Assert.Null(sandbox.RelativeSubdirOrNull(_root + Path.DirectorySeparatorChar, out canonical));
+            Assert.Null(canonical);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public void RelativeSubdirOrNull_returns_null_for_empty_input(string abs)
+        {
+            var sandbox = new PathSandbox(_root);
+            string canonical;
+            Assert.Null(sandbox.RelativeSubdirOrNull(abs, out canonical));
+            Assert.Null(canonical);
+        }
+
+        [Fact]
+        public void RelativeSubdirOrNull_returns_null_for_an_out_of_root_path()
+        {
+            var sandbox = new PathSandbox(_root);
+            string canonical;
+            // A sibling that shares the root's prefix must NOT read as within (the boundary check).
+            Assert.Null(sandbox.RelativeSubdirOrNull(_root + "-evil", out canonical));
+            Assert.Null(canonical);
+            // And an interior path that escapes via '..'.
+            string escape = Path.Combine(_root, Path.Combine("sub", "..", "..", "outside"));
+            Assert.Null(sandbox.RelativeSubdirOrNull(escape, out canonical));
+            Assert.Null(canonical);
+        }
     }
 }

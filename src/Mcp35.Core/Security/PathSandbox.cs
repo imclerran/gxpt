@@ -84,5 +84,33 @@ namespace Mcp35.Core.Security
                 return string.Empty;
             return full;
         }
+
+        /// <summary>
+        /// The root-relative path of <paramref name="path"/> when it canonicalizes to a directory
+        /// STRICTLY BELOW the root — within it, but not the root itself. Returns null when
+        /// <paramref name="path"/> is null/empty, is the root itself (the "at anchor" case), escapes
+        /// the root, or cannot be canonicalized. On a non-null return, <paramref name="canonical"/>
+        /// carries the canonical absolute form so callers that also stat or store it don't
+        /// re-canonicalize. The returned relative path uses the platform separator (like
+        /// <see cref="ToRelative"/>); callers that persist or display it normalize to '/'.
+        /// <para>
+        /// One primitive for "is this a real subdir of the root, and what is it called" so the host's
+        /// serialize / revalidate / display-to-model paths cannot drift on the containment rule or the
+        /// at-anchor predicate (they once spelled the latter two different ways).
+        /// </para>
+        /// </summary>
+        public string RelativeSubdirOrNull(string path, out string canonical)
+        {
+            canonical = null;
+            if (string.IsNullOrEmpty(path)) return null;
+            string full;
+            try { full = Path.GetFullPath(path); }
+            catch { return null; }
+            if (!IsWithin(full)) return null;
+            string rel = ToRelative(full);
+            if (string.IsNullOrEmpty(rel)) return null; // the root itself
+            canonical = full;
+            return rel;
+        }
     }
 }

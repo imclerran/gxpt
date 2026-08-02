@@ -113,7 +113,10 @@ namespace GxPT
         // message right after the agent prompt (only when a workspace is set). Kept separate from
         // AgentSystemPrompt because the path is dynamic; absent entirely when there is no workspace,
         // so a workspace-less turn leaves no trace of one in context. Tells the model where it is
-        // running so questions about "the project/code/files" go to disk before the web.
+        // running so questions about "the project/code/files" go to disk before the web. Deliberately
+        // shows only the ANCHOR: it lives in the cached head (Zone A), so it must stay byte-identical
+        // while the workspace does - the volatile current directory (host `cd`) rides the ephemeral
+        // tail instead (CurrentDirContextBlock).
         internal static string WorkspaceSystemMessage(string workingDir)
         {
             if (string.IsNullOrEmpty(workingDir)) return null;
@@ -327,9 +330,12 @@ namespace GxPT
         // that the model has scoped into. Absolute path; null means "the anchor itself" (the default and
         // the floor). The host injects it into every workdir-scoped tool call out-of-band (params._meta,
         // GxptMeta.CwdKey) so files/git/command/msbuild operate there without the model being able to widen
-        // the root. Seeded from the conversation context at turn start and reset to the anchor on
-        // conversation load (it is transient, never persisted). Mutated only by the `cd` host tool, which
-        // re-validates it within the anchor. See the host-cd/worktree design.
+        // the root. Seeded from the conversation context at turn start; on a reopened conversation that
+        // context arrives restored (validated) from the saved conversation, so the host keeps honoring
+        // what the transcript's cd echoes already claim. Advertised back to the model every request via
+        // the ephemeral tail's current-directory line (CurrentDirContextBlock), which stays authoritative
+        // when the two do diverge (a workspace change, failed restore). Mutated only by the `cd` host tool, which
+        // re-validates it within the anchor. See the host-cd/worktree design and its 2026-07-31 amendment.
         public string CurrentDir { get; set; }
 
         // Notifies the host when `cd` moves the current directory, so it can store the new value on the
@@ -533,11 +539,12 @@ namespace GxPT
                 //   Zone B - the persisted history (append-only). Cache breakpoint #2 rides the
                 //            newest message, so each loop iteration / turn reads the previous
                 //            request's prefix from cache and extends it incrementally.
-                //   Zone C - one ephemeral user-role tail message holding the volatile INVENTORY that may
-                //            change between requests (memory, the skills/agents lists, the MCP tool-name
-                //            list). The static how-to framing for these lives in Zone A; only the lists
-                //            are here. Placed AFTER the breakpoints so its churn never invalidates the
-                //            cached transcript. Never persisted; rebuilt every request.
+                //   Zone C - one ephemeral user-role tail message holding the volatile STATE that may
+                //            change between requests (the current directory, memory, the skills/agents
+                //            lists, the MCP tool-name list). The static how-to framing for these lives
+                //            in Zone A; only the values are here. Placed AFTER the breakpoints so its
+                //            churn never invalidates the cached transcript. Never persisted; rebuilt
+                //            every request.
                 List<ChatMessage> requestMessages = BuildStableHead(SkillsActive, AgentsActive);
                 int headCount = requestMessages.Count;
 
@@ -551,14 +558,17 @@ namespace GxPT
                 // The tail inventory lists are gated on the SAME signal as their head framing and host
                 // tools (SkillsActive/AgentsActive), so a feature's framing, its tools, and its list always
                 // appear together. Each provider is called at most once per iteration (the head framing
-                // takes the bool, not another provider call).
+                // takes the bool, not another provider call). The current-directory line is rebuilt per
+                // iteration too: a mid-turn cd updates CurrentDir, and the next iteration's tail must
+                // already reflect it.
+                string cwdBlock = CurrentDirContextBlock(WorkingDir, CurrentDir);
                 string memoryBlock = MemorySystemMessageProvider != null
                     ? MemorySystemMessageProvider() : null;
                 string skillsBlock = SkillsActive && SkillsManifestSystemMessageProvider != null
                     ? SkillsManifestSystemMessageProvider() : null;
                 string agentsBlock = AgentsActive && AgentsManifestSystemMessageProvider != null
                     ? AgentsManifestSystemMessageProvider() : null;
-                string ephemeralTail = BuildEphemeralContextText(memoryBlock, skillsBlock, agentsBlock, manifest);
+                string ephemeralTail = BuildEphemeralContextText(cwdBlock, memoryBlock, skillsBlock, agentsBlock, manifest);
                 if (!string.IsNullOrEmpty(ephemeralTail))
                     requestMessages.Add(new ChatMessage("user", ephemeralTail));
 
@@ -1002,23 +1012,28 @@ namespace GxPT
         }
 
         // Zone C: the ephemeral context tail - one user-role message holding everything that may
-        // change between requests (memory index, skills manifest, MCP names manifest). User role
-        // because Anthropic (via OpenRouter) hoists in-array system messages to the top-level system
-        // parameter, which would put this back in front of the cached history; as a trailing user
-        // message it merges into the same user turn as any preceding tool results ([tool_result...,
-        // text] is the order Anthropic requires). Returns null when every block is empty, so a turn
-        // without memory/skills/agents/tools leaves no trace. Never persisted; the UI never renders it.
-        internal static string BuildEphemeralContextText(string memory, string skills, string agents, string toolManifest)
+        // change between requests (current directory, memory index, skills manifest, MCP names
+        // manifest). User role because Anthropic (via OpenRouter) hoists in-array system messages to
+        // the top-level system parameter, which would put this back in front of the cached history;
+        // as a trailing user message it merges into the same user turn as any preceding tool results
+        // ([tool_result..., text] is the order Anthropic requires). Returns null when every block is
+        // empty, so a workspace-less turn without memory/skills/agents/tools leaves no trace. Never
+        // persisted; the UI never renders it.
+        internal static string BuildEphemeralContextText(string currentDir, string memory, string skills, string agents, string toolManifest)
         {
+            bool hasCwd = !string.IsNullOrEmpty(currentDir);
             bool hasMemory = !string.IsNullOrEmpty(memory);
             bool hasSkills = !string.IsNullOrEmpty(skills);
             bool hasAgents = !string.IsNullOrEmpty(agents);
             bool hasManifest = !string.IsNullOrEmpty(toolManifest);
-            if (!hasMemory && !hasSkills && !hasAgents && !hasManifest) return null;
+            if (!hasCwd && !hasMemory && !hasSkills && !hasAgents && !hasManifest) return null;
 
             StringBuilder sb = new StringBuilder();
             sb.Append("[Ephemeral context appended by the host application for this request. ");
             sb.Append("It is not part of the user's message.]");
+            // Orientation before inventory: where the conversation is, then what it has.
+            if (hasCwd)
+                sb.Append("\n\n<current_directory>\n").Append(currentDir).Append("\n</current_directory>");
             if (hasMemory)
                 sb.Append("\n\n<memory>\n").Append(memory).Append("\n</memory>");
             if (hasSkills)
@@ -1028,6 +1043,37 @@ namespace GxPT
             if (hasManifest)
                 sb.Append("\n\n<available_tools>\n").Append(toolManifest).Append("\n</available_tools>");
             return sb.ToString();
+        }
+
+        // The <current_directory> block's text: the host's authoritative current dir (host `cd`) for
+        // this request, shown anchor-relative. Present on EVERY workspace turn - including at the
+        // anchor - because its job is to correct a model whose transcript says it cd'd somewhere the
+        // host no longer honors: a reopened conversation whose restored dir failed validation, or the
+        // user changing the workspace folder (which resets the current dir with no transcript trace).
+        // Omitting the at-anchor case would leave exactly those models uncorrected, resolving
+        // subdir-relative paths against the anchor (the pre-`pwd` path doom loop, host-induced). Null
+        // without a workspace (`cd` doesn't exist there). Shares PathSandbox.RelativeSubdirOrNull with
+        // the persistence path so the tail and the stored value agree on containment. Rides Zone C
+        // rather than the cached head: `cd` moves it mid-turn, and the tail is rebuilt each request
+        // after the cache breakpoints, so it changes freely without re-billing the transcript (A6).
+        internal static string CurrentDirContextBlock(string workingDir, string currentDir)
+        {
+            if (string.IsNullOrEmpty(workingDir)) return null;
+            string where = "the workspace root";
+            try
+            {
+                string ignored;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDir, out ignored);
+                if (rel != null)
+                    where = "`" + rel.Replace('\\', '/') + "` (relative to the workspace root)";
+            }
+            catch (Exception) { where = "the workspace root"; }
+            return "The conversation's current working directory is " + where + ". File, git, and "
+                + "command path arguments resolve against it. This value is authoritative: if an "
+                + "earlier cd in the conversation says otherwise, the host has since moved or reset "
+                + "the directory (e.g. the workspace folder was changed, or a directory restored on "
+                + "reopen no longer existed).";
         }
 
         private static bool IsEmptyText(string s)
@@ -1461,11 +1507,24 @@ namespace GxPT
             }
             PathSandbox anchorSb = new PathSandbox(anchor, "workspace root");
             string cur = !string.IsNullOrEmpty(CurrentDir) ? CurrentDir : anchorSb.Root;
-            string relDisp = anchorSb.ToRelative(cur);
-            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
-            relDisp = relDisp.Replace('\\', '/');
+            // AnchorRelDisplay renders an out-of-anchor cur (a bug: all setters validate) as "." rather
+            // than leaking it labeled "relative to the workspace root" - the same guard the tail uses.
+            string relDisp = AnchorRelDisplay(anchorSb, cur);
             return "Current directory: `" + relDisp + "` (relative to the workspace root; absolute: "
                 + cur + "). Workspace root: " + anchorSb.Root + ".";
+        }
+
+        // The workspace-root-relative display form of an absolute path within the anchor: "." at the
+        // anchor itself, else the relative path with forward slashes. The single spelling shared by
+        // pwd, cd's success echo, and cd's not-found error, so those model-facing messages never
+        // describe the same location two ways. Routes through RelativeSubdirOrNull, so an empty or
+        // (defensively) out-of-anchor `abs` renders "." instead of a mislabeled absolute path - all
+        // callers pass a within-anchor path, so that arm is belt-and-suspenders.
+        private static string AnchorRelDisplay(PathSandbox sb, string abs)
+        {
+            string ignored;
+            string rel = sb.RelativeSubdirOrNull(abs, out ignored);
+            return rel != null ? rel.Replace('\\', '/') : ".";
         }
 
         // Builds an OpenAI-format function def (mirrors McpToolRegistry.FunctionDef, which is private).
@@ -1534,10 +1593,9 @@ namespace GxPT
                 if (!Directory.Exists(full))
                 {
                     isError = true;
-                    string curDisp = anchorSb.ToRelative(baseDir);
-                    if (string.IsNullOrEmpty(curDisp)) curDisp = ".";
+                    string curDisp = AnchorRelDisplay(anchorSb, baseDir);
                     return "[cd: directory not found: " + rel + " (resolves to " + full
-                        + "; the current directory is `" + curDisp.Replace('\\', '/') + "`).]";
+                        + "; the current directory is `" + curDisp + "`).]";
                 }
                 target = full;
             }
@@ -1547,9 +1605,7 @@ namespace GxPT
             Action<string> cb = CurrentDirChanged;
             if (cb != null) { try { cb(CurrentDir); } catch { } }
 
-            string relDisp = anchorSb.ToRelative(target);
-            if (string.IsNullOrEmpty(relDisp)) relDisp = ".";
-            relDisp = relDisp.Replace('\\', '/');
+            string relDisp = AnchorRelDisplay(anchorSb, target);
             return "Current directory is now `" + relDisp + "` (relative to the workspace root; absolute: "
                 + target + "). File, git, and command operations now run there, and their path arguments "
                 + "resolve relative to it.";

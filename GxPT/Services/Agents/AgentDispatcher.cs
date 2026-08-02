@@ -396,6 +396,8 @@ namespace GxPT
             McpChatOrchestrator child = new McpChatOrchestrator(_streamer, _registry, _approval, model,
                                                                 _log, maxIter, _callTimeoutMs);
             child.WorkingDir = _workingDir;
+            // CurrentDir deliberately not inherited: a child runs at the anchor, and its own ephemeral
+            // current-directory line says so - the parent's `cd` scoping is per-conversation state.
             // A "Stop N agents" click trips GroupCancellation (cancels the fan-out, not the turn); when the
             // host hasn't set one, fall back to the parent turn's handle so a plain Stop still cancels.
             child.Cancellation = GroupCancellation != null ? GroupCancellation : Cancellation;

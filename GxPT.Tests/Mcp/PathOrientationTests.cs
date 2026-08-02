@@ -145,6 +145,30 @@ namespace GxPT.Tests.Mcp
         }
 
         [Fact]
+        public void Pwd_renders_an_out_of_anchor_current_dir_as_the_root_not_a_leaked_path()
+        {
+            // Defense-in-depth: all setters keep CurrentDir within the anchor, but if one ever slipped,
+            // pwd must not print the foreign absolute path labeled "relative to the workspace root"
+            // (ToRelative's raw fallback). AnchorRelDisplay clamps it to ".", matching the tail block.
+            RegistryFakeTransport ft;
+            var reg = RegistryWith(out ft, "files", new ToolDef("read"));
+            var streamer = new ScriptedStreamer();
+            streamer.Turns.Add(Chunks.OneToolCall("c1", "pwd", "{}"));
+            streamer.Turns.Add(Chunks.Text("done"));
+
+            var orch = Orch(streamer, reg, _anchor);
+            string outside = Path.Combine(Path.GetTempPath(), "pathorient_outside_" + Guid.NewGuid().ToString("N"));
+            orch.CurrentDir = outside; // out-of-anchor (an upstream-bug state)
+
+            var ui = new RecordingUi();
+            orch.RunTurn(new List<ChatMessage>(), "go", ui);
+
+            // The relative field is clamped to ".", never the foreign path presented as relative.
+            Assert.Contains("Current directory: `.`", ui.ToolResults[0]);
+            Assert.DoesNotContain("`" + outside + "`", ui.ToolResults[0]);
+        }
+
+        [Fact]
         public void Pwd_is_exposed_alongside_cd()
         {
             RegistryFakeTransport ft;

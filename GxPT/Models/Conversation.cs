@@ -35,6 +35,15 @@ namespace GxPT
         // MCP working folder for this conversation (GXPT_WORKDIR sandbox root); null = none. Persisted
         // so the conversation re-opens with the same folder.
         public string WorkingDir { get; set; }
+        // The conversation's current directory (host `cd`): an absolute path at or below WorkingDir
+        // that the model has scoped into, or null when at the anchor. Runtime mirror of the tab's
+        // CurrentDir, persisted (anchor-relative on disk - see ConversationStore) so a reopened
+        // conversation resumes where its transcript says it is: the cd tool's success echo lives in
+        // the saved history, so restoring the host state keeps the model's belief and the host's
+        // enforcement in agreement instead of silently resetting one of them. Validated on load
+        // (within-anchor structurally in FromDto; existence at adoption in ApplyLoadedWorkingDir,
+        // which falls back to the anchor) and cleared when the anchor moves (Set/Clear Working Folder).
+        public string CurrentDir { get; set; }
         // Whether the user dismissed the (unset) workspace strip for this conversation; persisted so
         // the strip stays hidden on reopen until they set a folder.
         public bool WorkspaceStripDismissed { get; set; }

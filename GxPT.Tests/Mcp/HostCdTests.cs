@@ -8,8 +8,9 @@ using Xunit;
 namespace GxPT.Tests.Mcp
 {
     // The host `cd` meta-tool and the per-call current-directory injection: cd moves the conversation's
-    // current dir within the workspace anchor (re-validated, transient), and every subsequent
-    // workdir-scoped call carries that dir out-of-band as params._meta["gxpt.cwd"].
+    // current dir within the workspace anchor (re-validated; persisted with the conversation via the
+    // host's CurrentDirChanged mirror), and every subsequent workdir-scoped call carries that dir
+    // out-of-band as params._meta["gxpt.cwd"].
     public class HostCdTests : IDisposable
     {
         private readonly string _anchor;

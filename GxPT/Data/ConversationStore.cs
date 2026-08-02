@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Mcp35.Core.Security;
 using Newtonsoft.Json;
 
 namespace GxPT
@@ -106,6 +107,11 @@ namespace GxPT
                 Name = convo.Name,
                 SelectedModel = convo.SelectedModel,
                 WorkingDir = convo.WorkingDir,
+                // Current directory (host `cd`): stored anchor-RELATIVE with '/' separators, omitted
+                // at the anchor. Relative keeps "current is within the anchor" structural in the file
+                // format itself; an out-of-anchor runtime value (a bug upstream) serializes as null
+                // rather than persisting an escape.
+                CurrentDir = SerializeCurrentDir(convo.WorkingDir, convo.CurrentDir),
                 WorkspaceStripDismissed = convo.WorkspaceStripDismissed,
                 ContinuedFromCompaction = convo.ContinuedFromCompaction,
                 Zdr = convo.Zdr,
@@ -136,6 +142,71 @@ namespace GxPT
                 Messages = convo.History.Select(m => ToMessageDto(m)).ToList()
             };
             return JsonConvert.SerializeObject(dto, _jsonSettings);
+        }
+
+        // ---- current-directory (host `cd`) persistence ----
+        //
+        // The on-disk form of Conversation.CurrentDir is the path RELATIVE to the workspace anchor
+        // (forward slashes), omitted entirely at the anchor. The pair (WorkingDir, CurrentDir) then
+        // stays coherent as a unit: the file cannot express a current dir outside its own anchor
+        // (Deserialize routes through PathSandbox.Resolve, which also rejects absolute/drive-form
+        // input from a hand-edited file), and the stored subpath survives the anchor being re-picked
+        // at a moved location. Both directions fail SOFT to null ("at the anchor"): a current dir is
+        // a convenience worth dropping, never worth failing a conversation save/load over. Serialize
+        // and Revalidate share PathSandbox.RelativeSubdirOrNull for the containment + at-anchor test,
+        // so save, load, and the model-facing tail (CurrentDirContextBlock) can't drift on that rule.
+
+        // Runtime absolute -> persisted anchor-relative. Null when at the anchor, when there is no
+        // workspace, or when the value does not sit inside the anchor (a bug upstream - never
+        // persist an escape).
+        internal static string SerializeCurrentDir(string workingDir, string currentDirAbs)
+        {
+            if (string.IsNullOrEmpty(workingDir)) return null;
+            try
+            {
+                string ignored;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDirAbs, out ignored);
+                return rel == null ? null : rel.Replace('\\', '/');
+            }
+            catch { return null; }
+        }
+
+        // Persisted anchor-relative -> runtime absolute. Null when absent, when there is no
+        // workspace, or when the stored value is malformed or escapes the anchor
+        // (PathSandbox.Resolve throws on those).
+        internal static string DeserializeCurrentDir(string workingDir, string currentDirRel)
+        {
+            if (string.IsNullOrEmpty(workingDir) || string.IsNullOrEmpty(currentDirRel)) return null;
+            try
+            {
+                var sb = new PathSandbox(workingDir, "workspace root");
+                string full = sb.Resolve(currentDirRel.Replace('/', Path.DirectorySeparatorChar));
+                full = full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                // "." (or an equivalent) resolves to the anchor itself: normalize to null.
+                return string.Equals(full, sb.Root, StringComparison.OrdinalIgnoreCase) ? null : full;
+            }
+            catch { return null; }
+        }
+
+        // Adoption-time revalidation of a restored current dir (MainForm.ApplyLoadedWorkingDir):
+        // returns the canonicalized absolute path when it is still a live subdirectory of the anchor
+        // - within the anchor and not the anchor itself (containment re-checked here via the shared
+        // RelativeSubdirOrNull, not just trusted from DeserializeCurrentDir; the layers never assume
+        // another is the only defense, see mcp-architecture.md sec.9), and still EXISTING on disk (a
+        // worktree pruned or a subdir deleted while the app was closed) - else null ("start at the
+        // anchor").
+        internal static string RevalidateCurrentDir(string workingDir, string currentDirAbs)
+        {
+            if (string.IsNullOrEmpty(workingDir)) return null;
+            try
+            {
+                string full;
+                string rel = new PathSandbox(workingDir, "workspace root")
+                    .RelativeSubdirOrNull(currentDirAbs, out full);
+                return (rel != null && Directory.Exists(full)) ? full : null;
+            }
+            catch { return null; }
         }
 
         private static MessageDto ToMessageDto(ChatMessage m)
@@ -192,6 +263,10 @@ namespace GxPT
                 Name = dto.Name ?? "New Conversation",
                 SelectedModel = dto.SelectedModel,
                 WorkingDir = dto.WorkingDir,
+                // Absent in older files -> null (start at the anchor). Structural validation only
+                // (containment via PathSandbox); the folder's EXISTENCE is checked at adoption time
+                // (MainForm.ApplyLoadedWorkingDir), the moment the workspace is actually bound.
+                CurrentDir = DeserializeCurrentDir(dto.WorkingDir, dto.CurrentDir),
                 WorkspaceStripDismissed = dto.WorkspaceStripDismissed,
                 ContinuedFromCompaction = dto.ContinuedFromCompaction,
                 Zdr = dto.Zdr,
@@ -380,6 +455,9 @@ namespace GxPT
             public string Name { get; set; }
             public string SelectedModel { get; set; }
             public string WorkingDir { get; set; }
+            // The current directory (host `cd`) relative to WorkingDir, '/'-separated; absent at the
+            // anchor and in files from before this field existed. See SerializeCurrentDir.
+            public string CurrentDir { get; set; }
             public bool WorkspaceStripDismissed { get; set; }
             public bool ContinuedFromCompaction { get; set; }
             public bool Zdr { get; set; }
